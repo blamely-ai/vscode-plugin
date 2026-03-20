@@ -1,0 +1,189 @@
+{
+  "name": "blamely",
+  "displayName": "Blamely — AI & Human",
+  "description": "Track, report, and commit AI & human code. blamely.ai",
+  "version": "0.10.0",
+  "icon": "images/icon.png",
+  "publisher": "blamely",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./ && cp src/hookRunner.js out/hookRunner.js",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "pretest": "npm run compile",
+    "test": "mocha --require ts-node/register 'src/test/**/*.test.ts' --timeout 10000"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ai-trace.generateReport",
+        "title": "Blamely: Generate Report Now",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.showBlame",
+        "title": "Blamely: Show Blame for Current File",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.installHook",
+        "title": "Blamely: Install Git Commit Hook",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.restoreHook",
+        "title": "Blamely: Restore/Remove Git Hook",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.showCommitReport",
+        "title": "Blamely: Show Report for Latest Commit (Git Note)",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.attachGitNote",
+        "title": "Blamely: Attach Git Note for Current Commit",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.attachGitNoteForSha",
+        "title": "Blamely: Attach Git Note for Commit SHA...",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.acceptInlineSuggestion",
+        "title": "Blamely: Accept Inline Suggestion",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.acceptNextWord",
+        "title": "Blamely: Accept Next Word",
+        "category": "Blamely"
+      },
+      {
+        "command": "ai-trace.acceptNextLine",
+        "title": "Blamely: Accept Next Line",
+        "category": "Blamely"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ai-trace.acceptInlineSuggestion",
+        "key": "tab",
+        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused && !editorTabMovesFocus"
+      },
+      {
+        "command": "ai-trace.acceptNextWord",
+        "key": "ctrl+right",
+        "mac": "cmd+right",
+        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused"
+      },
+      {
+        "command": "ai-trace.acceptNextLine",
+        "key": "ctrl+down",
+        "mac": "cmd+down",
+        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused"
+      }
+    ],
+    "configuration": {
+      "title": "Blamely",
+      "properties": {
+        "aiTrace.suggestionTimeout": {
+          "type": "number",
+          "default": 30000,
+          "description": "Timeout in ms before a pending suggestion is marked as rejected"
+        },
+        "aiTrace.autoInstallHook": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically install Git pre-commit hook on activation"
+        },
+        "aiTrace.excludePatterns": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "build",
+            "out",
+            "target",
+            "detector.ai",
+            "ai-trace-report.md",
+            "blamely-report.md",
+            ".log",
+            "/log/",
+            "/logs/",
+            ".tmp",
+            ".temp",
+            ".cache",
+            ".min.js",
+            ".min.css",
+            ".lock",
+            ".lockb",
+            ".idea/",
+            ".vscode/"
+          ],
+          "description": "File patterns to exclude from tracking (matches IntelliJ Blamely)"
+        },
+        "aiTrace.reportOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Regenerate detector.ai and report on every file save"
+        },
+        "aiTrace.showGutterDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show AI & Human gutter decorations in the editor"
+        }
+      }
+    },
+    "views": {
+      "scm": [
+        {
+          "id": "aiTraceSidebar",
+          "name": "Blamely — Changes",
+          "type": "webview"
+        },
+        {
+          "id": "aiTraceHistory",
+          "name": "Blamely — History",
+          "type": "webview"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "blamely.ai",
+        "name": "Blamely",
+        "fullName": "Blamely AI Tracker",
+        "description": "Route AI prompts through Blamely (blamely.ai) for full AI & Human tracking",
+        "isSticky": true
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "chai": "^4.4.1",
+    "eslint": "^8.56.0",
+    "mocha": "^10.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
