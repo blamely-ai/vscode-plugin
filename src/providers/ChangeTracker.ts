@@ -26,6 +26,7 @@ import {
     chatStreamBurstQualifiesForPoke,
     type ChatStreamBurstState,
 } from '../utils/chatApplyStreamingBurst';
+import { captureDocLines, linesTouchedInAfterDoc, narrowIntervalsByTouch } from '../utils/snapshotLineTouch';
 
 export class ChangeTracker implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
@@ -106,6 +107,12 @@ export class ChangeTracker implements vscode.Disposable {
     private chatStreamBurstByUri = new Map<string, ChatStreamBurstState>();
 
     /**
+     * Whole-document line snapshots per URI (after each handled edit). Compared to the next edit so we only
+     * attribute lines that actually changed when hosts replace huge spans (chat panel full-buffer apply).
+     */
+    private docLinesSnapshotByUri = new Map<string, string[]>();
+
+    /**
      * After stash apply / merge / checkout, large inserts are not clipboard-matched and the AI heuristic
      * would falsely mark them as AI. While active, rollback does not block human attribution and the
      * heuristic batch step is skipped.
@@ -128,6 +135,8 @@ export class ChangeTracker implements vscode.Disposable {
         model?: string | null;
         rangeLength: number;
         formatPreserved?: boolean;
+        /** Lines in the post-edit document that differ from the pre-edit snapshot (1-based); optional per txn. */
+        snapshotTouchedLines?: Set<number>;
     }[] = [];
     private debounceTimer: NodeJS.Timeout | null = null;
     /** Coalesced flush after tracked apply/keep (see {@link flushDeferredClassificationAfterApplyCommand}). */
@@ -149,6 +158,14 @@ export class ChangeTracker implements vscode.Disposable {
         this.blameMap = blameMap;
         this.onBlameUpdated = onBlameUpdated;
         this.register();
+    }
+
+    /** Seed {@link docLinesSnapshotByUri} so the next edit can diff minimal touched lines (call on open buffer). */
+    public seedDocSnapshot(document: vscode.TextDocument): void {
+        if (document.uri.scheme !== 'file') {
+            return;
+        }
+        this.docLinesSnapshotByUri.set(document.uri.toString(), captureDocLines(document));
     }
 
     private register(): void {
@@ -278,6 +295,43 @@ export class ChangeTracker implements vscode.Disposable {
     }
 
     /**
+     * Substantial-insert / chat-tab poke opens an intercept window tagged {@code chat_panel}. That tag must
+     * not overwrite {@link lastDetectedInteractionType} when it is already {@code completion} (ghost accept
+     * via {@code onDidExecuteCommand} / Blamely wrappers runs before this edit).
+     */
+    public armChatTrafficInterceptWindow(durationMs: number, provider: string | null): void {
+        const interaction =
+            this.lastDetectedInteractionType === 'completion' ? null : 'chat_panel';
+        this.markNextChangeAsAi(durationMs, null, null, provider, interaction);
+    }
+
+    /**
+     * When {@link lastDetectedInteractionType} is only {@code chat_panel}/{@code chat_inline} from ambient
+     * editor/traffic poke — not a tracked Apply command nor an in-flight chat-send→reply window —
+     * treat the attributed intercept edit as inline completion so manual Enter is not classified as a chat
+     * stream newline chunk (see empty-line handling in {@link processChange}).
+     */
+    private promoteAmbientChatSurfaceToCompletion(nowMs: number): void {
+        const t = this.lastDetectedInteractionType;
+        if (t !== 'chat_panel' && t !== 'chat_inline') {
+            return;
+        }
+        if (
+            this.lastTrackedChatApplyCommandAt > 0 &&
+            nowMs - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_HEURISTIC_BIAS_MS
+        ) {
+            return;
+        }
+        if (
+            this.chatRequestSentAt > 0 &&
+            nowMs - this.chatRequestSentAt <= ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS
+        ) {
+            return;
+        }
+        this.lastDetectedInteractionType = 'completion';
+    }
+
+    /**
      * Chat/agent applies stream many line replacements where rangeLen≈insertLen and charDelta≈0 — that
      * matches {@link FORMAT_LIKE_*}} heuristics and wrongly preserves Human blame for fresh AI text.
      */
@@ -333,6 +387,7 @@ export class ChangeTracker implements vscode.Disposable {
      */
     public notifyRollback(): void {
         this.rollbackActiveUntil = Date.now() + ChangeTracker.ROLLBACK_WINDOW_MS;
+        this.docLinesSnapshotByUri.clear();
         this.resetAiInterceptState();
         console.log('Rollback window active: blame will update per change only');
         this.onBlameUpdated();
@@ -506,7 +561,7 @@ export class ChangeTracker implements vscode.Disposable {
         // Streaming: single-event "substantial" thresholds miss Copilot — accumulate burst across CHAT_STREAM_BURST_GAP_MS.
         if (substantialPoke || streamBurstPoke) {
             const provider = AiContextExtractor.detectProvider();
-            this.markNextChangeAsAi(10_000, null, null, provider, 'chat_panel');
+            this.armChatTrafficInterceptWindow(10_000, provider);
             this.lastSubstantialChatTabPokeAt = Date.now();
             this.chatStreamBurstByUri.delete(uriBurstKey);
 
@@ -558,10 +613,28 @@ export class ChangeTracker implements vscode.Disposable {
             }, ChangeTracker.EXTERNAL_VCS_DIRTY_RECHECK_MS);
         }
 
+        const uriStrSnap = event.document.uri.toString();
+        const linesBeforeSnap = this.docLinesSnapshotByUri.get(uriStrSnap);
+        const linesAfterSnap = captureDocLines(event.document);
+        let snapshotTouchedLines: Set<number> | undefined;
+        if (!isUndoOrRedo && linesBeforeSnap !== undefined) {
+            const touched = linesTouchedInAfterDoc(linesBeforeSnap, linesAfterSnap);
+            if (touched !== null && touched.size > 0) {
+                snapshotTouchedLines = touched;
+            }
+        }
+        this.docLinesSnapshotByUri.set(uriStrSnap, linesAfterSnap);
+
         // One queue item per contentChange so debounced AI promotion only touches blame from AI-matched
         // chunks — not human newlines in the same document transaction (e.g. Enter then chat apply).
         for (const change of event.contentChanges) {
-            const result = await this.processChange(event.document, relativePath, change, isUndoOrRedo);
+            const result = await this.processChange(
+                event.document,
+                relativePath,
+                change,
+                isUndoOrRedo,
+                snapshotTouchedLines
+            );
             this.eventQueue.push({
                 document: event.document,
                 filePath: relativePath,
@@ -574,6 +647,7 @@ export class ChangeTracker implements vscode.Disposable {
                 model: result.model,
                 rangeLength: change.rangeLength,
                 formatPreserved: result.formatPreserved ?? false,
+                snapshotTouchedLines,
             });
         }
 
@@ -629,6 +703,9 @@ export class ChangeTracker implements vscode.Disposable {
                     continue;
                 }
                 for (const b of q.blameObjects) {
+                    if (q.snapshotTouchedLines && q.snapshotTouchedLines.size > 0 && !q.snapshotTouchedLines.has(b.lineNumber)) {
+                        continue;
+                    }
                     if (b.authorType === 'AI' || (b.aiChars ?? 0) > 0) {
                         b.humanChars = (b.humanChars || 0) + (b.aiChars || 0);
                         b.aiChars = 0;
@@ -660,6 +737,9 @@ export class ChangeTracker implements vscode.Disposable {
                 const resolvedProvider = AiContextExtractor.resolveProviderName(credProvider);
 
                 for (const b of q.blameObjects) {
+                    if (q.snapshotTouchedLines && q.snapshotTouchedLines.size > 0 && !q.snapshotTouchedLines.has(b.lineNumber)) {
+                        continue;
+                    }
                     if (b.authorType !== 'AI') {
                         b.aiChars = (b.aiChars || 0) + (b.humanChars || 0);
                         b.humanChars = 0;
@@ -780,7 +860,14 @@ export class ChangeTracker implements vscode.Disposable {
             // Do not re-attribute blame from newline-only fragments (human blanks stay human).
             const allBlameObjects = batch.flatMap((q) => {
                 const ins = q.combinedInsert.replace(/\r\n/g, '\n');
-                return /^\n+$/.test(ins) ? [] : q.blameObjects;
+                if (/^\n+$/.test(ins)) {
+                    return [];
+                }
+                const touch = q.snapshotTouchedLines;
+                if (touch && touch.size > 0) {
+                    return q.blameObjects.filter((b) => touch.has(b.lineNumber));
+                }
+                return q.blameObjects;
             });
 
             const filePath = batch[0].filePath;
@@ -931,7 +1018,8 @@ export class ChangeTracker implements vscode.Disposable {
         document: vscode.TextDocument,
         filePath: string,
         change: vscode.TextDocumentContentChangeEvent,
-        isUndoOrRedo: boolean = false
+        isUndoOrRedo: boolean = false,
+        snapshotTouchedAfter?: Set<number>
     ): Promise<{ blameObjects: import('../blame/BlameMap').LineBlame[], matchedAi: boolean, providerId?: string, sessionId?: string, prompt?: string | null, model?: string | null, formatPreserved?: boolean }> {
         const insertedText = change.text;
         const startLine = change.range.start.line + 1; // 1-indexed
@@ -1025,6 +1113,11 @@ export class ChangeTracker implements vscode.Disposable {
             return { blameObjects: [], matchedAi: false };
         }
 
+        const lineTouchForNarrow =
+            snapshotTouchedAfter !== undefined && snapshotTouchedAfter.size > 0
+                ? snapshotTouchedAfter
+                : undefined;
+
         // Empty-line detection: newline-only or blank-only inserts are always human (matches IntelliJ)
         const isNewlineOnly = insertedText.length > 0 && /^\n+$/.test(insertedText);
         const isEmptyLineInsert = isNewlineOnly || (insertedLines.every(l => l.trim() === '') && insertedText.includes('\n'));
@@ -1066,9 +1159,14 @@ export class ChangeTracker implements vscode.Disposable {
             }
             const newLineEnd = newLineStart + numNewlines - 1;
             const charsPerLine = Array(numNewlines).fill(1);
-            const affected = this.blameMap.setAttribute(
-                filePath, newLineStart, newLineEnd < newLineStart ? newLineStart : newLineEnd,
-                'HUMAN', null, null, null, null, undefined, numNewlines, charsPerLine
+            const endAdj = newLineEnd < newLineStart ? newLineStart : newLineEnd;
+            const affected = this.attributeIntervalsHuman(
+                filePath,
+                newLineStart,
+                endAdj,
+                charsPerLine,
+                lineTouchForNarrow,
+                document.lineCount
             );
             if (inAiWindow && !chatApplyNewlineChunk) {
                 this.endAiInterceptWindowOnly();
@@ -1183,7 +1281,6 @@ export class ChangeTracker implements vscode.Disposable {
 
         // Compute per-line char counts for accurate attribution (matches IntelliJ charsPerLineOverride)
         const charsPerLine = insertedLines.map(seg => seg.trim() === '' ? 1 : seg.length);
-        const totalBlameChars = charsPerLine.reduce((a, b) => a + b, 0);
 
         if (isInterceptedAi) {
             this.blameMap.recordFirstStartCodingTimeIfNeeded();
@@ -1192,13 +1289,14 @@ export class ChangeTracker implements vscode.Disposable {
             const mockSessionId = 'inline-' + Date.now();
             const modelName = this.lastDetectedModel ?? await this.getActiveAiModel();
             const prompt = this.lastDetectedPrompt ?? this.extractPromptNear(document, change.range.start.line);
-            const interactionType = this.lastDetectedInteractionType ?? 'completion';
 
             if (this.lastAiActionStartedAt > 0) {
                 const waitMs = now - this.lastAiActionStartedAt;
                 this.blameMap.addTimeWaitingForAi(waitMs);
                 this.lastAiActionStartedAt = 0;
             }
+
+            this.promoteAmbientChatSurfaceToCompletion(now);
 
             // Only extend the AI window for multi-character inserts (AI streaming chunks).
             // Single-character inserts are human typing and must NOT extend the window,
@@ -1208,22 +1306,46 @@ export class ChangeTracker implements vscode.Disposable {
                 this.markNextChangeAsAi(3000);
             }
 
+            const interactionType = this.lastDetectedInteractionType ?? 'completion';
+
             this.traceStore.addSuggestion(filePath, startLine, endLine, 0, 0, insertedText, providerId, '', modelName, prompt);
             this.traceStore.markAccepted(mockSessionId, insertedText);
 
-            const affected = this.blameMap.setAttribute(filePath, startLine, endLine, 'AI', providerId, modelName, prompt, interactionType, undefined, totalBlameChars, charsPerLine);
-            console.log(`AI detected (window): ${filePath}:${startLine}-${endLine} provider=${providerId} model=${modelName} type=${interactionType}`);
+            const affected = this.attributeIntervalsAi(
+                filePath,
+                startLine,
+                endLine,
+                providerId,
+                modelName,
+                prompt,
+                interactionType,
+                charsPerLine,
+                lineTouchForNarrow,
+                document.lineCount
+            );
+            console.log(
+                `AI detected (window): ${filePath}:${startLine}-${endLine} entries=${affected.length} ` +
+                    `provider=${providerId} model=${modelName} type=${interactionType}`
+            );
             return { blameObjects: affected, matchedAi: true, providerId, sessionId: mockSessionId, prompt, model: modelName };
 
         } else if (effectiveSuggestionMatch) {
+            this.promoteAmbientChatSurfaceToCompletion(now);
             this.blameMap.recordFirstStartCodingTimeIfNeeded();
             this.traceStore.markAccepted(effectiveSuggestionMatch.suggestion.suggestion_id, insertedText);
             const endLine = startLine + insertedLineCount - 1;
 
-            const affected = this.blameMap.setAttribute(
-                filePath, startLine, endLine, 'AI',
-                effectiveSuggestionMatch.suggestion.provider_id, effectiveSuggestionMatch.suggestion.model_name, effectiveSuggestionMatch.suggestion.prompt,
-                null, undefined, totalBlameChars, charsPerLine
+            const affected = this.attributeIntervalsAi(
+                filePath,
+                startLine,
+                endLine,
+                effectiveSuggestionMatch.suggestion.provider_id,
+                effectiveSuggestionMatch.suggestion.model_name,
+                effectiveSuggestionMatch.suggestion.prompt,
+                null,
+                charsPerLine,
+                lineTouchForNarrow,
+                document.lineCount
             );
 
             console.log(
@@ -1245,9 +1367,13 @@ export class ChangeTracker implements vscode.Disposable {
                 // Format-like change: preserve existing ownership instead of attributing to HUMAN
                 affected = this.blameMap.setAttributeFromPreserved(filePath, startLine, preservedBlame, insertedLineCount);
             } else {
-                affected = this.blameMap.setAttribute(
-                    filePath, startLine, startLine + insertedLineCount - 1, 'HUMAN',
-                    null, null, null, null, undefined, totalBlameChars, charsPerLine
+                affected = this.attributeIntervalsHuman(
+                    filePath,
+                    startLine,
+                    startLine + insertedLineCount - 1,
+                    charsPerLine,
+                    lineTouchForNarrow,
+                    document.lineCount
                 );
             }
 
@@ -1282,6 +1408,78 @@ export class ChangeTracker implements vscode.Disposable {
         }
     }
 
+    private attributeIntervalsHuman(
+        filePath: string,
+        startLine: number,
+        endLine: number,
+        charsPerLine: number[],
+        touched: Set<number> | undefined,
+        docLineCount: number
+    ): import('../blame/BlameMap').LineBlame[] {
+        const ranges = narrowIntervalsByTouch(startLine, endLine, touched, docLineCount);
+        const merged: import('../blame/BlameMap').LineBlame[] = [];
+        for (const r of ranges) {
+            const off = r.start - startLine;
+            const len = r.end - r.start + 1;
+            const sub = charsPerLine.slice(off, off + len);
+            const tot = sub.reduce((a, b) => a + b, 0);
+            merged.push(
+                ...this.blameMap.setAttribute(
+                    filePath,
+                    r.start,
+                    r.end,
+                    'HUMAN',
+                    null,
+                    null,
+                    null,
+                    null,
+                    undefined,
+                    tot,
+                    sub
+                )
+            );
+        }
+        return merged;
+    }
+
+    private attributeIntervalsAi(
+        filePath: string,
+        startLine: number,
+        endLine: number,
+        providerId: string,
+        modelName: string | null,
+        prompt: string | null,
+        interactionType: string | null,
+        charsPerLine: number[],
+        touched: Set<number> | undefined,
+        docLineCount: number
+    ): import('../blame/BlameMap').LineBlame[] {
+        const ranges = narrowIntervalsByTouch(startLine, endLine, touched, docLineCount);
+        const merged: import('../blame/BlameMap').LineBlame[] = [];
+        for (const r of ranges) {
+            const off = r.start - startLine;
+            const len = r.end - r.start + 1;
+            const sub = charsPerLine.slice(off, off + len);
+            const tot = sub.reduce((a, b) => a + b, 0);
+            merged.push(
+                ...this.blameMap.setAttribute(
+                    filePath,
+                    r.start,
+                    r.end,
+                    'AI',
+                    providerId,
+                    modelName,
+                    prompt,
+                    interactionType,
+                    undefined,
+                    tot,
+                    sub
+                )
+            );
+        }
+        return merged;
+    }
+
     dispose(): void {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);
@@ -1292,6 +1490,7 @@ export class ChangeTracker implements vscode.Disposable {
             this.applyCommandFlushTimer = null;
         }
         this.chatStreamBurstByUri.clear();
+        this.docLinesSnapshotByUri.clear();
         for (const d of this.disposables) {
             d.dispose();
         }

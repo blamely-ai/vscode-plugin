@@ -258,12 +258,9 @@ function pokeSoftAiWindowFromChatTabs(changeTracker: ChangeTracker): void {
                     const provider = AiContextExtractor.detectProvider();
                     const label = typeof tab.label === 'string' ? tab.label.toLowerCase() : '';
                     const longAgentSurface = ['agent', 'composer', 'cloud', 'background'].some(h => label.includes(h));
-                    changeTracker.markNextChangeAsAi(
+                    changeTracker.armChatTrafficInterceptWindow(
                         longAgentSurface ? 20_000 : 12_000,
-                        null,
-                        null,
-                        provider,
-                        'chat_panel'
+                        provider
                     );
                     chatPanelSignal('poke-active-chat-tab', {
                         tabLabel: typeof tab.label === 'string' ? tab.label : '?',
@@ -382,6 +379,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Initialize providers
         completionInterceptor = new CompletionInterceptor(traceStore);
         changeTracker = new ChangeTracker(traceStore, blameMap, onBlameUpdated);
+        for (const doc of vscode.workspace.textDocuments) {
+            if (doc.uri.scheme === 'file') {
+                changeTracker.seedDocSnapshot(doc);
+            }
+        }
+        for (const ed of vscode.window.visibleTextEditors) {
+            if (ed.document.uri.scheme === 'file') {
+                changeTracker.seedDocSnapshot(ed.document);
+            }
+        }
+        context.subscriptions.push(
+            vscode.window.onDidChangeVisibleTextEditors(() => {
+                for (const ed of vscode.window.visibleTextEditors) {
+                    if (ed.document.uri.scheme === 'file') {
+                        changeTracker.seedDocSnapshot(ed.document);
+                    }
+                }
+            })
+        );
         AiContextExtractor.invalidateAiCodingAssistantHostCache();
         const copilotReadyInvalidate1 = setTimeout(() => AiContextExtractor.invalidateAiCodingAssistantHostCache(), 2500);
         const copilotReadyInvalidate2 = setTimeout(() => AiContextExtractor.invalidateAiCodingAssistantHostCache(), 8000);
@@ -426,6 +442,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 if (doc.uri.scheme !== 'file') {
                     return;
                 }
+                changeTracker.seedDocSnapshot(doc);
                 const k = blameFileKey(doc.uri);
                 if (blameMap.clipLinesToDocumentLength(k, doc.lineCount)) {
                     onBlameUpdated();
