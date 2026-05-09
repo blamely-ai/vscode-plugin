@@ -123,7 +123,7 @@ The full list of `<originalCommandId>` values matches the chat/composer apply an
 
 **Legacy (migration reads):** Older data under **`~/.blamely/session/<repo-hash>_<branch>/`** is still read when present (`BLAMELY_SESSION_HOME` overrides that root for tests and custom layouts). Very old **`.git/blamely/snapshots/`** without the new `snapshots/<branch>/` segment may still be read for blame files.
 
-The **pre-commit hook** runs **`node`** on **`.git/blamely/hookRunner.js`** (absolute path in `.git/hooks/pre-commit`).
+The **pre-commit hook** runs **`node`** on **`hookRunner.js`**. Blamely installs two copies — **`~/.blamely/repos/<repo-id>/hookRunner.js`** (primary) and **`<git-dir>/blamely/hookRunner.js`** (fallback). The hook tries primary then fallback; if neither file exists it skips with exit **0** so commits still succeed (re-run **Install Git Hook** to restore).
 
 Inspect the latest note in a terminal:
 

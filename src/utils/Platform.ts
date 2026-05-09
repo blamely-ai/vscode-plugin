@@ -33,30 +33,59 @@ function shEscapeDoubleQuoted(p: string): string {
 }
 
 /**
- * Pre-commit hook body: runs hookRunner from the per-repo Blamely data dir (see GitUtils.getBlamelyDataDir),
- * installed by GitHookInstaller — not from the extension path.
+ * Pre-commit hook: try primary runner (~/.blamely/repos/…), then `.git/blamely/hookRunner.js`.
+ * If neither exists, exit 0 so commits are not blocked (re-run Blamely “Install Git Hook” to restore files).
  */
-export function hookScriptContent(hookRunnerAbsolutePath: string): string {
+export function hookScriptContent(hookRunnerPrimaryPath: string, hookRunnerFallbackPath: string): string {
+    const pq = shEscapeDoubleQuoted(path.normalize(hookRunnerPrimaryPath));
+    const fq = shEscapeDoubleQuoted(path.normalize(hookRunnerFallbackPath));
     if (isWindows()) {
+        const pqw = winCmdQuoteArg(path.normalize(hookRunnerPrimaryPath));
+        const fqw = winCmdQuoteArg(path.normalize(hookRunnerFallbackPath));
         return [
             '@echo off',
-            `node ${winCmdQuoteArg(hookRunnerAbsolutePath)}`,
-            'IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%',
+            `IF EXIST ${pqw} (`,
+            `  node ${pqw} %*`,
+            `  exit /b %ERRORLEVEL%`,
+            `)`,
+            `IF EXIST ${fqw} (`,
+            `  node ${fqw} %*`,
+            `  exit /b %ERRORLEVEL%`,
+            `)`,
+            `echo [blamely] hookRunner.js missing — skipping pre-commit helper ^(run Blamely: Install Git Hook^)`,
+            'exit /b 0',
             '',
         ].join('\r\n');
     }
     return [
         '#!/bin/sh',
-        `exec node "${shEscapeDoubleQuoted(path.normalize(hookRunnerAbsolutePath))}"`,
+        `if [ -f "${pq}" ]; then`,
+        `  exec node "${pq}" "$@"`,
+        `fi`,
+        `if [ -f "${fq}" ]; then`,
+        `  exec node "${fq}" "$@"`,
+        `fi`,
+        `echo "[blamely] hookRunner.js missing — skipping pre-commit helper (run Blamely: Install Git Hook)"`,
+        'exit 0',
         '',
     ].join('\n');
 }
 
-export function hookBatWrapper(hookRunnerAbsolutePath: string): string {
+export function hookBatWrapper(hookRunnerPrimaryPath: string, hookRunnerFallbackPath: string): string {
+    const pqw = winCmdQuoteArg(path.normalize(hookRunnerPrimaryPath));
+    const fqw = winCmdQuoteArg(path.normalize(hookRunnerFallbackPath));
     return [
         '@echo off',
-        `node ${winCmdQuoteArg(hookRunnerAbsolutePath)}`,
-        'IF %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%',
+        `IF EXIST ${pqw} (`,
+        `  node ${pqw} %*`,
+        `  exit /b %ERRORLEVEL%`,
+        `)`,
+        `IF EXIST ${fqw} (`,
+        `  node ${fqw} %*`,
+        `  exit /b %ERRORLEVEL%`,
+        `)`,
+        `echo [blamely] hookRunner.js missing — skipping`,
+        'exit /b 0',
         '',
     ].join('\r\n');
 }

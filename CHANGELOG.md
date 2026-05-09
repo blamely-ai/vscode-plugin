@@ -12,6 +12,7 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 ### Fixed
 
 - **`anyAiCodingAssistantHostDetected` cache** — Negative results re-evaluated after 5 s (was up to 45 s), plus cache invalidation at activate and 2.5 s / 8 s delays so Copilot/`vscode.lm` activation is picked up after startup.
+- **Pre-commit when `hookRunner.js` is missing** — Hook tries `~/.blamely/repos/<id>/hookRunner.js` then `.git/blamely/hookRunner.js`; if neither exists it exits **0** so Git commits are not blocked. Install copies the runner to **both** locations.
 
 ## [1.1.0] - 2026-04-27
 
