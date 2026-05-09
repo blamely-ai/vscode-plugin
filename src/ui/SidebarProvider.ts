@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { TraceStore } from '../store/TraceStore';
-import * as AiContextExtractor from '../utils/AiContextExtractor';
+import { getWorkingTreeDirtyBlameKeys, uriFromBlameFileKey } from '../utils/WorkspacePaths';
+import * as Logger from '../utils/Logger';
 
 interface FileStats {
     filePath: string;
@@ -17,7 +18,7 @@ interface FileStats {
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-    public static readonly viewId = 'aiTraceSidebar';
+    public static readonly viewId = 'blamelySidebar';
 
     private view?: vscode.WebviewView;
     private blameMap: BlameMap;
@@ -33,14 +34,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.view = webviewView;
         webviewView.webview.options = { enableScripts: true };
         webviewView.webview.onDidReceiveMessage(msg => {
-            if (msg.command === 'refresh') this.refresh();
+            if (msg.command === 'refresh') {
+                void this.refreshAsync();
+            }
             if (msg.command === 'openFile' && msg.filePath) {
                 this.openFile(msg.filePath);
             }
         });
-        this.refresh();
+        void this.refreshAsync();
         if (!this.refreshInterval) {
-            this.refreshInterval = setInterval(() => this.refresh(), 2000);
+            this.refreshInterval = setInterval(() => void this.refreshAsync(), 2000);
         }
     }
 
@@ -52,25 +55,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
     }
 
     refresh(): void {
+        void this.refreshAsync();
+    }
+
+    private async refreshAsync(): Promise<void> {
         if (!this.view) return;
-        this.view.webview.html = this.buildHtml();
+        try {
+            this.view.webview.html = await this.buildHtml();
+        } catch (err) {
+            Logger.warn(`Blamely sidebar refresh failed: ${err}`);
+        }
     }
 
     private openFile(filePath: string): void {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        const uri = workspaceFolder && !filePath.startsWith('/') && !/^[A-Za-z]:[/\\]/.test(filePath)
-            ? vscode.Uri.joinPath(workspaceFolder.uri, filePath)
-            : vscode.Uri.file(filePath);
+        const uri = uriFromBlameFileKey(filePath)
+            ?? (filePath.startsWith('/') || /^[A-Za-z]:[/\\]/.test(filePath)
+                ? vscode.Uri.file(filePath)
+                : vscode.workspace.workspaceFolders?.[0]
+                    ? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, filePath)
+                    : undefined);
+        if (!uri) {
+            vscode.window.showErrorMessage(`Could not open ${filePath}`);
+            return;
+        }
         void vscode.window.showTextDocument(uri).then(undefined, () => {
             vscode.window.showErrorMessage(`Could not open ${filePath}`);
         });
     }
 
-    private getFileStatsList(): FileStats[] {
+    private async getFileStatsList(dirtyBlameKeys: Set<string> | null): Promise<FileStats[]> {
         const files = this.blameMap.getTrackedFiles();
         const result: FileStats[] = [];
 
         for (const filePath of files) {
+            if (dirtyBlameKeys !== null && !dirtyBlameKeys.has(filePath)) {
+                continue;
+            }
             const allEntries = this.blameMap.getBlame(filePath).filter(e => e.commitSha == null);
             if (allEntries.length === 0) continue;
 
@@ -343,6 +363,7 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #555; }
+
 `;
 
     private getFileIcon(ext: string): string {
@@ -357,8 +378,9 @@ body {
         return map[ext.toLowerCase()] || '📄';
     }
 
-    private buildHtml(): string {
-        const fileStats = this.getFileStatsList();
+    private async buildHtml(): Promise<string> {
+        const dirtyBlameKeys = await getWorkingTreeDirtyBlameKeys();
+        const fileStats = await this.getFileStatsList(dirtyBlameKeys);
         const totalAiChars = fileStats.reduce((s, f) => s + f.aiChars, 0);
         const totalHumanChars = fileStats.reduce((s, f) => s + f.humanChars, 0);
         const totalAiLines = fileStats.reduce((s, f) => s + f.aiLines, 0);
@@ -369,8 +391,8 @@ body {
 
         const modelName = 'detecting...';
         const interactionTypes = new Set<string>();
-        for (const filePath of this.blameMap.getTrackedFiles()) {
-            for (const e of this.blameMap.getBlame(filePath)) {
+        for (const f of fileStats) {
+            for (const e of this.blameMap.getBlame(f.filePath)) {
                 if (e.commitSha === null && e.interactionType) interactionTypes.add(e.interactionType);
             }
         }
@@ -387,9 +409,10 @@ body {
         h += `</div>`;
         h += `<div class="toolbar-sep"></div>`;
         h += `<div class="toolbar-right">`;
-        h += `<button class="toolbar-btn" title="Refresh" onclick="(function(){acquireVsCodeApi().postMessage({command:'refresh'})})()">&#x21bb;</button>`;
+        h += `<button type="button" class="toolbar-btn" title="Refresh" onclick="refreshPanel()">&#x21bb;</button>`;
         h += `</div>`;
         h += `</div>`;
+        h += `<div style="padding:0 12px 8px;font-size:11px;color:var(--text-muted)">Uncommitted lines on files changed in your working tree (vs HEAD).</div>`;
 
         // Summary strip
         h += `<div class="summary-strip">`;
@@ -423,7 +446,12 @@ body {
         h += `<div class="tree-container">`;
 
         if (fileStats.length === 0) {
-            h += `<div class="empty-state"><span class="icon">📂</span><span>No uncommitted changes tracked</span></div>`;
+            const emptyMsg = dirtyBlameKeys === null
+                ? 'No uncommitted attribution tracked yet'
+                : dirtyBlameKeys.size === 0
+                    ? 'Working tree is clean. Use Blamely: History for reports after commit.'
+                    : 'No attribution on modified files yet';
+            h += `<div class="empty-state"><span class="icon">📂</span><span>${this.esc(emptyMsg)}</span></div>`;
         } else {
             // Changes group
             h += `<div class="group-row" onclick="toggleGroup('changes-group', this)">`;
@@ -477,6 +505,9 @@ body {
         // Script
         h += `<script>
 const vscodeApi = acquireVsCodeApi();
+function refreshPanel() {
+  vscodeApi.postMessage({ command: 'refresh' });
+}
 function toggleGroup(groupId, rowEl) {
   const group = document.getElementById(groupId);
   const chevId = groupId.replace('-group', '-chevron');

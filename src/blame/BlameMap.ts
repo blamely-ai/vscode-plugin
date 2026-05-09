@@ -340,6 +340,36 @@ export class BlameMap {
         this.aiDeletedLines.delete(key);
     }
 
+    /** Remove several tracked files at once (e.g. after a git commit for one repo in a multi-root workspace). */
+    removeFiles(filePaths: string[]): void {
+        for (const fp of filePaths) {
+            this.removeFile(fp);
+        }
+    }
+
+    /**
+     * Remove blame rows past the current document length (or invalid line numbers).
+     * Use after IDE restart or when disk snapshots are misaligned with buffer content.
+     */
+    clipLinesToDocumentLength(filePath: string, lineCount: number): boolean {
+        const key = normPath(filePath);
+        const list = this.map.get(key);
+        if (!list || list.length === 0) {
+            return false;
+        }
+        const filtered = list.filter(e => e.lineNumber >= 1 && e.lineNumber <= lineCount);
+        if (filtered.length === list.length) {
+            return false;
+        }
+        if (filtered.length === 0) {
+            this.map.delete(key);
+            this.aiDeletedLines.delete(key);
+        } else {
+            this.map.set(key, filtered);
+        }
+        return true;
+    }
+
     moveFile(oldPath: string, newPath: string): void {
         const oldKey = normPath(oldPath);
         const newKey = normPath(newPath);
@@ -361,8 +391,11 @@ export class BlameMap {
      * Summary counts only uncommitted (commitSha == null) entries.
      * Merges by normalized path and by line so duplicates are not double-counted.
      * Matches IntelliJ BlameMap.getSummary().
+     *
+     * When {@link restrictToBlameKeys} is set (e.g. paths Git still reports as dirty), only those files
+     * contribute — same scope as the sidebar Changes list so the status bar matches after discard/commit.
      */
-    getSummary(): {
+    getSummary(restrictToBlameKeys?: Set<string>): {
         totalLines: number;
         aiLines: number;
         humanLines: number;
@@ -380,6 +413,11 @@ export class BlameMap {
         const byNormPath = new Map<string, LineBlame[]>();
         for (const [key, entries] of this.map) {
             const norm = normPath(key);
+            if (restrictToBlameKeys !== undefined) {
+                if (!restrictToBlameKeys.has(key) && !restrictToBlameKeys.has(norm)) {
+                    continue;
+                }
+            }
             const existing = byNormPath.get(norm) ?? [];
             byNormPath.set(norm, existing.concat(entries));
         }

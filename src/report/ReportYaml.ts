@@ -21,7 +21,21 @@ interface FileEntry {
     prompts: string[];
 }
 
-const DETECTOR_VERSION = '0.2.0';
+const DETECTOR_VERSION = '1.0.0';
+
+/**
+ * Two-line header read by `hookRunner.js` pre-commit (regex on # AI / # Human lines).
+ * Prepended to `<git-dir>/blamely/blamely-detector.ai` when reports are generated.
+ */
+export function legacyPreCommitDetectorPreamble(aiLines: number, humanLines: number): string {
+    const added = aiLines + humanLines;
+    const aiPct = added > 0 ? ((100 * aiLines) / added).toFixed(1) : '0.0';
+    const humanPct = added > 0 ? ((100 * humanLines) / added).toFixed(1) : '0.0';
+    return (
+        `# AI-authored lines: ${aiLines} (${aiPct}%)\n` +
+        `# Human-authored lines: ${humanLines} (${humanPct}%)\n\n`
+    );
+}
 
 function escapeYamlString(s: string): string {
     return JSON.stringify(s);
@@ -246,7 +260,9 @@ export async function generateContent(
     _traceStore: TraceStore,
     commitHash?: string,
     ideName: string = 'unknown',
-    metrics?: ReportMetrics | null
+    metrics?: ReportMetrics | null,
+    /** If set (multi-root), only include blame keys starting with this prefix (e.g. `my-app/`). */
+    fileKeyPrefix?: string | null
 ): Promise<string> {
     const generatedAt = new Date().toISOString();
     const branch = (await GitUtils.getBranch(workspaceRoot)) || 'unknown';
@@ -257,6 +273,9 @@ export async function generateContent(
     const blameSnapshot: Record<string, LineBlame[]> = {};
 
     for (const filePath of blameMap.getTrackedFiles()) {
+        if (fileKeyPrefix && !filePath.startsWith(fileKeyPrefix)) {
+            continue;
+        }
         let entries = blameMap.getBlame(filePath);
         if (finalCommitHash && finalCommitHash !== 'unknown') {
             entries = entries.filter(e => e.commitSha === finalCommitHash);
@@ -290,12 +309,13 @@ export async function generate(
     traceStore: TraceStore,
     commitHash?: string,
     ideName: string = 'unknown',
-    metrics?: ReportMetrics | null
+    metrics?: ReportMetrics | null,
+    fileKeyPrefix?: string | null
 ): Promise<string> {
     try {
-        return await generateContent(workspaceRoot, blameMap, traceStore, commitHash, ideName, metrics);
+        return await generateContent(workspaceRoot, blameMap, traceStore, commitHash, ideName, metrics, fileKeyPrefix);
     } catch (err) {
-        console.error('[ai-trace] FAILED to generate ReportYaml string:', err);
+        console.error('[blamely] FAILED to generate ReportYaml string:', err);
         Logger.error('Failed to generate ReportYaml string', err);
         return '';
     }

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as Logger from '../utils/Logger';
 import { isWindows, hookScriptContent, hookBatWrapper } from '../utils/Platform';
-import { getGitDir } from './GitUtils';
+import { getGitDir, getBlamelyDataDir } from './GitUtils';
 
 export async function install(workspaceRoot: string, extensionPath: string): Promise<boolean> {
     try {
@@ -14,6 +14,23 @@ export async function install(workspaceRoot: string, extensionPath: string): Pro
 
         const hooksDir = path.join(workspaceRoot, gitDir, 'hooks');
         await fs.promises.mkdir(hooksDir, { recursive: true });
+
+        const blamelyData = await getBlamelyDataDir(workspaceRoot);
+        if (!blamelyData) {
+            Logger.warn('Could not resolve Blamely repo data dir — skipping hook installation');
+            return false;
+        }
+
+        const destRunner = path.join(blamelyData, 'hookRunner.js');
+        await fs.promises.mkdir(path.dirname(destRunner), { recursive: true });
+        const srcRunner = path.join(extensionPath, 'out', 'hookRunner.js');
+        try {
+            await fs.promises.copyFile(srcRunner, destRunner);
+            Logger.info(`Copied hook runner to ${destRunner}`);
+        } catch (err) {
+            Logger.error(`Cannot copy hookRunner from ${srcRunner}`, err);
+            return false;
+        }
 
         const hookPath = path.join(hooksDir, 'pre-commit');
 
@@ -27,15 +44,13 @@ export async function install(workspaceRoot: string, extensionPath: string): Pro
             // No existing hook
         }
 
-        // Write hook script
-        const content = hookScriptContent(extensionPath);
+        const content = hookScriptContent(destRunner);
         await fs.promises.writeFile(hookPath, content, { mode: 0o755 });
         Logger.info(`Pre-commit hook installed at ${hookPath}`);
 
-        // On Windows, also write a .bat wrapper
         if (isWindows()) {
             const batPath = hookPath + '.bat';
-            const batContent = hookBatWrapper(extensionPath);
+            const batContent = hookBatWrapper(destRunner);
             await fs.promises.writeFile(batPath, batContent);
             Logger.info(`Windows .bat wrapper installed at ${batPath}`);
         }
@@ -65,7 +80,6 @@ export async function uninstall(workspaceRoot: string): Promise<RestoreHookResul
             Logger.info('Pre-commit hook restored from backup');
             return 'restored';
         } catch {
-            // No backup: remove hook if present
             try {
                 await fs.promises.unlink(hookPath);
                 Logger.info('Pre-commit hook removed');

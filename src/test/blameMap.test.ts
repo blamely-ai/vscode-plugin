@@ -121,6 +121,16 @@ describe('BlameMap', () => {
             expect(summary.aiLines).to.equal(0);
             expect(summary.humanLines).to.equal(0);
         });
+
+        it('should only include files in restrictToBlameKeys when provided', () => {
+            blameMap.setAttribute('a.ts', 1, 2, 'AI', 'copilot');
+            blameMap.setAttribute('b.ts', 1, 2, 'HUMAN', null);
+            const onlyA = blameMap.getSummary(new Set(['a.ts']));
+            expect(onlyA.totalLines).to.equal(2);
+            expect(onlyA.aiLines).to.equal(2);
+            const none = blameMap.getSummary(new Set());
+            expect(none.totalLines).to.equal(0);
+        });
     });
 
     describe('setCommitSha', () => {
@@ -271,15 +281,46 @@ describe('BlameIndex.reindex', () => {
         expect(result[1].lineNumber).to.equal(6);
     });
 
-    it('should handle replacement (delete + insert)', () => {
+    it('should handle replacement (delete + insert) — surviving line preserved', () => {
         const entries: LineBlame[] = [
             makeEntry({ lineNumber: 1 }),
             makeEntry({ lineNumber: 3, authorType: 'AI', provider: 'copilot' }),
             makeEntry({ lineNumber: 10 }),
         ];
+        // Replace 1 line at position 3 with 5 lines → line 3 survives (modified), none truly deleted
         const result = reindex(entries, 3, 5, 1);
-        expect(result).to.have.length(2);
+        expect(result).to.have.length(3);
         expect(result[0].lineNumber).to.equal(1);
-        expect(result[1].lineNumber).to.equal(14);
+        expect(result[1].lineNumber).to.equal(3);  // surviving line
+        expect(result[2].lineNumber).to.equal(14);
+    });
+
+    it('should truly delete excess lines when deleting more than inserting', () => {
+        const entries: LineBlame[] = [
+            makeEntry({ lineNumber: 1 }),
+            makeEntry({ lineNumber: 3, authorType: 'AI', provider: 'copilot' }),
+            makeEntry({ lineNumber: 4 }),
+            makeEntry({ lineNumber: 5 }),
+            makeEntry({ lineNumber: 10 }),
+        ];
+        // Replace 3 lines (3-5) with 1 line → line 3 survives, lines 4-5 deleted
+        const result = reindex(entries, 3, 1, 3);
+        expect(result).to.have.length(3);
+        expect(result[0].lineNumber).to.equal(1);
+        expect(result[1].lineNumber).to.equal(3);  // surviving line
+        expect(result[2].lineNumber).to.equal(8);  // was 10, shifted by -2
+    });
+
+    it('should preserve same-line edits (typing on existing line)', () => {
+        const entries: LineBlame[] = [
+            makeEntry({ lineNumber: 5, humanChars: 20 }),
+            makeEntry({ lineNumber: 6 }),
+        ];
+        // Single char typed on line 5: linesInserted=1, linesDeleted=1 → line survives
+        const result = reindex(entries, 5, 1, 1);
+        expect(result).to.have.length(2);
+        expect(result[0].lineNumber).to.equal(5);
+        expect(result[0].humanChars).to.equal(20);  // preserved, not reset
+        expect(result[1].lineNumber).to.equal(6);
     });
 });

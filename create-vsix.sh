@@ -5,13 +5,10 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "Building extension..."
-npm run compile
+echo "Building VSIX: clean out/, release compile (no sourcemaps), obfuscate JS, package via .vscodeignore (no TypeScript in bundle)."
+npm run vsix
 
-echo "Packaging VSIX..."
-npx @vscode/vsce package --no-dependencies
-
-VSIX=$(ls -t Blamely-*.vsix 2>/dev/null | head -1)
+VSIX=$(ls -t *.vsix 2>/dev/null | head -1)
 if [ -n "$VSIX" ]; then
   echo "Done: $VSIX"
   ls -la "$VSIX"

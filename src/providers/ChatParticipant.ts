@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { TraceStore } from '../store/TraceStore';
 import { BlameMap } from '../blame/BlameMap';
-import { normalizePath } from '../utils/Platform';
+import { blameFileKey } from '../utils/WorkspacePaths';
 import * as Logger from '../utils/Logger';
+import { chatPanelSignal } from '../utils/chatPanelSignal';
+
+const LM_PREVIEW_CHARS = 600;
 
 export class ChatParticipant implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
@@ -21,9 +24,12 @@ export class ChatParticipant implements vscode.Disposable {
         try {
             if (typeof vscode.chat === 'undefined' || typeof vscode.chat.createChatParticipant !== 'function') {
                 Logger.info('Chat Participant API not available in this VS Code version');
+                console.log(
+                    '[Blamely][chat-traffic] vscode.chat / createChatParticipant unavailable — @Blamely LM logging disabled. ' +
+                        'Native Cursor chat is not hooked here; attribution uses editor-change heuristics + AI-host poke.'
+                );
                 return;
             }
-
             const participant = vscode.chat.createChatParticipant(
                 'blamely.ai',
                 (request, context, response, token) => this.handleChatRequest(request, context, response, token)
@@ -54,19 +60,54 @@ export class ChatParticipant implements vscode.Disposable {
         const modelVendor = (request.model as any)?.vendor || 'unknown';
         const fullModelName = `${modelVendor}/${modelName}`;
 
-        Logger.info(`@blamely prompt: "${userPrompt}" | model: ${fullModelName}`);
-
         // Get the active editor context for file attribution
         const editor = vscode.window.activeTextEditor;
         let filePath = 'unknown';
         let startLine = 1;
 
         if (editor) {
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-            filePath = workspaceFolder
-                ? normalizePath(vscode.workspace.asRelativePath(editor.document.uri, false))
-                : normalizePath(editor.document.uri.fsPath);
+            filePath = blameFileKey(editor.document.uri);
             startLine = editor.selection.active.line + 1; // 1-indexed
+        }
+
+        console.log('[Blamely][chat-panel]', {
+            phase: 'lm-request',
+            source: '@blamely.participant',
+            prompt: userPrompt,
+            modelId,
+            modelName,
+            modelVendor,
+            fullModelName,
+            filePath,
+            startLine,
+        });
+        chatPanelSignal('participant-lm-request', {
+            source: '@blamely',
+            model: fullModelName,
+            promptChars: userPrompt.length,
+            promptPreview:
+                userPrompt.length <= LM_PREVIEW_CHARS
+                    ? userPrompt
+                    : `${userPrompt.slice(0, LM_PREVIEW_CHARS)}… (+${userPrompt.length - LM_PREVIEW_CHARS} chars)`,
+            filePath,
+            startLine,
+        });
+        console.log('[Blamely][chat-traffic] @blamely LM request', {
+            model: fullModelName,
+            promptChars: userPrompt.length,
+            promptPreview:
+                userPrompt.length <= LM_PREVIEW_CHARS
+                    ? userPrompt
+                    : `${userPrompt.slice(0, LM_PREVIEW_CHARS)}…`,
+            filePath,
+            startLine,
+        });
+        const logTraffic =
+            vscode.workspace.getConfiguration('blamely').get<boolean>('logChatPanelMessages') ?? false;
+        if (logTraffic) {
+            console.log(
+                `Blamely [chat-send] @blamely participant prompt=${JSON.stringify(userPrompt)} model=${fullModelName}`
+            );
         }
 
         // Record the suggestion with full prompt and model info BEFORE sending to AI
@@ -97,6 +138,25 @@ export class ChatParticipant implements vscode.Disposable {
                 generatedText += chunk;
             }
         } catch (err) {
+            chatPanelSignal('participant-lm-response-error', {
+                source: '@blamely',
+                model: fullModelName,
+                error: err instanceof Error ? err.message : String(err),
+                languageModelError: err instanceof vscode.LanguageModelError,
+            });
+            console.log('[Blamely][chat-traffic] @blamely LM error', {
+                model: fullModelName,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            const logTrafficErr =
+                vscode.workspace.getConfiguration('blamely').get<boolean>('logChatPanelMessages') ?? false;
+            if (logTrafficErr) {
+                console.log(
+                    `Blamely [chat-response-error] @blamely participant model=${fullModelName} error=${JSON.stringify(
+                        err instanceof Error ? err.message : String(err)
+                    )}`
+                );
+            }
             if (err instanceof vscode.LanguageModelError) {
                 response.markdown(`⚠️ Model error: ${err.message}`);
             } else {
@@ -111,6 +171,55 @@ export class ChatParticipant implements vscode.Disposable {
 
         // Calculate how many lines were generated
         const generatedLines = generatedText.split('\n').length;
+        const previewLimit = 4000;
+        console.log('[Blamely][chat-panel]', {
+            phase: 'lm-response',
+            source: '@blamely.participant',
+            fullModelName,
+            charLength: generatedText.length,
+            lineCount: generatedLines,
+            previewTruncated: generatedText.length > previewLimit,
+            textPreview:
+                generatedText.length <= previewLimit
+                    ? generatedText
+                    : `${generatedText.slice(0, previewLimit)}\n… (+${generatedText.length - previewLimit} chars)`,
+        });
+        const trafficRespPreview =
+            generatedText.length <= LM_PREVIEW_CHARS
+                ? generatedText
+                : `${generatedText.slice(0, LM_PREVIEW_CHARS)}… (+${generatedText.length - LM_PREVIEW_CHARS} chars)`;
+        chatPanelSignal('participant-lm-response', {
+            source: '@blamely',
+            model: fullModelName,
+            chars: generatedText.length,
+            lines: generatedLines,
+            textPreview: trafficRespPreview,
+        });
+        console.log('[Blamely][chat-traffic] @blamely LM response', {
+            model: fullModelName,
+            chars: generatedText.length,
+            lines: generatedLines,
+            textPreview: trafficRespPreview,
+        });
+
+        const logTrafficAfter =
+            vscode.workspace.getConfiguration('blamely').get<boolean>('logChatPanelMessages') ?? false;
+        if (logTrafficAfter) {
+            if (generatedText.length > 0) {
+                const preview =
+                    generatedText.length <= previewLimit
+                        ? generatedText
+                        : `${generatedText.slice(0, previewLimit)}\n… (+${generatedText.length - previewLimit} chars)`;
+                console.log(
+                    `Blamely [chat-response] @blamely participant model=${fullModelName} chars=${generatedText.length} lines=${generatedLines} text=${JSON.stringify(preview)}`
+                );
+            } else {
+                console.log(
+                    `Blamely [chat-response] @blamely participant model=${fullModelName} chars=0 lines=0 (empty reply)`
+                );
+            }
+        }
+
         const endLine = startLine + generatedLines - 1;
 
         // Set blame for the generated lines
@@ -131,7 +240,11 @@ export class ChatParticipant implements vscode.Disposable {
             this.onBlameUpdated();
         }
 
-        Logger.info(`@blamely generated ${generatedLines} lines via ${fullModelName} for ${filePath}`);
+        console.log('[Blamely][chat-traffic] @blamely generated lines applied to blame', {
+            lines: generatedLines,
+            model: fullModelName,
+            filePath,
+        });
     }
 
     dispose(): void {

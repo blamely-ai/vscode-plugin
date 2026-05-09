@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { TraceStore } from '../store/TraceStore';
@@ -9,16 +10,15 @@ import {
     getRepoRoot,
     getFilesChangedInCommit,
     getDiffStats,
-    repoRelativeToProjectRelative,
 } from './GitUtils';
 import * as Logger from '../utils/Logger';
+import { blameFileKey, blameKeyBelongsToRepo, workspaceFoldersUnderRepo } from '../utils/WorkspacePaths';
 
 export class CommitListener implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     private blameMap: BlameMap;
     private traceStore: TraceStore;
-    private workspaceRoot: string;
-    private lastKnownSha: string | null = null;
+    private lastKnownShaByRepo = new Map<string, string>();
     private pollInterval: NodeJS.Timeout | null = null;
     private onCommitCompleted: () => void;
     private processing = false;
@@ -26,19 +26,15 @@ export class CommitListener implements vscode.Disposable {
     constructor(
         blameMap: BlameMap,
         traceStore: TraceStore,
-        workspaceRoot: string,
         onCommitCompleted: () => void
     ) {
         this.blameMap = blameMap;
         this.traceStore = traceStore;
-        this.workspaceRoot = workspaceRoot;
         this.onCommitCompleted = onCommitCompleted;
         this.start();
     }
 
     private async start(): Promise<void> {
-        this.lastKnownSha = await getLatestCommitSha(this.workspaceRoot);
-
         const gitExtension = vscode.extensions.getExtension('vscode.git');
         if (gitExtension) {
             try {
@@ -47,10 +43,15 @@ export class CommitListener implements vscode.Disposable {
                     : await gitExtension.activate();
                 const api = git.getAPI(1);
                 if (api && api.repositories.length > 0) {
-                    const repo = api.repositories[0];
-                    repo.state.onDidChange(() => {
-                        this.checkForNewCommit();
-                    });
+                    for (const repo of api.repositories) {
+                        const root = repo.rootUri.fsPath;
+                        const sha = await getLatestCommitSha(root);
+                        this.lastKnownShaByRepo.set(root, sha ?? '');
+                        const sub = repo.state.onDidChange(() => {
+                            void this.checkForNewCommitForRepo(root);
+                        });
+                        this.disposables.push(sub);
+                    }
                     Logger.info('Listening for commits via Git extension API');
                     return;
                 }
@@ -59,21 +60,44 @@ export class CommitListener implements vscode.Disposable {
             }
         }
 
+        await this.initPollingRoots();
         this.pollInterval = setInterval(() => {
-            this.checkForNewCommit();
+            void this.pollAllRepos();
         }, 5000);
         Logger.info('Listening for commits via polling (5s interval)');
     }
 
-    private async checkForNewCommit(): Promise<void> {
-        if (this.processing) return;
+    private async initPollingRoots(): Promise<void> {
+        const seen = new Set<string>();
+        for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            const rr = await getRepoRoot(folder.uri.fsPath);
+            if (!rr || seen.has(rr)) {
+                continue;
+            }
+            seen.add(rr);
+            const sha = await getLatestCommitSha(rr);
+            this.lastKnownShaByRepo.set(rr, sha ?? '');
+        }
+    }
+
+    private async pollAllRepos(): Promise<void> {
+        for (const root of this.lastKnownShaByRepo.keys()) {
+            await this.checkForNewCommitForRepo(root);
+        }
+    }
+
+    private async checkForNewCommitForRepo(repoRoot: string): Promise<void> {
+        if (this.processing) {
+            return;
+        }
         try {
-            const currentSha = await getLatestCommitSha(this.workspaceRoot);
-            if (currentSha && currentSha !== this.lastKnownSha) {
+            const currentSha = await getLatestCommitSha(repoRoot);
+            const lastSha = this.lastKnownShaByRepo.get(repoRoot);
+            if (currentSha && currentSha !== lastSha) {
                 this.processing = true;
-                this.lastKnownSha = currentSha;
-                Logger.info(`New commit detected: ${currentSha.slice(0, 8)}`);
-                await this.handlePostCommit(currentSha);
+                this.lastKnownShaByRepo.set(repoRoot, currentSha);
+                Logger.info(`New commit detected: ${currentSha.slice(0, 8)} in ${repoRoot}`);
+                await this.handlePostCommit(repoRoot, currentSha);
                 this.processing = false;
             }
         } catch (err) {
@@ -82,37 +106,28 @@ export class CommitListener implements vscode.Disposable {
         }
     }
 
-    private async handlePostCommit(commitSha: string): Promise<void> {
-        const repoRoot = await getRepoRoot(this.workspaceRoot);
-        if (!repoRoot) {
-            Logger.warn('CommitListener: no git repo root, clearing blame anyway');
-            this.blameMap.clear();
-            await BlameSerializer.clearCurrentBranchSnapshots(this.workspaceRoot);
-            this.onCommitCompleted();
-            this.openHistoryView();
-            return;
-        }
+    private async handlePostCommit(repoRoot: string, commitSha: string): Promise<void> {
+        const resolvedRoot = (await getRepoRoot(repoRoot)) ?? repoRoot;
+        let gitNoteWritten = false;
 
         try {
-            let changedRepoRelative = await getFilesChangedInCommit(repoRoot, commitSha);
+            let changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
             if (changedRepoRelative.length === 0) {
                 await new Promise(r => setTimeout(r, 300));
-                changedRepoRelative = await getFilesChangedInCommit(repoRoot, commitSha);
+                changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
             }
-
-            const repoToProject = repoRelativeToProjectRelative(
-                repoRoot,
-                this.workspaceRoot,
-                changedRepoRelative
-            );
 
             const entireBlame: Record<string, LineBlame[]> = {};
             const ts = new Date().toISOString();
 
             for (const repoRel of changedRepoRelative) {
-                const projectRel = repoToProject.get(repoRel) ?? repoRel;
-                const stats = await GitUtils.getDiffStats(repoRoot, commitSha, repoRel);
-                if (stats.addedCount === 0 && stats.deletedCount === 0) continue;
+                const absPath = path.normalize(path.join(resolvedRoot, repoRel));
+                const uri = vscode.Uri.file(absPath);
+                const projectRel = blameFileKey(uri);
+                const stats = await GitUtils.getDiffStats(resolvedRoot, commitSha, repoRel);
+                if (stats.addedCount === 0 && stats.deletedCount === 0) {
+                    continue;
+                }
 
                 const trackerBlame = this.blameMap.getBlame(projectRel);
                 const trackerByLine = new Map(trackerBlame.map(e => [e.lineNumber, e]));
@@ -174,7 +189,7 @@ export class CommitListener implements vscode.Disposable {
                 timeWaitingForAiMs: this.blameMap.totalTimeWaitingForAiMs,
             };
             const yamlReport = await ReportYaml.generateFromBlameSnapshot(
-                this.workspaceRoot,
+                resolvedRoot,
                 entireBlame,
                 this.traceStore,
                 commitSha,
@@ -185,19 +200,31 @@ export class CommitListener implements vscode.Disposable {
             const noteContent = `${yamlReport}\n---\nblames:\n${snapshotYaml}`;
 
             try {
-                await GitUtils.addGitNote(commitSha, noteContent, this.workspaceRoot);
-                await GitUtils.pushGitNotes(this.workspaceRoot);
-                Logger.info(`Attached and pushed ai-trace git note for commit ${commitSha}`);
+                gitNoteWritten = await GitUtils.addGitNote(commitSha, noteContent, resolvedRoot);
+                await GitUtils.pushGitNotes(resolvedRoot);
+                if (gitNoteWritten) {
+                    Logger.info(`Attached and pushed blamely git note for commit ${commitSha}`);
+                }
             } catch (err) {
                 Logger.error(`Failed to handle git notes for commit ${commitSha}`, err);
             }
         } catch (err) {
             Logger.error(`Error building report for commit ${commitSha}`, err);
         } finally {
-            this.blameMap.clear();
-            await BlameSerializer.clearCurrentBranchSnapshots(this.workspaceRoot);
+            const keysToRemove: string[] = [];
+            for (const k of this.blameMap.getTrackedFiles()) {
+                if (blameKeyBelongsToRepo(resolvedRoot, k)) {
+                    keysToRemove.push(k);
+                }
+            }
+            this.blameMap.removeFiles(keysToRemove);
+            this.traceStore.removeSuggestionsForBlameKeys(new Set(keysToRemove));
+
+            for (const folder of workspaceFoldersUnderRepo(resolvedRoot)) {
+                await BlameSerializer.clearCurrentBranchSnapshots(folder.uri.fsPath);
+            }
             this.onCommitCompleted();
-            Logger.info('Post-commit: blame cleared and UI refreshed');
+            Logger.info(`Post-commit: cleared ${keysToRemove.length} tracked file(s) for repo, UI refreshed`);
             this.openHistoryView();
         }
     }
@@ -206,7 +233,7 @@ export class CommitListener implements vscode.Disposable {
     private openHistoryView(): void {
         void vscode.commands.executeCommand('workbench.view.scm').then(() => {
             setTimeout(() => {
-                void vscode.commands.executeCommand('aiTraceHistory.focus');
+                void vscode.commands.executeCommand('blamelyHistory.focus');
             }, 100);
         });
     }

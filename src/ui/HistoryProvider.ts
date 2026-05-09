@@ -45,7 +45,7 @@ interface OverallData {
 }
 
 export class HistoryProvider implements vscode.WebviewViewProvider {
-    public static readonly viewId = 'aiTraceHistory';
+    public static readonly viewId = 'blamelyHistory';
 
     private static readonly BRAIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#AFB1B3" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#AFB1B3" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#AFB1B3" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#AFB1B3" stroke-width="0.7" stroke-linecap="round"/></svg>`;
 
@@ -294,6 +294,13 @@ body {
 .tool-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 
 .panel { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.history-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin: 0;
+}
+.history-hint code { font-family: var(--mono); font-size: 10px; }
 
 .overview-card {
   background: var(--bg-secondary);
@@ -523,19 +530,24 @@ body {
         return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>${HistoryProvider.CSS}</style></head><body>
 <div class="tool-header">
   <div class="icon">${HistoryProvider.BRAIN_SVG}</div>
-  <h1>Blamely</h1>
+  <h1>Blamely · History</h1>
+  <div class="tool-actions">
+    <button type="button" class="tool-btn" title="Refresh" onclick="refreshHistory()">&#x21bb;</button>
+  </div>
 </div>
 <div class="panel">
+  <p class="history-hint">Shows commits that have a Blamely report in git notes (<code>refs/notes/blamely</code>) — typically after you commit with the extension active.</p>
   <div class="overview-card">
     <p style="color:var(--text-muted);font-size:12px">${this.esc(message)}</p>
   </div>
 </div>
+<script>const vscodeApi=acquireVsCodeApi();function refreshHistory(){vscodeApi.postMessage({command:'refresh'});}</script>
 </body></html>`;
     }
 
     private buildHtml(data: OverallData): string {
         if (data.commits.length === 0) {
-            return this.buildEmptyHtml('No Blamely reports found in git notes.');
+            return this.buildEmptyHtml('No Blamely reports found in git notes yet.');
         }
 
         const totalAll = data.totalAiLines + data.totalHumanLines;
@@ -552,12 +564,13 @@ body {
         // Tool header
         h += `<div class="tool-header">`;
         h += `<div class="icon">${HistoryProvider.BRAIN_SVG}</div>`;
-        h += `<h1>Blamely</h1>`;
+        h += `<h1>Blamely · History</h1>`;
         h += `<div class="tool-actions">`;
-        h += `<button class="tool-btn" title="Refresh" onclick="(function(){acquireVsCodeApi().postMessage({command:'refresh'})})()">&#x21bb;</button>`;
+        h += `<button type="button" class="tool-btn" title="Refresh" onclick="refreshHistory()">&#x21bb;</button>`;
         h += `</div></div>`;
 
         h += `<div class="panel">`;
+        h += `<p class="history-hint">Committed work only: each row is a past commit with a Blamely snapshot in <code>refs/notes/blamely</code>. Current edits stay in <strong>Blamely: Changes</strong>.</p>`;
 
         // Overview card
         h += `<div class="overview-card">`;
@@ -661,10 +674,11 @@ body {
             h += ` &middot; ${this.esc(interactionList)}`;
         }
         h += `</span>`;
-        h += `<button class="refresh-btn" onclick="(function(){acquireVsCodeApi().postMessage({command:'refresh'})})()">&#x21bb; Refresh</button>`;
+        h += `<button type="button" class="refresh-btn" onclick="refreshHistory()">&#x21bb; Refresh</button>`;
         h += `</div>`;
 
         h += `</div>`; // panel
+        h += `<script>const vscodeApi=acquireVsCodeApi();function refreshHistory(){vscodeApi.postMessage({command:'refresh'});}</script>`;
         h += `</body></html>`;
         return h;
     }

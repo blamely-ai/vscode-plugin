@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
 import * as Logger from './Logger';
+import { AI_COMMAND_PATTERNS } from './trackedAiApplyCommands';
+import { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
+
+export { AI_COMMAND_PATTERNS, matchesTrackedAiApplyCommand } from './trackedAiApplyCommands';
+export { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
 
 export interface AiContext {
     prompt: string | null;
@@ -20,7 +25,62 @@ const EXTENSION_TO_PROVIDER: Record<string, string> = {
     'continue.continue': 'continue',
     'codegpt.codegpt': 'codegpt',
     'cursor.cursor': 'cursor',
+    'anthropic.claude-code': 'anthropic-claude',
+    'anthropic.claude': 'anthropic-claude',
+    'saoudrizwan.claude-dev': 'anthropic-claude',
+    'cline.cline': 'anthropic-claude',
 };
+
+let aiCodingAssistantHostCache: { checkedAtMs: number; value: boolean } | null = null;
+const AI_CODING_ASSISTANT_HOST_CACHE_MS = 45_000;
+
+export function invalidateAiCodingAssistantHostCache(): void {
+    aiCodingAssistantHostCache = null;
+}
+
+/**
+ * Whether this VS Code / Cursor host likely has an AI coding assistant (Copilot Chat, Claude panel, etc.).
+ * Used for sidebar-stream attribution where chat is not a vscode.Tab and command hooks may be missing.
+ *
+ * Order: cheap signals first, then {@link detectAllProviders}, then a substring scan of all extensions.
+ */
+export function anyAiCodingAssistantHostDetected(): boolean {
+    const now = Date.now();
+    const cached = aiCodingAssistantHostCache;
+    if (cached) {
+        /** Negative results re-checked sooner — Copilot/lm may activate after first extension tick. */
+        const ttlMs = cached.value ? AI_CODING_ASSISTANT_HOST_CACHE_MS : 5_000;
+        if (now - cached.checkedAtMs < ttlMs) {
+            return cached.value;
+        }
+    }
+
+    let value = false;
+    if (typeof vscode.lm !== 'undefined') {
+        /** Stock VS Code: Copilot Chat / built-in LM surface */
+        value = true;
+    } else if (vscode.env.appName.toLowerCase().includes('cursor')) {
+        value = true;
+    } else if (detectAllProviders().length > 0) {
+        value = true;
+    } else {
+        try {
+            value = vscode.extensions.all.some((ext) => extensionIdLooksAiCodingAssistant(ext.id));
+        } catch {
+            value = false;
+        }
+    }
+
+    aiCodingAssistantHostCache = { checkedAtMs: now, value };
+    return value;
+}
+
+/** Structured provider-detection logs for Debug Console (expand objects in DevTools). */
+function logProviderConsole(payload: Record<string, unknown>): void {
+    console.log('[Blamely][provider]', payload);
+}
+
+let lastDetectProviderSignature = '';
 
 const KNOWN_MODEL_PATTERNS = [
     'gpt-5', 'gpt-4', 'gpt-3.5', 'gpt5', 'gpt4', 'gpt3', 'gpt-4o', 'gpt4o', '4o',
@@ -59,16 +119,76 @@ export async function detectModel(): Promise<string | null> {
     return cachedModel;
 }
 
+/** Safe subset of extension package.json for provider-detection logs. */
+function extensionPackageSummaryForLog(extId: string): Record<string, unknown> | undefined {
+    try {
+        const ext = vscode.extensions.getExtension(extId);
+        if (!ext?.packageJSON) {
+            return undefined;
+        }
+        const p = ext.packageJSON as Record<string, unknown>;
+        const desc = typeof p.description === 'string' ? p.description.trim() : '';
+        const previewCap = 360;
+        return {
+            id: extId,
+            version: p.version,
+            name: p.name,
+            displayName: p.displayName,
+            publisher: p.publisher,
+            isActive: ext.isActive,
+            descriptionPreview:
+                desc.length === 0 ? undefined : desc.length <= previewCap ? desc : `${desc.slice(0, previewCap)}…`,
+        };
+    } catch {
+        return undefined;
+    }
+}
+
 /** Detect which AI providers are installed and active. */
 export function detectProvider(): string | null {
+    let result: string | null = null;
+    let matchedVia: 'appName' | 'extension' | 'none' = 'none';
+    let matchedExtId: string | undefined;
+
     if (vscode.env.appName.toLowerCase().includes('cursor')) {
-        return 'cursor';
+        result = 'cursor';
+        matchedVia = 'appName';
+    } else {
+        for (const [extId, provider] of Object.entries(EXTENSION_TO_PROVIDER)) {
+            const ext = vscode.extensions.getExtension(extId);
+            if (ext) {
+                result = provider;
+                matchedVia = 'extension';
+                matchedExtId = extId;
+                break;
+            }
+        }
     }
-    for (const [extId, provider] of Object.entries(EXTENSION_TO_PROVIDER)) {
-        const ext = vscode.extensions.getExtension(extId);
-        if (ext) return provider;
+
+    const sig = `${result ?? 'null'}|${matchedVia}|${matchedExtId ?? ''}`;
+    if (sig !== lastDetectProviderSignature) {
+        lastDetectProviderSignature = sig;
+        const matchedExtension =
+            matchedExtId !== undefined ? extensionPackageSummaryForLog(matchedExtId) : undefined;
+        const detail = {
+            fn: 'detectProvider',
+            result,
+            matchedVia,
+            matchedExtId,
+            appName: vscode.env.appName,
+            remoteName: vscode.env.remoteName || undefined,
+            vscodeLmDefined: typeof vscode.lm !== 'undefined',
+            /** Extension manifest subset + description preview (no HTTP — host-local detection only). */
+            content: {
+                matchedExtension,
+                cursorHost: matchedVia === 'appName' && result === 'cursor',
+            },
+        };
+        logProviderConsole(detail);
+        Logger.info(`detectProvider response: ${JSON.stringify(detail)}`);
     }
-    return null;
+
+    return result;
 }
 
 /**
@@ -77,15 +197,63 @@ export function detectProvider(): string | null {
  */
 export function detectAllProviders(): string[] {
     const providers: string[] = [];
-    if (vscode.env.appName.toLowerCase().includes('cursor')) {
+    const matchedExtensionIds: string[] = [];
+    const appName = vscode.env.appName;
+    const cursorFromApp = appName.toLowerCase().includes('cursor');
+    if (cursorFromApp) {
         providers.push('cursor');
     }
     for (const [extId, provider] of Object.entries(EXTENSION_TO_PROVIDER)) {
         const ext = vscode.extensions.getExtension(extId);
         if (ext && !providers.includes(provider)) {
             providers.push(provider);
+            matchedExtensionIds.push(extId);
         }
     }
+    /**
+     * Stock VS Code exposes Language Model / Chat without always mapping to a known extension id.
+     * Without this, {@link ChangeTracker} `providerBiasHeuristic` stays off and chat-panel applies
+     * that look format-like never get AI attribution.
+     */
+    if (typeof vscode.lm !== 'undefined') {
+        const builtinLm = 'vscode-language-models';
+        if (!providers.includes(builtinLm)) {
+            providers.push(builtinLm);
+            matchedExtensionIds.push('(builtin:vscode.lm)');
+        }
+    }
+
+    const extensionScan = Object.entries(EXTENSION_TO_PROVIDER).map(([extId, mappedProvider]) => {
+        const ext = vscode.extensions.getExtension(extId);
+        return {
+            extId,
+            mapsTo: mappedProvider,
+            state: ext ? (ext.isActive ? 'active' : 'inactive') : 'absent',
+        };
+    });
+
+    logProviderConsole({
+        fn: 'detectAllProviders',
+        phase: 'extension-scan',
+        appName,
+        cursorFromApp,
+        vscodeLmDefined: typeof vscode.lm !== 'undefined',
+        extensionScan,
+    });
+    logProviderConsole({
+        fn: 'detectAllProviders',
+        phase: 'resolved',
+        providers: [...providers],
+        matchedExtensionIds: [...matchedExtensionIds],
+    });
+
+    Logger.info(
+        `detectAllProviders: appName=${JSON.stringify(appName)} cursorFromApp=${cursorFromApp} ` +
+            `providers=[${providers.join(', ')}] matchedExtensions=[${matchedExtensionIds.join(', ')}]`
+    );
+    Logger.info(
+        `detectAllProviders scan: ${extensionScan.map(e => `${e.extId}=${e.state}`).join('; ')}`
+    );
     return providers;
 }
 
@@ -97,10 +265,48 @@ export function detectInteractionType(commandId?: string): string | null {
     if (!commandId) return null;
     const id = commandId.toLowerCase();
 
+    // Agent / Composer apply: use chat_panel duration (15s) when command IDs change per release.
+    if (
+        (id.includes('agent') || id.includes('composer')) &&
+        (id.includes('apply') || id.includes('accept') || id.includes('keep') || id.includes('approve'))
+    ) {
+        return 'chat_panel';
+    }
+    if (id.includes('cloud') && (id.includes('apply') || id.includes('keep'))) {
+        return 'chat_panel';
+    }
+
+    if (id.includes('multidiff') && (id.includes('accept') || id.includes('apply') || id.includes('keep') || id.includes('save'))) {
+        return 'chat_panel';
+    }
+
+    if (
+        (id.includes('keep') || id.includes('keepall') || id.includes('keep-all')) &&
+        (id.includes('diff') || id.includes('multidiff') || id.includes('multi-diff'))
+    ) {
+        return 'chat_panel';
+    }
+
+    if (
+        id.includes('inlineedit') &&
+        (id.includes('keep') || id.includes('accept') || id.includes('apply') || id.includes('approve'))
+    ) {
+        return 'chat_panel';
+    }
+
+    if (id.includes('composer') && (id.includes('apply') || id.includes('accept') || id.includes('keep'))) {
+        return 'chat_panel';
+    }
+
+    // Claude/Anthropic completion actions can include provider IDs in command names.
+    if ((id.includes('claude') || id.includes('anthropic') || id.includes('cline')) &&
+        (id.includes('completion') || id.includes('inline') || id.includes('suggest') || id.includes('tab'))) {
+        return 'completion';
+    }
     if (id.includes('inline') && (id.includes('chat') || id.includes('edit'))) return 'chat_inline';
     if (id.includes('chat') || id.includes('panel')) return 'chat_panel';
     if (id.includes('completion') || id.includes('inlay') || id.includes('suggest') || id.includes('tab')) return 'completion';
-    if (id.includes('apply') || id.includes('accept') || id.includes('insert')) {
+    if (id.includes('apply') || id.includes('accept') || id.includes('insert') || id.includes('keep')) {
         if (id.includes('chat') || id.includes('copilot') || id.includes('ai') || id.includes('cursor')) {
             return 'chat_panel';
         }
@@ -117,7 +323,23 @@ export async function extract(commandId?: string): Promise<AiContext> {
     const provider = detectProvider();
     const model = await detectModel();
     const interactionType = detectInteractionType(commandId);
-    return { prompt: null, model, provider, interactionType };
+    const ctx: AiContext = { prompt: null, model, provider, interactionType };
+    logProviderConsole({
+        fn: 'extract',
+        commandId: commandId ?? null,
+        provider: ctx.provider,
+        model: ctx.model,
+        interactionType: ctx.interactionType,
+    });
+    Logger.info(
+        `extract response: ${JSON.stringify({
+            commandId: commandId ?? null,
+            provider: ctx.provider,
+            model: ctx.model,
+            interactionType: ctx.interactionType,
+        })}`
+    );
+    return ctx;
 }
 
 /** Map an extension ID to a clean provider name. */
@@ -131,6 +353,10 @@ export function resolveProviderName(rawId: string | null): string {
     if (lower.includes('cursor')) return 'cursor';
     if (lower.includes('codeium')) return 'codeium';
     if (lower.includes('tabnine')) return 'tabnine';
+    if (lower.includes('claude')
+         || lower.includes('anthropic')
+         || lower.includes('cline')) 
+         return 'anthropic-claude';
     return rawId;
 }
 
@@ -216,37 +442,43 @@ function tryAppNameHeuristic(): string | null {
 }
 
 /**
- * AI-related command IDs/patterns that should trigger markNextChangeAsAi.
- * Mirrors IntelliJ isAiRelatedAction + isChatPanelApplyCommand + isChatSendCommand.
+ * User rejected or discarded AI output (inline chat, panel, composer). Clears the pending
+ * "next edits are AI" window so the next keystrokes are not mis-attributed.
  */
-export const AI_COMMAND_PATTERNS = {
-    completion: [
-        'editor.action.inlineSuggest.commit',
-        'editor.action.inlineSuggest.acceptNextWord',
-        'editor.action.inlineSuggest.acceptNextLine',
-    ],
-    chatInline: [
-        'inlineChat.accept',
-        'inlineChat.acceptChanges',
-        'github.copilot.inline.accept',
-        'cursor.acceptDiff',
-    ],
-    chatPanel: [
-        'github.copilot.chat.apply',
-        'github.copilot.chat.insertAtCursor',
-        'github.copilot.chat.insertIntoTerminal',
-        'workbench.action.chat.applyToEditor',
-        'workbench.action.chat.apply',
-        'cursor.applyCodeBlock',
-        'cursor.applyGeneratedCode',
-        'codeium.acceptSuggestion',
-    ],
-    chatSend: [
-        'workbench.action.chat.submit',
-        'github.copilot.chat.sendMessage',
-        'workbench.action.chat.send',
-    ],
-};
+export function matchesTrackedAiRejectCommand(commandId: string): boolean {
+    const id = commandId.toLowerCase();
+    if (id.startsWith('git.') || id.startsWith('gitlens')) {
+        return false;
+    }
+    const staticReject = [
+        'inlinechat.discard',
+        'inlinechat.discardall',
+        'github.copilot.chat.cancel',
+        'cursor.rejectdiff',
+        'cursor.discarddiff',
+    ];
+    if (staticReject.some(p => id === p)) {
+        return true;
+    }
+    if (id.startsWith('workbench.action.chat.') &&
+        (id.includes('discard') || id.includes('reject') || id.includes('cancel'))) {
+        return true;
+    }
+    if (id.startsWith('inlinechat.') && (id.includes('discard') || id.includes('reject'))) {
+        return true;
+    }
+    if (id.includes('composer') && (id.includes('discard') || id.includes('reject') || id.includes('cancel'))) {
+        return true;
+    }
+    if (id.startsWith('cursor.') && (id.includes('reject') || id.includes('discard'))) {
+        return true;
+    }
+    // Dismiss inline ghost text without accepting (not a full "reject" but same intent for tracking)
+    if (id === 'editor.action.inlineSuggest.hide' || id === 'editor.action.inlineSuggest.hideExplicitly') {
+        return true;
+    }
+    return false;
+}
 
 /** Returns true if the given command ID is AI-related. */
 export function isAiRelatedCommand(commandId: string): boolean {
@@ -257,7 +489,8 @@ export function isAiRelatedCommand(commandId: string): boolean {
         ...AI_COMMAND_PATTERNS.chatPanel,
     ];
     if (allPatterns.some(p => id === p.toLowerCase())) return true;
-    if (id.includes('copilot') || id.includes('codeium') || id.includes('tabnine') || id.includes('cursor')) {
+    if (id.includes('copilot') || id.includes('codeium') || id.includes('tabnine') || id.includes('cursor') ||
+        id.includes('claude') || id.includes('anthropic') || id.includes('cline')) {
         if (id.includes('accept') || id.includes('apply') || id.includes('insert') || id.includes('commit')) {
             return true;
         }
@@ -270,15 +503,35 @@ export function isAiRelatedCommand(commandId: string): boolean {
 /** Returns true if the given command is a chat send/submit action. */
 export function isChatSendCommand(commandId: string): boolean {
     const id = commandId.toLowerCase();
-    return AI_COMMAND_PATTERNS.chatSend.some(p => id === p.toLowerCase())
-        || ((id.includes('chat') || id.includes('copilot') || id.includes('cursor'))
-            && (id.includes('send') || id.includes('submit') || id.includes('ask')));
+    if (AI_COMMAND_PATTERNS.chatSend.some(p => id === p.toLowerCase())) {
+        return true;
+    }
+    if (
+        id.startsWith('github.copilot.') &&
+        (id.includes('send') || id.includes('submit')) &&
+        !id.includes('signin') &&
+        !id.includes('sign-in')
+    ) {
+        return true;
+    }
+    if (
+        (id.includes('chat') ||
+            id.includes('copilot') ||
+            id.includes('cursor') ||
+            id.includes('claude') ||
+            id.includes('anthropic')) &&
+        (id.includes('send') || id.includes('submit') || id.includes('ask'))
+    ) {
+        return true;
+    }
+    return false;
 }
 
 /** Duration for the markNextChangeAsAi window depending on interaction type. */
 export function getAiWindowDuration(interactionType: string | null): number {
     switch (interactionType) {
-        case 'chat_panel': return 15_000;
+        /** Large chat/agent applies stream many replacements; 15s routinely expires mid-stream → Human + format-preservation false positives. */
+        case 'chat_panel': return 90_000;
         case 'chat_inline': return 8_000;
         case 'completion': return 2_000;
         default: return 3_000;

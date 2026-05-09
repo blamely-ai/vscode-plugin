@@ -3,9 +3,29 @@ import { TraceStore } from '../store/TraceStore';
 import { BlameMap } from '../blame/BlameMap';
 import { reindex } from '../blame/BlameIndex';
 import { matchSuggestion } from '../utils/DiffMatcher';
-import { normalizePath } from '../utils/Platform';
-import * as Logger from '../utils/Logger';
+import { BLAMELY_REPO_DETECTOR_FILENAME, normalizePath } from '../utils/Platform';
+import { blameFileKey, workspaceRootForBlameKey } from '../utils/WorkspacePaths';
 import * as AiContextExtractor from '../utils/AiContextExtractor';
+import * as BlameSerializer from '../blame/BlameSerializer';
+import { computeNextStreamingFlushSchedule } from './streamingFlushSchedule';
+import {
+    heuristicCandidateFromBatchSignals,
+    heuristicChunkIsMultiCharacter,
+    isClipboardExactPasteAfterNormalize,
+    normalizeInsertPlainText,
+} from './editAttributionHeuristics';
+import { chatPanelSignal } from '../utils/chatPanelSignal';
+import {
+    anyChatLikeTabOpen,
+    summarizeSubstantialInsert,
+} from '../utils/substantialChatTabPoke';
+import {
+    CHAT_STREAM_BURST_GAP_MS,
+    CHAT_STREAM_BURST_MIN_ACCUM_FOR_POKE,
+    nextChatStreamBurstState,
+    chatStreamBurstQualifiesForPoke,
+    type ChatStreamBurstState,
+} from '../utils/chatApplyStreamingBurst';
 
 export class ChangeTracker implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
@@ -17,7 +37,7 @@ export class ChangeTracker implements vscode.Disposable {
     /** Default exclude patterns matching IntelliJ DocumentChangeTracker.EXCLUDE_PATTERNS */
     private static readonly DEFAULT_EXCLUDE_PATTERNS = [
         'node_modules', '.git', 'dist', 'build', 'out', 'target',
-        'detector.ai', 'ai-trace-report.md', 'blamely-report.md',
+        BLAMELY_REPO_DETECTOR_FILENAME, 'blamely-report.md',
         '.log', '/log/', '\\log\\', '/logs/', '\\logs\\',
         '.tmp', '.temp', '.cache', '.min.js', '.min.css',
         '.lock', '.lockb', '.idea/', '.vscode/',
@@ -35,9 +55,65 @@ export class ChangeTracker implements vscode.Disposable {
     private lastProcessedEventTime: number = 0;
     private static readonly DUPLICATE_EVENT_WINDOW_MS = 400;
 
+    /**
+     * After {@link recordChatRequestSent}, the model may wait on HTTP (Copilot `responses`, etc.)
+     * before any apply command runs; short AI windows expire. Substantive inserts while this marker
+     * is fresh open a chat_panel intercept window so streamed/ workspace applies still count as AI.
+     */
+    private static readonly CHAT_REPLY_ATTRIBUTION_MAX_MS = 240_000;
+
+    /** Set when we observe a chat-style apply command (even if after document edits). Used to avoid mis-classifying chat output as human paste in {@link checkClipboardAndReattributeBatch}. */
+    private lastTrackedChatApplyCommandAt: number = 0;
+    private static readonly CHAT_APPLY_CLIPBOARD_GRACE_MS = 6000;
+
+    /** After a tracked chat apply, allow format-like heuristic AI bias even when no extensions match. */
+    private static readonly CHAT_APPLY_HEURISTIC_BIAS_MS = 120_000;
+
+    /**
+     * If {@link checkClipboardAndReattributeBatch} skipped AI because clipboard matched insert before we saw
+     * the chat-apply command, we store args here so {@link recordChatApplyCommandObserved} can retry.
+     */
+    private lastHeuristicClipboardRetry:
+        | {
+              uriString: string;
+              filePath: string;
+              combinedInsert: string;
+              blameObjects: import('../blame/BlameMap').LineBlame[];
+              createdAt: number;
+          }
+        | null = null;
+
     /** While set, document changes only reindex/decrement — no new attribution (matches IntelliJ notifyRollback). */
     private rollbackActiveUntil: number = 0;
     private static readonly ROLLBACK_WINDOW_MS = 3000;
+
+    /**
+     * Short window after blame restore (e.g. extension activation) during which the
+     * "clean document → external VCS" guard is suppressed. Prevents auto-formats / LSP
+     * rewrites that arrive immediately after restore from clobbering loaded AI blame.
+     */
+    private postRestoreGraceUntil: number = 0;
+
+    /** Delay before treating a synchronous "clean" document as an external disk/git update (vscode#27231). */
+    private static readonly EXTERNAL_VCS_DIRTY_RECHECK_MS = 15;
+
+    /** After a substantial chat-tab poke, ignore clean-doc probes — saves/reconciliation falsely arm external-VCS grace. */
+    private static readonly POST_SUBSTANTIAL_CHAT_POKE_CLEAN_DOC_SUPPRESS_MS = 45_000;
+
+    private lastSubstantialChatTabPokeAt: number = 0;
+
+    /** Copilot/chat stream many micro-insert events per logical apply — accumulate before opening AI window. */
+    private chatStreamBurstByUri = new Map<string, ChatStreamBurstState>();
+
+    /**
+     * After stash apply / merge / checkout, large inserts are not clipboard-matched and the AI heuristic
+     * would falsely mark them as AI. While active, rollback does not block human attribution and the
+     * heuristic batch step is skipped.
+     */
+    private externalVcsApplyUntil: number = 0;
+
+    /** After Undo/Redo, omit snapshot writes until a normal edit on that file; disk snapshot is removed. */
+    private suppressedSnapshotsAfterUndo = new Set<string>();
 
     // Debounce queue for capturing rapid sequential events from Copilot Chat
     private eventQueue: {
@@ -50,12 +126,25 @@ export class ChangeTracker implements vscode.Disposable {
         sessionId?: string;
         prompt?: string | null;
         model?: string | null;
-        isLargeReplacement?: boolean;
+        rangeLength: number;
         formatPreserved?: boolean;
     }[] = [];
     private debounceTimer: NodeJS.Timeout | null = null;
+    /** Coalesced flush after tracked apply/keep (see {@link flushDeferredClassificationAfterApplyCommand}). */
+    private applyCommandFlushTimer: NodeJS.Timeout | null = null;
 
-    constructor(traceStore: TraceStore, blameMap: BlameMap, onBlameUpdated: () => void) {
+    /** Streaming-aware flush timing implemented in streamingFlushSchedule (unit-tested there). */
+    private heuristicFlushLastChunkAt = 0;
+    private heuristicFlushBurstStart = 0;
+
+    private static readonly CLASSIFICATION_LOG_MAX = 50;
+    private classificationLogLines: string[] = [];
+
+    constructor(
+        traceStore: TraceStore,
+        blameMap: BlameMap,
+        onBlameUpdated: () => void
+    ) {
         this.traceStore = traceStore;
         this.blameMap = blameMap;
         this.onBlameUpdated = onBlameUpdated;
@@ -99,16 +188,142 @@ export class ChangeTracker implements vscode.Disposable {
         if (interactionType) this.lastDetectedInteractionType = interactionType;
     }
 
-    /** Record when user sends a chat message, so time_waiting_for_ai = (apply time - this). */
-    public recordChatRequestSent(): void {
-        this.chatRequestSentAt = Date.now();
+    /**
+     * `onDidExecuteCommand` runs after apply/keep finishes; {@link handleChange} may still be finishing
+     * async work. Cancel the debounced flush and schedule one shortly so {@link processEventQueue} sees
+     * `aiActiveUntil` + interaction metadata for chat-apply batch fallback in `processEventQueue`.
+     */
+    public flushDeferredClassificationAfterApplyCommand(): void {
+        if (this.applyCommandFlushTimer) {
+            clearTimeout(this.applyCommandFlushTimer);
+            this.applyCommandFlushTimer = null;
+        }
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+        }
+        this.heuristicFlushBurstStart = 0;
+        this.heuristicFlushLastChunkAt = 0;
+        this.applyCommandFlushTimer = setTimeout(() => {
+            this.applyCommandFlushTimer = null;
+            void this.processEventQueue();
+        }, 32);
     }
 
-    private clearAiContext(): void {
+    /** Record when user sends a chat message, so time_waiting_for_ai = (apply time - this). */
+    public recordChatRequestSent(): void {
+        const at = Date.now();
+        this.chatRequestSentAt = at;
+        chatPanelSignal('tracker-record-chat-request-sent', { at });
+    }
+
+    /** Call from command listener when a tracked chat apply / keep-all / multi-diff accept runs. */
+    public recordChatApplyCommandObserved(commandId: string): void {
+        const t = AiContextExtractor.detectInteractionType(commandId);
+        if (t !== 'chat_panel' && t !== 'chat_inline') {
+            return;
+        }
+        chatPanelSignal('tracker-record-chat-apply-observed', { commandId, interactionType: t });
+        this.lastTrackedChatApplyCommandAt = Date.now();
+        const snap = this.lastHeuristicClipboardRetry;
+        if (!snap || Date.now() - snap.createdAt > 12_000) {
+            this.lastHeuristicClipboardRetry = null;
+            return;
+        }
+        const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === snap.uriString);
+        if (!doc || doc.isClosed) {
+            this.lastHeuristicClipboardRetry = null;
+            return;
+        }
+        void this.checkClipboardAndReattributeBatch(doc, snap.filePath, snap.combinedInsert, snap.blameObjects).then(
+            () => this.onBlameUpdated(),
+            () => undefined
+        );
+        this.lastHeuristicClipboardRetry = null;
+    }
+
+    private clearStaleDetectedMetadata(): void {
         this.lastDetectedPrompt = null;
         this.lastDetectedModel = null;
         this.lastDetectedProvider = null;
         this.lastDetectedInteractionType = null;
+    }
+
+    /** Clear model/prompt hints after human edits; keep {@link lastDetectedInteractionType} for multi-chunk chat apply + batch fallback. */
+    private clearHumanEditAiHints(): void {
+        this.lastDetectedPrompt = null;
+        this.lastDetectedModel = null;
+        this.lastDetectedProvider = null;
+    }
+
+    /**
+     * Clears the pending AI intercept window and all metadata (prompt/model/provider/type, timers).
+     * Use when the user explicitly rejects/discards AI output or VCS rollback — not for ordinary
+     * human typing (that path only clears stale metadata so {@link chatRequestSentAt} stays valid).
+     */
+    public resetAiInterceptState(): void {
+        this.aiActiveUntil = 0;
+        this.lastAiActionStartedAt = 0;
+        this.chatRequestSentAt = 0;
+        this.lastTrackedChatApplyCommandAt = 0;
+        this.lastHeuristicClipboardRetry = null;
+        this.clearStaleDetectedMetadata();
+    }
+
+    /** Expires the AI-only edit window without clearing {@link chatRequestSentAt} (chat reply timing). */
+    private endAiInterceptWindowOnly(): void {
+        this.aiActiveUntil = 0;
+        this.lastAiActionStartedAt = 0;
+        this.clearStaleDetectedMetadata();
+    }
+
+    /**
+     * Chat/agent applies stream many line replacements where rangeLen≈insertLen and charDelta≈0 — that
+     * matches {@link FORMAT_LIKE_*}} heuristics and wrongly preserves Human blame for fresh AI text.
+     */
+    private shouldSuppressFormatLikePreservation(nowMs: number): boolean {
+        if (nowMs < this.aiActiveUntil) {
+            return true;
+        }
+        if (
+            this.lastTrackedChatApplyCommandAt > 0 &&
+            nowMs - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_HEURISTIC_BIAS_MS
+        ) {
+            return true;
+        }
+        if (
+            this.chatRequestSentAt > 0 &&
+            nowMs - this.chatRequestSentAt <= ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * After chat apply or during AI intercept, the buffer can become clean on save — not a git disk refresh.
+     * Suppresses vscode#27231 clean-document external-VCS probe so heuristics still promote AI.
+     */
+    private shouldSuppressCleanDocExternalVcsProbe(nowMs: number): boolean {
+        if (nowMs < this.aiActiveUntil) {
+            return true;
+        }
+        if (this.chatRequestSentAt > 0) {
+            return true;
+        }
+        if (
+            this.lastTrackedChatApplyCommandAt > 0 &&
+            nowMs - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_HEURISTIC_BIAS_MS
+        ) {
+            return true;
+        }
+        if (
+            this.lastSubstantialChatTabPokeAt > 0 &&
+            nowMs - this.lastSubstantialChatTabPokeAt < ChangeTracker.POST_SUBSTANTIAL_CHAT_POKE_CLEAN_DOC_SUPPRESS_MS
+        ) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -118,20 +333,125 @@ export class ChangeTracker implements vscode.Disposable {
      */
     public notifyRollback(): void {
         this.rollbackActiveUntil = Date.now() + ChangeTracker.ROLLBACK_WINDOW_MS;
+        this.resetAiInterceptState();
+        console.log('Rollback window active: blame will update per change only');
         this.onBlameUpdated();
-        Logger.info('Rollback window active: blame will update per change only');
+        /** Defer so status bar / decorations pick up blame after Git/SCM-applied edits land. */
+        setTimeout(() => this.onBlameUpdated(), 0);
+    }
+
+    /** Clear persisted HEAD blame JSON for every given repo root (current branch snapshots dir). */
+    public async clearPersistedSnapshotsForRepoRoots(repoRoots: readonly string[]): Promise<void> {
+        for (const root of repoRoots) {
+            await BlameSerializer.clearCurrentBranchSnapshots(root);
+        }
+        this.onBlameUpdated();
+        setTimeout(() => this.onBlameUpdated(), 0);
+    }
+
+    /** Remove on-disk snapshots for SCM discard / rollback for specific files (see `git.clean` listener). */
+    public async removePersistedSnapshotsForFileUris(fileUris: readonly vscode.Uri[]): Promise<void> {
+        if (fileUris.length === 0) {
+            return;
+        }
+        for (const uri of fileUris) {
+            if (uri.scheme !== 'file') {
+                continue;
+            }
+            const key = blameFileKey(uri);
+            const wsRoot =
+                workspaceRootForBlameKey(key) ?? vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath;
+            if (!wsRoot) {
+                console.log(`removePersistedSnapshotsForFileUris: no workspace root for ${uri.fsPath}`);
+                continue;
+            }
+            await BlameSerializer.removeSnapshot(wsRoot, key);
+            this.suppressedSnapshotsAfterUndo.add(key);
+        }
+        this.onBlameUpdated();
+        setTimeout(() => this.onBlameUpdated(), 0);
+    }
+
+    /**
+     * Omits periodic and on-save BlameSerializer writes while a VCS rollback window is active, or until
+     * a substantive edit clears per-file Undo suppression. Checkout / deactivate still checkpoints explicitly.
+     */
+    public isSnapshotPersistSuppressed(blameKey: string): boolean {
+        if (Date.now() < this.rollbackActiveUntil) {
+            return true;
+        }
+        return this.suppressedSnapshotsAfterUndo.has(blameKey);
+    }
+
+    /**
+     * Call when Git mutates the worktree (e.g. stash apply/pop, checkout paths) on the current branch.
+     * Suppresses the “bulk insert = AI” heuristic and keeps human attribution for those edits.
+     */
+    public notifyExternalVcsApply(durationMs: number = 20_000): void {
+        this.externalVcsApplyUntil = Date.now() + durationMs;
+        this.resetAiInterceptState();
+        console.log(
+            `[Blamely] External VCS apply window active (${durationMs}ms): stash/checkout edits treated as human, AI heuristic off`
+        );
+    }
+
+    /**
+     * Open a short grace window during which the "clean document → external VCS" guard
+     * in {@link handleChange} is suppressed. Call right after restoring blame on activation.
+     */
+    public setPostRestoreGrace(durationMs: number): void {
+        this.postRestoreGraceUntil = Date.now() + durationMs;
+    }
+
+    /** Last ~50 heuristic / AI gate decisions for `blamely.debug.dumpLastClassification`. */
+    public getClassificationDebugLog(): string {
+        return this.classificationLogLines.length > 0
+            ? this.classificationLogLines.join('\n')
+            : '(no classification events recorded yet — edit a file with Blamely active)';
+    }
+
+    private pushClassificationLine(message: string): void {
+        const line = `[${new Date().toISOString()}] ${message}`;
+        this.classificationLogLines.push(line);
+        if (this.classificationLogLines.length > ChangeTracker.CLASSIFICATION_LOG_MAX) {
+            this.classificationLogLines.splice(
+                0,
+                this.classificationLogLines.length - ChangeTracker.CLASSIFICATION_LOG_MAX
+            );
+        }
+    }
+
+    /** Debounced flush of {@link eventQueue}: extends while streaming chunks arrive within gap window. */
+    private scheduleHeuristicFlush(): void {
+        const now = Date.now();
+        const scheduled = computeNextStreamingFlushSchedule(
+            now,
+            this.heuristicFlushBurstStart,
+            this.heuristicFlushLastChunkAt
+        );
+        this.heuristicFlushBurstStart = scheduled.burstStartMs;
+        this.heuristicFlushLastChunkAt = scheduled.lastChunkAtMs;
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+        }
+        const delay = scheduled.delayMs;
+        this.debounceTimer = setTimeout(() => {
+            this.debounceTimer = null;
+            this.heuristicFlushBurstStart = 0;
+            this.heuristicFlushLastChunkAt = 0;
+            void this.processEventQueue();
+        }, delay);
     }
 
     private async handleChange(event: vscode.TextDocumentChangeEvent): Promise<void> {
         if (event.document.uri.scheme !== 'file') { return; }
+        const config = vscode.workspace.getConfiguration('blamely');
+        const basePatterns: string[] = config.get('excludePatterns', ChangeTracker.DEFAULT_EXCLUDE_PATTERNS);
+        const additionalPatterns: string[] = config.get('additionalExcludePatterns', []);
+        const excludePatterns: string[] = [...new Set([...basePatterns, ...additionalPatterns])];
 
-        const config = vscode.workspace.getConfiguration('aiTrace');
-        const excludePatterns: string[] = config.get('excludePatterns', ChangeTracker.DEFAULT_EXCLUDE_PATTERNS);
-
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(event.document.uri);
-        const relativePath = workspaceFolder
-            ? normalizePath(vscode.workspace.asRelativePath(event.document.uri, false))
-            : normalizePath(event.document.uri.fsPath);
+        const relativePath = blameFileKey(event.document.uri);
 
         for (const pattern of excludePatterns) {
             if (relativePath.includes(pattern)) return;
@@ -144,65 +464,134 @@ export class ChangeTracker implements vscode.Disposable {
             return;
         }
 
-        // Explicitly check for standard Undo (1) or Redo (2)
-        // Cursor AI uses custom reason codes for its AI edits which previously triggered this as a false positive
         const isUndoOrRedo = event.reason === vscode.TextDocumentChangeReason.Undo ||
             event.reason === vscode.TextDocumentChangeReason.Redo;
+        if (!isUndoOrRedo) {
+            this.suppressedSnapshotsAfterUndo.delete(relativePath);
+        } else {
+            this.suppressedSnapshotsAfterUndo.add(relativePath);
+        }
 
-        let combinedInsert = '';
-        let matchedAiSynchronously = false;
-        let aiProviderId = 'heuristic_ai';
-        let aiSessionId = 'heuristic-' + Date.now();
-        let aiPromptStr: string | null = null;
-        let aiModelStr: string | null = null;
-        const allModifiedBlames: import('../blame/BlameMap').LineBlame[] = [];
-        let isLargeReplacement = false;
-        let formatPreserved = false;
+        const insertSummary = summarizeSubstantialInsert(event.contentChanges);
 
+        const uriBurstKey = event.document.uri.toString();
+        const nowBurst = Date.now();
+        const burstState = nextChatStreamBurstState(
+            this.chatStreamBurstByUri.get(uriBurstKey),
+            nowBurst,
+            CHAT_STREAM_BURST_GAP_MS,
+            {
+                insertLen: insertSummary.insertLen,
+                maxChunk: insertSummary.maxChunk,
+                newlineRuns: insertSummary.newlineRuns,
+            }
+        );
+        this.chatStreamBurstByUri.set(uriBurstKey, burstState);
+
+        const viaChatTab = anyChatLikeTabOpen();
+        const viaAiHost = AiContextExtractor.anyAiCodingAssistantHostDetected();
+        const chatSurface = viaChatTab || viaAiHost;
+
+        const substantialPoke = !isUndoOrRedo && chatSurface && insertSummary.substantial;
+        const streamBurstPoke =
+            !isUndoOrRedo &&
+            chatSurface &&
+            !insertSummary.substantial &&
+            chatStreamBurstQualifiesForPoke(burstState, CHAT_STREAM_BURST_MIN_ACCUM_FOR_POKE);
+
+        // Open AI window before processChange so classification sees aiActiveUntil (workspace listener order
+        // cannot be relied on; extension-level poke ran after ChangeTracker and was always too late).
+        // Cursor / Composer often omit chat-like tab labels — fall back to AI-host detection (Cursor app name,
+        // vscode.lm, or installed assistant extensions) so native chat applies still get an intercept window.
+        // Streaming: single-event "substantial" thresholds miss Copilot — accumulate burst across CHAT_STREAM_BURST_GAP_MS.
+        if (substantialPoke || streamBurstPoke) {
+            const provider = AiContextExtractor.detectProvider();
+            this.markNextChangeAsAi(10_000, null, null, provider, 'chat_panel');
+            this.lastSubstantialChatTabPokeAt = Date.now();
+            this.chatStreamBurstByUri.delete(uriBurstKey);
+
+            const pokeMode = streamBurstPoke ? 'stream-burst' : 'single-event-substantial';
+            const signalKind = streamBurstPoke ? 'chat-panel-stream-burst-poke' : 'substantial-edit-with-chat-tab-poke';
+            chatPanelSignal(signalKind, {
+                insertLen: insertSummary.insertLen,
+                maxChunk: insertSummary.maxChunk,
+                newlineRuns: insertSummary.newlineRuns,
+                burstAccumulated: burstState.accumulatedLen,
+                uri: event.document.uri.fsPath,
+                via: viaChatTab ? 'chat-tab' : 'ai-host-installed',
+                pokeMode,
+            });
+            console.log('[Blamely][chat-traffic] chat-panel AI intercept window opened', {
+                pokeMode,
+                insertLenThisEvent: insertSummary.insertLen,
+                burstAccumulated: burstState.accumulatedLen,
+                via: viaChatTab ? 'chat-tab' : 'ai-host-installed',
+                provider: provider ?? null,
+            });
+        }
+
+        // Git/stash/checkout updates that arrive from disk often modify editors while the document
+        // remains clean. Mark them as external VCS applies up-front so those inserts stay HUMAN.
+        // Skip while an AI-intercept window is active (chat applies arrive before isDirty flips)
+        // and during the post-restore grace (auto-formats/LSP rewrites right after activation
+        // would otherwise clobber loaded AI blame).
+        // Skip for substantial inserts in this transaction — vscode often reports isDirty=false on the first
+        // edit (#27231); arming external-VCS grace here nukes chat-panel AI via resetAiInterceptState + demotion.
+        const nowTs = Date.now();
+        if (
+            !event.document.isDirty &&
+            nowTs >= this.postRestoreGraceUntil &&
+            !insertSummary.substantial &&
+            !this.shouldSuppressCleanDocExternalVcsProbe(nowTs)
+        ) {
+            const uriStr = event.document.uri.toString();
+            setTimeout(() => {
+                const doc = vscode.workspace.textDocuments.find(d => d.uri.toString() === uriStr);
+                if (!doc || doc.isClosed || doc.isDirty) {
+                    return;
+                }
+                const t = Date.now();
+                if (t < this.postRestoreGraceUntil || this.shouldSuppressCleanDocExternalVcsProbe(t)) {
+                    return;
+                }
+                this.notifyExternalVcsApply(60_000);
+            }, ChangeTracker.EXTERNAL_VCS_DIRTY_RECHECK_MS);
+        }
+
+        // One queue item per contentChange so debounced AI promotion only touches blame from AI-matched
+        // chunks — not human newlines in the same document transaction (e.g. Enter then chat apply).
         for (const change of event.contentChanges) {
-            if (change.rangeLength > 50) {
-                isLargeReplacement = true;
-            }
-            combinedInsert += change.text;
             const result = await this.processChange(event.document, relativePath, change, isUndoOrRedo);
-            if (result.blameObjects) {
-                allModifiedBlames.push(...result.blameObjects);
-            }
-            if (result.matchedAi) {
-                matchedAiSynchronously = true;
-                if (result.providerId) aiProviderId = result.providerId;
-                if (result.sessionId) aiSessionId = result.sessionId;
-                if (result.prompt) aiPromptStr = result.prompt;
-                if (result.model) aiModelStr = result.model;
-            }
-            if (result.formatPreserved) {
-                formatPreserved = true;
+            this.eventQueue.push({
+                document: event.document,
+                filePath: relativePath,
+                combinedInsert: change.text,
+                blameObjects: result.blameObjects ?? [],
+                matchedAiSynchronously: result.matchedAi,
+                providerId: result.providerId,
+                sessionId: result.sessionId,
+                prompt: result.prompt,
+                model: result.model,
+                rangeLength: change.rangeLength,
+                formatPreserved: result.formatPreserved ?? false,
+            });
+        }
+
+        if (isUndoOrRedo) {
+            const ws =
+                workspaceRootForBlameKey(relativePath) ??
+                vscode.workspace.getWorkspaceFolder(event.document.uri)?.uri.fsPath;
+            if (ws) {
+                await BlameSerializer.removeSnapshot(ws, relativePath);
             }
         }
 
-        // Push the results of THIS synchronous batch into the queue
-        this.eventQueue.push({
-            document: event.document,
-            filePath: relativePath,
-            combinedInsert,
-            blameObjects: allModifiedBlames,
-            matchedAiSynchronously,
-            providerId: aiProviderId,
-            sessionId: aiSessionId,
-            prompt: aiPromptStr,
-            model: aiModelStr,
-            isLargeReplacement,
-            formatPreserved
-        });
-
-        // Trigger the debouncer to evaluate the entire chain of events after 75ms
-        if (this.debounceTimer) {
-            clearTimeout(this.debounceTimer);
-        }
+        // Immediate UI refresh so each line appears as a continuous stream
+        this.onBlameUpdated();
 
         // If it's an undo/redo, don't trigger the heuristic fallback at all
         if (!isUndoOrRedo) {
-            this.debounceTimer = setTimeout(() => this.processEventQueue(), 150); // Increased to 150ms to strictly catch Cursor streams that burst multiple 20ms chunks
+            this.scheduleHeuristicFlush();
         }
 
         this.onBlameUpdated();
@@ -213,40 +602,100 @@ export class ChangeTracker implements vscode.Disposable {
 
         const batch = [...this.eventQueue];
         this.eventQueue = [];
-
-        const anyMatchedAi = batch.some(q => q.matchedAiSynchronously);
+        this.pushClassificationLine(`Flush ${batch.length} chunk(s) ${batch[0]?.filePath ?? '?'}`);
+        const nowFlush = Date.now();
+        const totalInsertLen = batch.reduce((sum, q) => sum + q.combinedInsert.length, 0);
+        const chatPanelLike =
+            this.lastDetectedInteractionType === 'chat_panel' ||
+            this.lastDetectedInteractionType === 'chat_inline' ||
+            (this.chatRequestSentAt > 0 &&
+                nowFlush - this.chatRequestSentAt <= ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS);
+        /** Sync flags can all be false across chunks (metadata cleared mid-transaction, newline splits, race). */
+        const chatApplyBatchFallback =
+            !batch.some(q => q.matchedAiSynchronously) &&
+            nowFlush < this.aiActiveUntil &&
+            chatPanelLike &&
+            totalInsertLen >= 4;
+        const anyMatchedAi =
+            batch.some(q => q.matchedAiSynchronously) || chatApplyBatchFallback;
         let activeProviderId = AiContextExtractor.resolveProviderName(this.lastDetectedProvider);
         let activeSessionId = 'heuristic-' + Date.now();
         let activePrompt: string | null = this.lastDetectedPrompt;
         let activeModel = this.lastDetectedModel ?? await this.getActiveAiModel();
 
-        if (anyMatchedAi) {
-            // Find the active credentials from the matched AI event
-            const matchEvent = batch.find(q => q.matchedAiSynchronously);
-            if (matchEvent) {
-                if (matchEvent.providerId) activeProviderId = matchEvent.providerId;
-                if (matchEvent.sessionId) activeSessionId = matchEvent.sessionId;
-                if (matchEvent.prompt) activePrompt = matchEvent.prompt;
-                if (matchEvent.model) activeModel = matchEvent.model;
-            }
-
+        if (anyMatchedAi && Date.now() < this.externalVcsApplyUntil) {
             for (const q of batch) {
+                if (!chatApplyBatchFallback && !q.matchedAiSynchronously) {
+                    continue;
+                }
                 for (const b of q.blameObjects) {
-                    // Because it was initially logged as human typing synchronously, 
-                    // we must move those characters back over to the AI bucket.
+                    if (b.authorType === 'AI' || (b.aiChars ?? 0) > 0) {
+                        b.humanChars = (b.humanChars || 0) + (b.aiChars || 0);
+                        b.aiChars = 0;
+                        b.authorType = 'HUMAN';
+                        b.provider = null;
+                        b.model = null;
+                        b.prompt = null;
+                    }
+                }
+            }
+            this.pushClassificationLine('sync AI demoted to HUMAN (external VCS apply window)');
+            this.onBlameUpdated();
+            return;
+        }
+
+        if (anyMatchedAi) {
+            const fallbackModel = activeModel;
+            for (const q of batch) {
+                if (!chatApplyBatchFallback && !q.matchedAiSynchronously) {
+                    continue;
+                }
+                if (q.blameObjects.length === 0) {
+                    continue;
+                }
+                const credProvider = q.providerId ?? activeProviderId;
+                const credSession = q.sessionId ?? activeSessionId;
+                const credPrompt = q.prompt ?? activePrompt;
+                const credModel = q.model ?? fallbackModel;
+                const resolvedProvider = AiContextExtractor.resolveProviderName(credProvider);
+
+                for (const b of q.blameObjects) {
                     if (b.authorType !== 'AI') {
                         b.aiChars = (b.aiChars || 0) + (b.humanChars || 0);
                         b.humanChars = 0;
                     }
-
                     b.authorType = 'AI';
-                    b.provider = activeProviderId;
-                    b.model = activeModel;
-                    b.prompt = activePrompt;
+                    b.provider = resolvedProvider;
+                    b.model = credModel;
+                    b.prompt = credPrompt;
                 }
             }
+            this.pushClassificationLine(
+                chatApplyBatchFallback
+                    ? 'batch finalized as AI (chat apply batch fallback)'
+                    : 'batch finalized as AI (intercept/suggestion)'
+            );
             this.onBlameUpdated();
-            return; // We successfully attributed everything to AI via synchronous match
+            return;
+        }
+
+        if (Date.now() < this.externalVcsApplyUntil) {
+            console.log(`[Blamely] Heuristic skipped: external VCS apply window active (${batch[0]?.filePath ?? '?'})`);
+            this.pushClassificationLine('heuristic skipped: external VCS grace');
+            this.onBlameUpdated();
+            return;
+        }
+
+        // Do not use per-event isDirty: it is often false on the first edit (vscode#27231).
+        // After debounce, if the document is still clean, treat as external VCS (skip heuristics).
+        if (batch.some(q => {
+            const d = q.document;
+            return !d.isClosed && !d.isDirty;
+        })) {
+            console.log(`[Blamely] Heuristic skipped: document is clean post-debounce (${batch[0]?.filePath ?? '?'})`);
+            this.pushClassificationLine('heuristic skipped: document still clean (probable disk/git)');
+            this.onBlameUpdated();
+            return;
         }
 
         // --- Heuristic Fallback ---
@@ -255,26 +704,103 @@ export class ChangeTracker implements vscode.Disposable {
         const totalInsertLength = batch.reduce((sum, q) => sum + q.combinedInsert.length, 0);
 
         const combinedString = batch.map(q => q.combinedInsert).join('');
-        const hasMultiCharChunks = batch.some(q => q.combinedInsert.length > 2); // Not just 1-by-1 manual typing
+        const hasMultiCharChunks = batch.some(q => heuristicChunkIsMultiCharacter(q.combinedInsert));
         const containsNewline = combinedString.includes('\n');
 
-        // Heuristic Rules for AI Gen / Paste:
+        // Heuristic Rules for AI Gen / Paste (chat panel apply is the primary case in VS Code,
+        // where the proposed onDidExecuteCommand API is unavailable and we cannot intercept the
+        // apply command directly):
         // 1. Must contain multi-char chunks (cannot be pure 1-by-1 manual typing, no matter how fast)
         // 2. AND must either contain multiple lines OR be a massive single-line generation
-        // 3. AND it must NOT be a massive document replacement (e.g. formatter or git checkout)
-        // 4. AND it must NOT be a format-only change where we preserved ownership
-        const hasLargeReplacement = batch.some(q => (q as any).isLargeReplacement);
-        const hasFormatPreserved = batch.some(q => (q as any).formatPreserved);
+        // 3. AND it must NOT be a format-only change where we preserved existing ownership
+        // Note: a previous "isLargeReplacement = rangeLength > 50" gate was removed because it
+        // caused chat-apply replacements (function bodies, etc.) to stay HUMAN. Real formatter /
+        // checkout cases are now blocked earlier by externalVcsApplyUntil and processChange's
+        // format-like preservedBlame path.
+        const hasFormatPreserved = batch.some(q => q.formatPreserved);
+        const filePathForLog = batch[0]?.filePath ?? '?';
 
-        if (!hasLargeReplacement && !hasFormatPreserved && hasMultiCharChunks && (containsNewline || totalInsertLength > 30)) {
-            const allBlameObjects = batch.flatMap(q => q.blameObjects);
+        const isHeuristicAiCandidate = heuristicCandidateFromBatchSignals({
+            hasFormatPreserved,
+            hasMultiCharChunks,
+            containsNewline,
+            totalInsertLength,
+        });
+
+        const providers = AiContextExtractor.detectAllProviders();
+        if (providers.length > 0) {
+            console.log(`Heuristic context: installed AI extensions/providers: ${providers.join(', ')}`);
+            this.pushClassificationLine(`installedProviders=[${providers.join(', ')}]`);
+        }
+
+        const allDocsStillDirty = batch.every(q => {
+            const d = q.document;
+            return !d.isClosed && d.isDirty;
+        });
+
+        const recentTrackedChatApply =
+            this.lastTrackedChatApplyCommandAt > 0 &&
+            nowFlush - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_HEURISTIC_BIAS_MS;
+        const awaitingChatReplyForHeuristic =
+            this.chatRequestSentAt > 0 &&
+            nowFlush - this.chatRequestSentAt <= ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS;
+        const chatSurfaceForHeuristic =
+            (this.lastDetectedInteractionType === 'chat_panel' ||
+                this.lastDetectedInteractionType === 'chat_inline') &&
+            (nowFlush < this.aiActiveUntil ||
+                recentTrackedChatApply ||
+                awaitingChatReplyForHeuristic);
+
+        /** Sidebar / LM hosts: small streamed chunks (Copilot, Claude, Cursor) vs conservative paste floor. */
+        const providerBiasInsertFloor = AiContextExtractor.anyAiCodingAssistantHostDetected() ? 12 : 30;
+
+        /**
+         * Bypass strict format-preservation skip for large edits when we know chat/composer context
+         * or any AI provider / built-in LM is present — chat panel applies often resemble formatter output.
+         */
+        const providerBiasHeuristic =
+            (providers.length > 0 ||
+                recentTrackedChatApply ||
+                awaitingChatReplyForHeuristic ||
+                chatSurfaceForHeuristic) &&
+            allDocsStillDirty &&
+            hasMultiCharChunks &&
+            (containsNewline || totalInsertLength > providerBiasInsertFloor);
+
+        if (isHeuristicAiCandidate || providerBiasHeuristic) {
+            this.lastHeuristicClipboardRetry = null;
+            console.log(
+                `Heuristic AI candidate (${filePathForLog}): ` +
+                    `chunks=${batch.length} totalInsertLen=${totalInsertLength} newline=${containsNewline}`
+            );
+            this.pushClassificationLine(
+                `heuristic AI candidate (${filePathForLog}) chunks=${batch.length} insertLen=${totalInsertLength} nl=${containsNewline}` +
+                    (providerBiasHeuristic && !isHeuristicAiCandidate ? ' providerBias=1' : '')
+            );
+            // Do not re-attribute blame from newline-only fragments (human blanks stay human).
+            const allBlameObjects = batch.flatMap((q) => {
+                const ins = q.combinedInsert.replace(/\r\n/g, '\n');
+                return /^\n+$/.test(ins) ? [] : q.blameObjects;
+            });
 
             const filePath = batch[0].filePath;
             const document = batch[0].document;
 
             await this.checkClipboardAndReattributeBatch(document, filePath, combinedString, allBlameObjects);
-            this.onBlameUpdated();
+        } else {
+            console.log(
+                `Heuristic skipped (${filePathForLog}): ` +
+                `formatPreserved=${hasFormatPreserved} multiCharChunks=${hasMultiCharChunks} ` +
+                `newline=${containsNewline} totalInsertLen=${totalInsertLength}`
+            );
+            this.pushClassificationLine(
+                `heuristic skipped (${filePathForLog}) format=${hasFormatPreserved} chunks=${hasMultiCharChunks} ` +
+                    `newline=${containsNewline} insertLen=${totalInsertLength}`
+            );
         }
+
+        // Always refresh UI so human typing is reflected immediately after the debounce
+        this.onBlameUpdated();
     }
 
     private async getActiveAiModel(): Promise<string> {
@@ -317,15 +843,36 @@ export class ChangeTracker implements vscode.Disposable {
         blameObjects: import('../blame/BlameMap').LineBlame[]
     ) {
         if (blameObjects.length === 0) return;
-
         try {
             const clip = await vscode.env.clipboard.readText();
-            const normalizedClip = clip.replace(/\r\n/g, '\n').trim();
-            const normalizedInsert = combinedInsert.replace(/\r\n/g, '\n').trim();
+            const normalizedClip = normalizeInsertPlainText(clip);
+            const normalizedInsert = normalizeInsertPlainText(combinedInsert);
 
-            // If the combined text matches clipboard closely, it's a paste (Human)
-            if (normalizedClip && (normalizedClip.includes(normalizedInsert) || normalizedInsert.includes(normalizedClip))) {
-                return;
+            // Treat as paste (Human) only if clipboard EXACTLY equals the inserted text (after
+            // CRLF/whitespace normalization). Substring matches are too loose: VS Code chat panels
+            // sometimes copy apply text to the clipboard, so an `includes` check would mis-classify
+            // chat-apply inserts as pasted-by-human and lose AI attribution.
+            const clipboardExactPaste = isClipboardExactPasteAfterNormalize(normalizedClip, normalizedInsert);
+            if (clipboardExactPaste) {
+                const recentChatApply =
+                    Date.now() - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_CLIPBOARD_GRACE_MS;
+                const substantial = normalizedInsert.length >= 64;
+                if (!(recentChatApply && substantial)) {
+                    if (substantial) {
+                        this.lastHeuristicClipboardRetry = {
+                            uriString: document.uri.toString(),
+                            filePath,
+                            combinedInsert,
+                            blameObjects: [...blameObjects],
+                            createdAt: Date.now(),
+                        };
+                    }
+                    console.log(
+                        `Heuristic skipped (${filePath}): exact clipboard paste detected, treated as HUMAN paste`
+                    );
+                    this.pushClassificationLine(`heuristic: HUMAN paste (clipboard exact match) ${filePath}`);
+                    return;
+                }
             }
 
             const mockSessionId = 'heuristic-' + Date.now();
@@ -356,17 +903,29 @@ export class ChangeTracker implements vscode.Disposable {
                 }
             }
 
-            Logger.info(`Heuristically re-attributed ${blameObjects.length} lines to AI across ${filePath} despite diff splitting`);
+            console.log(`Heuristically re-attributed ${blameObjects.length} lines to AI across ${filePath} despite diff splitting`);
+            this.pushClassificationLine(`heuristic: AI ${blameObjects.length} line(s) ${filePath}`);
+            this.lastHeuristicClipboardRetry = null;
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            Logger.warn(`Failed clipboard heuristic check: ${msg}`);
+            console.log(`Failed clipboard heuristic check: ${msg}`);
         }
     }
 
     /** Threshold: replacement of this many chars or more with similar line count is treated as format (preserve ownership). */
     private static readonly FORMAT_LIKE_RANGE_LENGTH = 30;
-    /** Max line count difference to consider a replacement as format-like (e.g. formatter adds/removes blank lines). */
-    private static readonly FORMAT_LIKE_LINE_DIFF = 3;
+    /** Max line count difference to consider a replacement as format-like.
+     *  Real formatters (Prettier, ESLint --fix, Black) almost always keep line count or +/- 1 line.
+     *  Chat-apply replacements that change > 2 lines are content edits, not formatting. */
+    private static readonly FORMAT_LIKE_LINE_DIFF = 2;
+    /** Real formatters keep char counts very close — they only adjust whitespace/indent and add
+     *  the occasional semicolon or trailing comma. Chat-apply replacements typically grow or
+     *  shrink content significantly. Require char delta within this ratio (10%) to qualify as
+     *  format-like; otherwise treat as a content edit and let AI heuristics run. */
+    private static readonly FORMAT_LIKE_CHAR_RATIO = 0.10;
+    /** Even when the ratio is exceeded, very small absolute char deltas (e.g. adding semicolons
+     *  to a short snippet) should still count as formatter so prior attribution is preserved. */
+    private static readonly FORMAT_LIKE_CHAR_DELTA_FLOOR = 5;
 
     private async processChange(
         document: vscode.TextDocument,
@@ -379,12 +938,23 @@ export class ChangeTracker implements vscode.Disposable {
         const deletedLineCount = change.range.end.line - change.range.start.line + 1;
         const insertedLines = insertedText.split('\n');
         const insertedLineCount = insertedLines.length;
+        const now = Date.now();
 
-        // Capture blame for the replaced range before any mutation so we can preserve ownership on format
-        const isFormatLike = change.rangeLength >= ChangeTracker.FORMAT_LIKE_RANGE_LENGTH &&
-            Math.abs(insertedLineCount - deletedLineCount) <= ChangeTracker.FORMAT_LIKE_LINE_DIFF;
+        // Capture blame for the replaced range before any mutation so we can preserve ownership on format.
+        // Format-like requires (a) a substantial replacement, (b) similar line count, AND
+        // (c) char counts within FORMAT_LIKE_CHAR_RATIO (or below the absolute floor) — chat-apply
+        // replacements that grow/shrink content significantly are NOT formatters and should fall
+        // through to AI heuristics.
+        const charDelta = Math.abs(insertedText.length - change.rangeLength);
+        const charBase = Math.max(insertedText.length, change.rangeLength, 1);
+        const isFormatLike =
+            change.rangeLength >= ChangeTracker.FORMAT_LIKE_RANGE_LENGTH &&
+            Math.abs(insertedLineCount - deletedLineCount) <= ChangeTracker.FORMAT_LIKE_LINE_DIFF &&
+            (charDelta <= ChangeTracker.FORMAT_LIKE_CHAR_DELTA_FLOOR ||
+                charDelta / charBase <= ChangeTracker.FORMAT_LIKE_CHAR_RATIO);
         let preservedBlame: import('../blame/BlameMap').LineBlame[] = [];
-        if (isFormatLike && deletedLineCount > 0) {
+        const suppressFormatPreserve = this.shouldSuppressFormatLikePreservation(now);
+        if (!suppressFormatPreserve && isFormatLike && deletedLineCount > 0) {
             const existing = this.blameMap.getBlame(filePath);
             const endLine = startLine + deletedLineCount - 1;
             for (const e of existing) {
@@ -396,6 +966,14 @@ export class ChangeTracker implements vscode.Disposable {
                 }
             }
             preservedBlame.sort((a, b) => a.lineNumber - b.lineNumber);
+            if (preservedBlame.length > 0) {
+                console.log(
+                    `Format-like preservation (${filePath}:${startLine}): ` +
+                        `rangeLen=${change.rangeLength} insertLen=${insertedText.length} ` +
+                        `lineDiff=${Math.abs(insertedLineCount - deletedLineCount)} ` +
+                        `charDelta=${charDelta} preservedLines=${preservedBlame.length}`
+                );
+            }
         }
 
         // Decrement char counts for deleted content before reindex (so entries still exist when we reduce)
@@ -407,14 +985,29 @@ export class ChangeTracker implements vscode.Disposable {
                           .fill('x')
                           .join('\n');
             this.blameMap.decrementCharsForDeletion(filePath, startLine, oldFragment);
-            if (Date.now() < this.aiActiveUntil) {
+            if (now < this.aiActiveUntil) {
                 this.blameMap.recordAiDeletion(filePath, startLine, deletedLineCount);
             }
         }
 
-        // Reindex existing blame entries after deletion handling
+        // Reindex existing blame entries after deletion handling.
+        // For pure insertions (rangeLength === 0, e.g. pressing Enter), nothing is deleted,
+        // so we adjust reindex parameters: shift from the line BELOW the cursor to keep
+        // the existing line's blame in place and open a gap for the new line.
+        const isPureInsertion = change.rangeLength === 0;
+        const numNewlines = (insertedText.match(/\n/g) || []).length;
+        let reindexStartLine = startLine;
+        let reindexInserted = insertedLineCount;
+        let reindexDeleted = deletedLineCount;
+        if (isPureInsertion && numNewlines > 0) {
+            // Cursor in middle or end of line: content before cursor stays, new line(s) open below
+            // Cursor at beginning of line (char 0): new empty line at startLine, old content shifts
+            reindexStartLine = change.range.start.character > 0 ? startLine + 1 : startLine;
+            reindexInserted = numNewlines;
+            reindexDeleted = 0;
+        }
         const existing = this.blameMap.getBlame(filePath);
-        const reindexed = reindex(existing, startLine, insertedLineCount, deletedLineCount);
+        const reindexed = reindex(existing, reindexStartLine, reindexInserted, reindexDeleted);
         this.blameMap.setFileBlame(filePath, reindexed);
 
         if (insertedText.length === 0) {
@@ -426,8 +1019,9 @@ export class ChangeTracker implements vscode.Disposable {
 
         // Undo/redo or rollback window: only decrement + reindex were applied above; do not attribute restored text
         // so a single-line undo only removes that line's blame (matches IntelliJ).
-        const now = Date.now();
-        if (isUndoOrRedo || now < this.rollbackActiveUntil) {
+        // External VCS (stash apply, etc.) still needs human attribution — bypass rollback during that grace window.
+        const inExternalVcsGrace = now < this.externalVcsApplyUntil;
+        if (isUndoOrRedo || (now < this.rollbackActiveUntil && !inExternalVcsGrace)) {
             return { blameObjects: [], matchedAi: false };
         }
 
@@ -435,8 +1029,12 @@ export class ChangeTracker implements vscode.Disposable {
         const isNewlineOnly = insertedText.length > 0 && /^\n+$/.test(insertedText);
         const isEmptyLineInsert = isNewlineOnly || (insertedLines.every(l => l.trim() === '') && insertedText.includes('\n'));
 
-        // Duplicate event suppression (same file/line/content within 400ms window)
-        if (!isNewlineOnly) {
+        // Duplicate event suppression (same file/line/content within 400ms window).
+        // Skip for empty-line inserts (newline + optional whitespace) — consecutive Enter
+        // presses are distinct edits that happen to produce identical text.  When VS Code
+        // batches rapid keystrokes into one event, all contentChanges share the same
+        // pre-event range, so the eventKey would collide and suppress valid Enters.
+        if (!isEmptyLineInsert) {
             const eventKey = `${filePath}:${startLine}:${insertedText.length}:${insertedText.slice(0, 200)}`;
             if (eventKey === this.lastProcessedEventKey && (now - this.lastProcessedEventTime) < ChangeTracker.DUPLICATE_EVENT_WINDOW_MS) {
                 return { blameObjects: [], matchedAi: false };
@@ -445,17 +1043,102 @@ export class ChangeTracker implements vscode.Disposable {
             this.lastProcessedEventTime = now;
         }
 
-        // If empty line, always attribute as human with 1 char per newline
-        if (isEmptyLineInsert) {
+        // Newline-only / blank-line inserts: human by default (IntelliJ parity), unless we are
+        // inside an AI-apply window from chat — those often arrive as a leading \n chunk.
+        // After inline completion, the AI window is extended for streaming; a manual Enter must
+        // not inherit AI (and must clear the window so the next keystrokes are not AI either).
+        const inAiWindow = now < this.aiActiveUntil;
+        const chatApplyNewlineChunk =
+            inAiWindow &&
+            (this.lastDetectedInteractionType === 'chat_panel' ||
+                this.lastDetectedInteractionType === 'chat_inline');
+        if (isEmptyLineInsert && (!inAiWindow || !chatApplyNewlineChunk || inExternalVcsGrace)) {
             this.blameMap.recordFirstStartCodingTimeIfNeeded();
-            const numNewlines = (insertedText.match(/\n/g) || []).length;
-            const blameLineEnd = startLine + numNewlines - 1;
+            // For pure insertions, the reindex already shifted existing blame correctly:
+            // - cursor in middle/end of line: new empty line at startLine + 1 (existing blame stays at startLine)
+            // - cursor at beginning of line: new empty line at startLine (existing blame shifted to startLine + 1)
+            // For replacements (rangeLength > 0), the new line is at startLine.
+            let newLineStart: number;
+            if (isPureInsertion && change.range.start.character > 0) {
+                newLineStart = startLine + 1;
+            } else {
+                newLineStart = startLine;
+            }
+            const newLineEnd = newLineStart + numNewlines - 1;
             const charsPerLine = Array(numNewlines).fill(1);
             const affected = this.blameMap.setAttribute(
-                filePath, startLine, blameLineEnd < startLine ? startLine : blameLineEnd,
+                filePath, newLineStart, newLineEnd < newLineStart ? newLineStart : newLineEnd,
                 'HUMAN', null, null, null, null, undefined, numNewlines, charsPerLine
             );
+            if (inAiWindow && !chatApplyNewlineChunk) {
+                this.endAiInterceptWindowOnly();
+            }
             return { blameObjects: affected, matchedAi: false };
+        }
+
+        // Stash apply / merge can deliver editor edits before Git's worktree listener runs, so
+        // notifyExternalVcsApply may not have opened the grace window yet — but when it has,
+        // treat all inserts as human and skip AI intercept, suggestion match, and later heuristic.
+        if (inExternalVcsGrace) {
+            this.blameMap.recordFirstStartCodingTimeIfNeeded();
+            const endLine = startLine + insertedLineCount - 1;
+            const charsPerLineGrace = insertedLines.map(seg => (seg.trim() === '' ? 1 : seg.length));
+            const totalCharsGrace = charsPerLineGrace.reduce((a, b) => a + b, 0);
+            const affected = this.blameMap.setAttribute(
+                filePath,
+                startLine,
+                endLine,
+                'HUMAN',
+                null,
+                null,
+                null,
+                null,
+                undefined,
+                totalCharsGrace,
+                charsPerLineGrace
+            );
+            this.clearStaleDetectedMetadata();
+            return { blameObjects: affected, matchedAi: false };
+        }
+
+        // Expire abandoned chat-send markers (no reply applied within 2× the normal wait window).
+        if (
+            this.chatRequestSentAt > 0 &&
+            now - this.chatRequestSentAt > ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS * 2
+        ) {
+            this.chatRequestSentAt = 0;
+        }
+
+        const substantialForPendingChatReply =
+            insertedText.length >= 2 ||
+            numNewlines >= 1 ||
+            insertedLineCount >= 2 ||
+            change.rangeLength > 0;
+
+        const awaitingChatPanelHttpReply =
+            this.chatRequestSentAt > 0 &&
+            now - this.chatRequestSentAt <= ChangeTracker.CHAT_REPLY_ATTRIBUTION_MAX_MS &&
+            substantialForPendingChatReply;
+
+        if (awaitingChatPanelHttpReply && now >= this.aiActiveUntil) {
+            const ageMs = now - this.chatRequestSentAt;
+            const provider = AiContextExtractor.detectProvider();
+            console.log(
+                `pending chat HTTP reply → markNextChangeAsAi (send→edit gap ${ageMs}ms) ` +
+                    `len=${insertedText.length} provider=${provider ?? 'null'}`
+            );
+            chatPanelSignal('tracker-pending-chat-http-reply-mark-ai', {
+                sendToEditGapMs: ageMs,
+                insertLen: insertedText.length,
+                provider: provider ?? null,
+            });
+            this.markNextChangeAsAi(
+                AiContextExtractor.getAiWindowDuration('chat_panel'),
+                null,
+                this.lastDetectedModel,
+                provider,
+                'chat_panel'
+            );
         }
 
         // Try to match against pending suggestions OR the intercept flag
@@ -465,7 +1148,38 @@ export class ChangeTracker implements vscode.Disposable {
             character: change.range.start.character,
         });
 
-        const isInterceptedAi = (now < this.aiActiveUntil) && insertedText.length > 0;
+        /**
+         * If the inserted text exactly matches the system clipboard (after the same normalization as
+         * heuristics), treat as explicit user paste → HUMAN, not AI intercept / not stale suggestion match.
+         * Exception: right after a tracked chat Apply, large inserts often mirror clipboard — keep AI.
+         */
+        const hadAiInterceptBeforeClipboardCheck = now < this.aiActiveUntil;
+        let clipboardPasteOverridesAiAttribution = false;
+        if (insertedText.length > 0 && !isUndoOrRedo && (hadAiInterceptBeforeClipboardCheck || match)) {
+            try {
+                const clip = await vscode.env.clipboard.readText();
+                const normalizedClip = normalizeInsertPlainText(clip);
+                const normalizedInsert = normalizeInsertPlainText(insertedText);
+                if (isClipboardExactPasteAfterNormalize(normalizedClip, normalizedInsert)) {
+                    const recentChatApply =
+                        Date.now() - this.lastTrackedChatApplyCommandAt <
+                        ChangeTracker.CHAT_APPLY_CLIPBOARD_GRACE_MS;
+                    const substantial = normalizedInsert.length >= 64;
+                    if (!(recentChatApply && substantial)) {
+                        clipboardPasteOverridesAiAttribution = true;
+                    }
+                }
+            } catch {
+                /* clipboard unavailable */
+            }
+        }
+
+        const isInterceptedAi =
+            hadAiInterceptBeforeClipboardCheck &&
+            insertedText.length > 0 &&
+            !clipboardPasteOverridesAiAttribution;
+
+        const effectiveSuggestionMatch = clipboardPasteOverridesAiAttribution ? null : match;
 
         // Compute per-line char counts for accurate attribution (matches IntelliJ charsPerLineOverride)
         const charsPerLine = insertedLines.map(seg => seg.trim() === '' ? 1 : seg.length);
@@ -486,32 +1200,45 @@ export class ChangeTracker implements vscode.Disposable {
                 this.lastAiActionStartedAt = 0;
             }
 
-            this.markNextChangeAsAi(3000);
+            // Only extend the AI window for multi-character inserts (AI streaming chunks).
+            // Single-character inserts are human typing and must NOT extend the window,
+            // otherwise every keystroke after an AI edit perpetually re-extends the window
+            // and all subsequent human typing gets attributed to AI.
+            if (insertedText.length > 2) {
+                this.markNextChangeAsAi(3000);
+            }
 
             this.traceStore.addSuggestion(filePath, startLine, endLine, 0, 0, insertedText, providerId, '', modelName, prompt);
             this.traceStore.markAccepted(mockSessionId, insertedText);
 
             const affected = this.blameMap.setAttribute(filePath, startLine, endLine, 'AI', providerId, modelName, prompt, interactionType, undefined, totalBlameChars, charsPerLine);
-            Logger.info(`AI detected (window): ${filePath}:${startLine}-${endLine} provider=${providerId} model=${modelName} type=${interactionType}`);
+            console.log(`AI detected (window): ${filePath}:${startLine}-${endLine} provider=${providerId} model=${modelName} type=${interactionType}`);
             return { blameObjects: affected, matchedAi: true, providerId, sessionId: mockSessionId, prompt, model: modelName };
 
-        } else if (match) {
+        } else if (effectiveSuggestionMatch) {
             this.blameMap.recordFirstStartCodingTimeIfNeeded();
-            this.traceStore.markAccepted(match.suggestion.suggestion_id, insertedText);
+            this.traceStore.markAccepted(effectiveSuggestionMatch.suggestion.suggestion_id, insertedText);
             const endLine = startLine + insertedLineCount - 1;
 
             const affected = this.blameMap.setAttribute(
                 filePath, startLine, endLine, 'AI',
-                match.suggestion.provider_id, match.suggestion.model_name, match.suggestion.prompt,
+                effectiveSuggestionMatch.suggestion.provider_id, effectiveSuggestionMatch.suggestion.model_name, effectiveSuggestionMatch.suggestion.prompt,
                 null, undefined, totalBlameChars, charsPerLine
             );
 
-            Logger.info(
-                `AI suggestion accepted: ${match.suggestion.suggestion_id.slice(0, 8)} ` +
-                `(${match.suggestion.provider_id}) in ${filePath}:${startLine}-${endLine} ` +
-                `(similarity: ${match.similarity.toFixed(2)})`
+            console.log(
+                `AI suggestion accepted: ${effectiveSuggestionMatch.suggestion.suggestion_id.slice(0, 8)} ` +
+                `(${effectiveSuggestionMatch.suggestion.provider_id}) in ${filePath}:${startLine}-${endLine} ` +
+                `(similarity: ${effectiveSuggestionMatch.similarity.toFixed(2)})`
             );
-            return { blameObjects: affected, matchedAi: true, providerId: match.suggestion.provider_id, sessionId: match.suggestion.suggestion_id, prompt: match.suggestion.prompt, model: match.suggestion.model_name };
+            return {
+                blameObjects: affected,
+                matchedAi: true,
+                providerId: effectiveSuggestionMatch.suggestion.provider_id,
+                sessionId: effectiveSuggestionMatch.suggestion.suggestion_id,
+                prompt: effectiveSuggestionMatch.suggestion.prompt,
+                model: effectiveSuggestionMatch.suggestion.model_name
+            };
         } else {
             let affected: import('../blame/BlameMap').LineBlame[];
             if (preservedBlame.length > 0) {
@@ -524,8 +1251,27 @@ export class ChangeTracker implements vscode.Disposable {
                 );
             }
 
-            if (this.aiActiveUntil < now) {
-                this.clearAiContext();
+            const inAiWindow = now < this.aiActiveUntil;
+            if (!inAiWindow) {
+                this.clearHumanEditAiHints();
+            }
+
+            if (insertedText.length > 2) {
+                console.log(
+                    `[Blamely] classify HUMAN: ${filePath} L${startLine} insertLen=${insertedText.length} ` +
+                        `inAiInterceptWindow=${inAiWindow} aiActiveUntil=${this.aiActiveUntil} now=${now} ` +
+                        `deltaMs=${inAiWindow ? (this.aiActiveUntil - now) : (now - (this.aiActiveUntil || 0))} ` +
+                        `rollback=${now < this.rollbackActiveUntil} extVcsGrace=${now < this.externalVcsApplyUntil} ` +
+                        `formatPreserved=${preservedBlame.length > 0}` +
+                        (clipboardPasteOverridesAiAttribution ? ' clipboardPaste=1' : '')
+                );
+            }
+
+            if (clipboardPasteOverridesAiAttribution && hadAiInterceptBeforeClipboardCheck) {
+                this.endAiInterceptWindowOnly();
+                this.pushClassificationLine(
+                    `sync: clipboard paste → HUMAN (cleared AI intercept window) ${filePath}`
+                );
             }
 
             return {
@@ -537,6 +1283,15 @@ export class ChangeTracker implements vscode.Disposable {
     }
 
     dispose(): void {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+        }
+        if (this.applyCommandFlushTimer) {
+            clearTimeout(this.applyCommandFlushTimer);
+            this.applyCommandFlushTimer = null;
+        }
+        this.chatStreamBurstByUri.clear();
         for (const d of this.disposables) {
             d.dispose();
         }

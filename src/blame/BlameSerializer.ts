@@ -3,17 +3,34 @@ import * as path from 'path';
 import { LineBlame } from './BlameMap';
 import { encodeFilePath, decodeFilePath } from '../utils/Platform';
 import * as Logger from '../utils/Logger';
-import { getAiTraceDir, getBranch } from '../git/GitUtils';
+import { getBranch, getRepoRoot } from '../git/GitUtils';
+import { blameSnapshotsDir, legacyUserBlameSnapshotsDir, sanitizedBranchDirName } from '../store/BlamelyRepoPaths';
 
-function safeBranchName(branch: string | null): string {
-    const b = branch?.trim() || 'HEAD';
-    return b.replace(/[/\\]/g, '-') || 'HEAD';
+/**
+ * Branch-scoped blame snapshots under ~/.blamely/repos/<repoId>/snapshots/<branch>/.
+ */
+export async function getBranchSnapshotDir(workspaceRoot: string, explicitBranch?: string | null): Promise<string | null> {
+    const repo = await getRepoRoot(workspaceRoot);
+    if (!repo) {
+        return null;
+    }
+    const branch = explicitBranch !== undefined ? explicitBranch : await getBranch(workspaceRoot);
+    return blameSnapshotsDir(repo, branch);
+}
+
+/** Read-only: former install location (migration). */
+function legacyGitBlamelySnapshotDir(workspaceRoot: string, branch: string | null | undefined): string {
+    return path.join(workspaceRoot, '.git', 'blamely', 'snapshots', sanitizedBranchDirName(branch));
 }
 
 async function getSnapshotsDir(workspaceRoot: string, explicitBranch?: string | null): Promise<string | null> {
-    const outDir = await getAiTraceDir(workspaceRoot) || path.join(workspaceRoot, '.git', 'ai-trace');
-    const branch = explicitBranch !== undefined ? explicitBranch : await getBranch(workspaceRoot);
-    return path.join(outDir, 'snapshots', safeBranchName(branch));
+    return getBranchSnapshotDir(workspaceRoot, explicitBranch);
+}
+
+async function readBlameJsonFile(targetPath: string): Promise<LineBlame[]> {
+    const raw = await fs.promises.readFile(targetPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeLineBlame) : [];
 }
 
 export async function save(
@@ -38,21 +55,66 @@ export async function save(
     }
 }
 
+/** Drop persisted blame snapshot files for a file (Undo/Redo / SCM discard; avoid storing rolled-back attribution). */
+export async function removeSnapshot(workspaceRoot: string, filePath: string): Promise<void> {
+    const encodedBase = encodeFilePath(filePath);
+    const encodedBlameFile = encodedBase + '.blame.json';
+    const encodedPlainJson = encodedBase + '.json';
+    const unlinkIfExists = async (fullPath: string): Promise<void> => {
+        try {
+            if (fs.existsSync(fullPath)) {
+                await fs.promises.unlink(fullPath);
+            }
+        } catch {
+            /* ignore race */
+        }
+    };
+    try {
+        const snapshotsDir = await getSnapshotsDir(workspaceRoot);
+        if (snapshotsDir) {
+            await unlinkIfExists(path.join(snapshotsDir, encodedBlameFile));
+            await unlinkIfExists(path.join(snapshotsDir, encodedPlainJson));
+        }
+        const branch = await getBranch(workspaceRoot);
+        const repo = await getRepoRoot(workspaceRoot);
+        if (repo) {
+            await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedBlameFile));
+            await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedPlainJson));
+        }
+        await unlinkIfExists(path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedBlameFile));
+        await unlinkIfExists(path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedPlainJson));
+        Logger.info(`Removed persisted blame snapshot(s) for ${filePath}`);
+    } catch (err) {
+        Logger.warn(`Could not remove blame snapshot for ${filePath}: ${err}`);
+    }
+}
+
 export async function load(
     workspaceRoot: string,
     filePath: string
 ): Promise<LineBlame[]> {
     try {
-        const snapshotsDir = await getSnapshotsDir(workspaceRoot);
-        if (!snapshotsDir) return [];
         const encodedFile = encodeFilePath(filePath) + '.blame.json';
-        const targetPath = path.join(snapshotsDir, encodedFile);
-
-        if (!fs.existsSync(targetPath)) return [];
-
-        const raw = await fs.promises.readFile(targetPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed.map(normalizeLineBlame) : [];
+        const gitDir = await getSnapshotsDir(workspaceRoot);
+        if (gitDir) {
+            const gitPath = path.join(gitDir, encodedFile);
+            if (fs.existsSync(gitPath)) {
+                return readBlameJsonFile(gitPath);
+            }
+        }
+        const branch = await getBranch(workspaceRoot);
+        const repo = await getRepoRoot(workspaceRoot);
+        if (repo) {
+            const legacyHome = path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedFile);
+            if (fs.existsSync(legacyHome)) {
+                return readBlameJsonFile(legacyHome);
+            }
+        }
+        const legacyPath = path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedFile);
+        if (fs.existsSync(legacyPath)) {
+            return readBlameJsonFile(legacyPath);
+        }
+        return [];
     } catch (err) {
         Logger.warn(`Could not load blame state for ${filePath}: ${err}`);
         return [];
@@ -87,13 +149,37 @@ function normalizeLineBlame(obj: Record<string, unknown>): LineBlame {
 export async function loadAll(workspaceRoot: string): Promise<Map<string, LineBlame[]>> {
     const memory = new Map<string, LineBlame[]>();
     try {
-        const snapshotsDir = await getSnapshotsDir(workspaceRoot);
-        if (!snapshotsDir || !fs.existsSync(snapshotsDir)) return memory;
+        const gitDir = await getSnapshotsDir(workspaceRoot);
+        const branch = await getBranch(workspaceRoot);
+        const repo = await getRepoRoot(workspaceRoot);
+        const legacyDir = legacyGitBlamelySnapshotDir(workspaceRoot, branch);
+        const legacyHomeDir = repo ? legacyUserBlameSnapshotsDir(repo, branch) : null;
 
-        const files = await fs.promises.readdir(snapshotsDir);
+        let dir: string | null = null;
+        if (gitDir && fs.existsSync(gitDir)) {
+            const files = await fs.promises.readdir(gitDir);
+            if (files.some(f => f.endsWith('.blame.json'))) {
+                dir = gitDir;
+            }
+        }
+        if (!dir && legacyHomeDir && fs.existsSync(legacyHomeDir)) {
+            const files = await fs.promises.readdir(legacyHomeDir);
+            if (files.some(f => f.endsWith('.blame.json'))) {
+                dir = legacyHomeDir;
+            }
+        }
+        if (!dir && fs.existsSync(legacyDir)) {
+            const files = await fs.promises.readdir(legacyDir);
+            if (files.some(f => f.endsWith('.blame.json'))) {
+                dir = legacyDir;
+            }
+        }
+        if (!dir) return memory;
+
+        const files = await fs.promises.readdir(dir);
         for (const f of files) {
             if (f.endsWith('.blame.json')) {
-                const targetPath = path.join(snapshotsDir, f);
+                const targetPath = path.join(dir, f);
                 const raw = await fs.promises.readFile(targetPath, 'utf-8');
                 const parsed = JSON.parse(raw);
                 const entries = Array.isArray(parsed) ? parsed.map(normalizeLineBlame) : [];

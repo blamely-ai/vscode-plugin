@@ -51,11 +51,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
-      - name: Compile
-        run: npm run compile
-        
-      - name: Package VSIX
-        run: npx @vscode/vsce package --allow-missing-repository -o Blamely-${{ github.ref_name }}.vsix
+      - name: Package VSIX (release compile + obfuscate, no source in bundle)
+        run: npm run compile:release && npm run obfuscate && npx @vscode/vsce package --no-dependencies --allow-missing-repository -o Blamely-${{ github.ref_name }}.vsix
         
       - name: Create Release
         uses: softprops/action-gh-release@v2

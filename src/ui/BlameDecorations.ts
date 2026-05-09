@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { BlameMap } from '../blame/BlameMap';
-import { normalizePath } from '../utils/Platform';
+import { BlameMap, LineBlame } from '../blame/BlameMap';
+import { blameFileKey } from '../utils/WorkspacePaths';
 
 /** Small brain SVG for AI gutter icon (matches IntelliJ GutterBrain). */
 const GUTTER_AI_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/></svg>';
@@ -30,7 +30,6 @@ export class BlameDecorations implements vscode.Disposable {
         this.aiDecorationType = vscode.window.createTextEditorDecorationType({
             overviewRulerColor: '#4a9eff',
             overviewRulerLane: vscode.OverviewRulerLane.Right,
-            backgroundColor: 'rgba(74, 158, 255, 0.1)',
             isWholeLine: true,
             gutterIconPath: dataUriForSvg(GUTTER_AI_SVG),
             gutterIconSize: 'contain',
@@ -70,7 +69,7 @@ export class BlameDecorations implements vscode.Disposable {
     }
 
     private applyDecorations(): void {
-        const config = vscode.workspace.getConfiguration('aiTrace');
+        const config = vscode.workspace.getConfiguration('blamely');
         if (!config.get('showGutterDecorations', true)) {
             return;
         }
@@ -80,13 +79,19 @@ export class BlameDecorations implements vscode.Disposable {
             return;
         }
 
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const rawRelative = workspaceFolder
-            ? vscode.workspace.asRelativePath(editor.document.uri, false)
-            : editor.document.uri.fsPath;
-        const relativePath = normalizePath(rawRelative);
+        const relativePath = blameFileKey(editor.document.uri);
 
-        const entries = this.blameMap.getBlame(relativePath).filter(e => e.commitSha == null);
+        const rawEntries = this.blameMap.getBlame(relativePath).filter(e => e.commitSha == null);
+        // Same line can appear more than once in storage edge cases — one decoration + tooltip per line.
+        const byLine = new Map<number, LineBlame>();
+        for (const e of rawEntries) {
+            const existing = byLine.get(e.lineNumber);
+            if (!existing || e.aiChars + e.humanChars > existing.aiChars + existing.humanChars) {
+                byLine.set(e.lineNumber, e);
+            }
+        }
+        const entries = [...byLine.values()].sort((a, b) => a.lineNumber - b.lineNumber);
+
         const aiRanges: vscode.DecorationOptions[] = [];
         const humanRanges: vscode.DecorationOptions[] = [];
 
@@ -100,29 +105,33 @@ export class BlameDecorations implements vscode.Disposable {
             } catch {
                 continue;
             }
-            // Use a range that spans the line so gutter icon shows even for empty lines (lineLength === 0)
+            // Empty line: use a zero-width range on that line only so we do not overlap the next line
+            // (overlap caused duplicate 👤 Human Written hovers when gutter ranges stacked).
             const range = lineLength === 0
-                ? new vscode.Range(lineIndex, 0, Math.min(lineIndex + 1, editor.document.lineCount), 0)
+                ? new vscode.Range(lineIndex, 0, lineIndex, 0)
                 : new vscode.Range(lineIndex, 0, lineIndex, lineLength);
             const hoverMessage = new vscode.MarkdownString();
+            hoverMessage.isTrusted = false;
 
             if (entry.authorType === 'AI') {
-                hoverMessage.appendMarkdown(`**🤖 AI Generated**\n\n`);
-                hoverMessage.appendMarkdown(`- **Provider:** ${entry.provider || 'unknown'}\n`);
+                hoverMessage.appendMarkdown(`- **Author:** AI\n`);
                 if (entry.model) {
-                    hoverMessage.appendMarkdown(`- **Model:** ${entry.model}\n`);
+                    hoverMessage.appendMarkdown(`- **Model:** \`${this.escapeMd(entry.model)}\`\n`);
+                }
+                if (entry.interactionType) {
+                    hoverMessage.appendMarkdown(`- **Source:** \`${this.escapeMd(entry.interactionType)}\`\n`);
                 }
                 if (entry.prompt) {
-                    hoverMessage.appendMarkdown(`- **Prompt:** _"${entry.prompt}"_\n`);
+                    hoverMessage.appendMarkdown(`- **Prompt:** ${this.quotePrompt(entry.prompt)}\n`);
                 }
-                hoverMessage.appendMarkdown(`- **Timestamp:** ${entry.timestamp}\n`);
+                hoverMessage.appendMarkdown(`- **Updated:** ${this.formatTimestamp(entry.timestamp)}\n`);
                 if (entry.commitSha) {
                     hoverMessage.appendMarkdown(`- **Commit:** \`${entry.commitSha.slice(0, 8)}\`\n`);
                 }
                 aiRanges.push({ range, hoverMessage });
             } else {
-                hoverMessage.appendMarkdown(`**👤 Human Written**\n\n`);
-                hoverMessage.appendMarkdown(`- **Timestamp:** ${entry.timestamp}\n`);
+                hoverMessage.appendMarkdown(`- **Author:** Human\n`);
+                hoverMessage.appendMarkdown(`- **Updated:** ${this.formatTimestamp(entry.timestamp)}\n`);
                 if (entry.commitSha) {
                     hoverMessage.appendMarkdown(`- **Commit:** \`${entry.commitSha.slice(0, 8)}\`\n`);
                 }
@@ -136,6 +145,32 @@ export class BlameDecorations implements vscode.Disposable {
         } catch (err) {
             // Ignore UI rendering errors (e.g., "Make sure the ref is set...")
         }
+    }
+
+    private formatTimestamp(raw: string): string {
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return this.escapeMd(raw);
+        return this.escapeMd(d.toLocaleString());
+    }
+
+    private quotePrompt(prompt: string): string {
+        const clean = this.escapeMd(prompt).trim();
+        const short = clean.length > 220 ? `${clean.slice(0, 220)}...` : clean;
+        return `> ${short}`;
+    }
+
+    private escapeMd(value: string): string {
+        return value
+            .replace(/\\/g, '\\\\')
+            .replace(/`/g, '\\`')
+            .replace(/\*/g, '\\*')
+            .replace(/_/g, '\\_')
+            .replace(/\[/g, '\\[')
+            .replace(/\]/g, '\\]')
+            .replace(/\(/g, '\\(')
+            .replace(/\)/g, '\\)')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     dispose(): void {

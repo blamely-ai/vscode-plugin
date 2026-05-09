@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
+import { getWorkingTreeDirtyBlameKeys } from '../utils/WorkspacePaths';
 
 /**
  * Status bar widget showing AI & Human by characters, lines, and percentage.
  * Matches IntelliJ BlamelyStatusBarWidget: ⓒ = chars, ≡ = lines.
  * Format: 🤖 AI: 20 ⓒ 1 ≡ 20% | 👤 Human: 35 ⓒ 2 ≡ 80%
- * Only counts uncommitted entries (commit_sha === null).
+ * Only counts uncommitted entries (commit_sha === null) on files Git still reports as dirty when in a repo,
+ * so counts stay aligned with the sidebar Changes list after discard/commit.
  * Refreshes every 2 seconds (matching IntelliJ statusBarAlarm) and on every onBlameUpdated call.
  */
 export class StatusBar implements vscode.Disposable {
@@ -22,16 +24,20 @@ export class StatusBar implements vscode.Disposable {
             vscode.StatusBarAlignment.Right,
             100
         );
-        this.item.command = 'aiTraceSidebar.focus';
+        this.item.command = 'blamelySidebar.focus';
         this.item.tooltip = 'Blamely — ⓒ chars, ≡ lines. Click to view details. blamely.ai';
-        this.update();
+        void this.update();
         this.item.show();
 
-        this.refreshInterval = setInterval(() => this.update(), 2000);
+        this.refreshInterval = setInterval(() => void this.update(), 2000);
     }
 
-    update(): void {
-        const summary = this.blameMap.getSummary();
+    async update(): Promise<void> {
+        const dirtyKeys = await getWorkingTreeDirtyBlameKeys();
+        const summary =
+            dirtyKeys === null
+                ? this.blameMap.getSummary()
+                : this.blameMap.getSummary(dirtyKeys);
         const totalChars = summary.aiChars + summary.humanChars;
         const totalLines = summary.totalLines;
 
