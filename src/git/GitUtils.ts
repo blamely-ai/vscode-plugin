@@ -134,6 +134,63 @@ export interface FileDiffStats {
     deletedCount: number;
 }
 
+const EMPTY_DIFF_STATS: FileDiffStats = {
+    addedLines: [],
+    deletedLines: [],
+    addedCount: 0,
+    deletedCount: 0,
+};
+
+/** Parse unified diff hunks from `git show -p` / `git diff -p` output (same line-number rules as {@link getDiffStats}). */
+export function parseUnifiedDiffPatch(patch: string): FileDiffStats {
+    const added: number[] = [];
+    const deleted: number[] = [];
+    let currentNewLine = 0;
+    let currentOldLine = 0;
+    const hunkRe = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+    for (const line of patch.split('\n')) {
+        const hunk = hunkRe.exec(line);
+        if (hunk) {
+            currentOldLine = parseInt(hunk[1], 10) || 0;
+            currentNewLine = parseInt(hunk[2], 10) || 0;
+            continue;
+        }
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+            added.push(currentNewLine);
+            currentNewLine++;
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            deleted.push(currentOldLine);
+            currentOldLine++;
+        } else if (line.startsWith(' ')) {
+            currentNewLine++;
+            currentOldLine++;
+        }
+    }
+    return {
+        addedLines: added,
+        deletedLines: deleted,
+        addedCount: added.length,
+        deletedCount: deleted.length,
+    };
+}
+
+/** Repo-relative paths with staged changes (compares index to HEAD). */
+export async function listStagedRepoRelativePaths(cwd: string): Promise<string[]> {
+    const out = await runSafe(cwd, 'diff', '--cached', '--name-only');
+    if (!out?.trim()) return [];
+    return out
+        .split('\n')
+        .map(s => s.trim().replace(/\\/g, '/'))
+        .filter(Boolean);
+}
+
+/** Line adds/deletes for staged diff vs HEAD (1-based line indices). */
+export async function getStagedDiffStats(cwd: string, filePathRepoRelative: string): Promise<FileDiffStats> {
+    const out = await runSafe(cwd, 'diff', '--cached', '-p', '--', filePathRepoRelative);
+    if (!out?.trim()) return { ...EMPTY_DIFF_STATS };
+    return parseUnifiedDiffPatch(out);
+}
+
 /** Paths (repo-relative) of files changed in the given commit. */
 export async function getFilesChangedInCommit(cwd: string, commitSha: string): Promise<string[]> {
     let out = await runSafe(cwd, 'diff-tree', '--no-commit-id', '--name-only', '-r', commitSha);
@@ -159,36 +216,8 @@ export async function getDiffStats(
     filePathRepoRelative: string
 ): Promise<FileDiffStats> {
     const out = await runSafe(cwd, 'show', commitSha, '-p', '--', filePathRepoRelative);
-    if (!out) return { addedLines: [], deletedLines: [], addedCount: 0, deletedCount: 0 };
-    const added: number[] = [];
-    const deleted: number[] = [];
-    let currentNewLine = 0;
-    let currentOldLine = 0;
-    const hunkRe = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-    for (const line of out.split('\n')) {
-        const hunk = hunkRe.exec(line);
-        if (hunk) {
-            currentOldLine = parseInt(hunk[1], 10) || 0;
-            currentNewLine = parseInt(hunk[2], 10) || 0;
-            continue;
-        }
-        if (line.startsWith('+') && !line.startsWith('+++')) {
-            added.push(currentNewLine);
-            currentNewLine++;
-        } else if (line.startsWith('-') && !line.startsWith('---')) {
-            deleted.push(currentOldLine);
-            currentOldLine++;
-        } else if (line.startsWith(' ')) {
-            currentNewLine++;
-            currentOldLine++;
-        }
-    }
-    return {
-        addedLines: added,
-        deletedLines: deleted,
-        addedCount: added.length,
-        deletedCount: deleted.length,
-    };
+    if (!out) return { ...EMPTY_DIFF_STATS };
+    return parseUnifiedDiffPatch(out);
 }
 
 /** Human-readable `git show` summary for a commit (header + `--stat`). */

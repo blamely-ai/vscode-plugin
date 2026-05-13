@@ -323,6 +323,29 @@ export class TraceStore {
         this.pendingSuggestions = this.pendingSuggestions.filter(s => !shouldRemove(s.file_path));
     }
 
+    /**
+     * After a Blamely git note is saved: clear in-memory trace for that repo's workspace folders
+     * and delete persisted `trace/session.json` files for those folders.
+     */
+    async resetTraceAfterBlamelyNote(repoRoot: string): Promise<void> {
+        const folders = workspaceFoldersUnderRepo(repoRoot);
+        if (folders.length === 0) {
+            return;
+        }
+        this.removeSuggestionsForWorkspaceFolders(folders);
+        for (const f of folders) {
+            try {
+                const sessionPath = await this.traceSessionJsonPath(f.uri.fsPath);
+                if (sessionPath && fs.existsSync(sessionPath)) {
+                    await fs.promises.unlink(sessionPath);
+                    Logger.info(`Removed trace session file: ${sessionPath}`);
+                }
+            } catch (err) {
+                Logger.warn(`Failed to remove trace session: ${err}`);
+            }
+        }
+    }
+
     clear(): void {
         this.suggestions = [];
         this.pendingSuggestions = [];

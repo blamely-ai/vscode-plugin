@@ -2,26 +2,22 @@ import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { TraceStore } from '../store/TraceStore';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
-import { sanitizeModelForReport } from '../utils/AiContextExtractor';
+import {
+    buildFileEntries,
+    totalsFromFileEntries,
+    type HookTotals,
+    type FileEntry,
+} from './hookTotals';
+
+export type { HookTotals } from './hookTotals';
+export { totalsFromFileEntries, detectorHookPreamble, computeHookTotalsFromBlameSnapshot } from './hookTotals';
 
 export interface ReportMetrics {
     firstStartCodingTimeMs: number;
     timeWaitingForAiMs: number;
 }
 
-interface FileEntry {
-    path: string;
-    source: string;
-    model: string;
-    aiLinesAdded: number;
-    humanLinesAdded: number;
-    linesDeleted: number;
-    totalEntries: number;
-    percentage: string;
-    prompts: string[];
-}
-
-const DETECTOR_VERSION = '1.0.0';
+const DETECTOR_VERSION = '1.1.0';
 
 /**
  * Two-line header read by `hookRunner.js` pre-commit (regex on # AI / # Human lines).
@@ -35,6 +31,71 @@ export function legacyPreCommitDetectorPreamble(aiLines: number, humanLines: num
         `# AI-authored lines: ${aiLines} (${aiPct}%)\n` +
         `# Human-authored lines: ${humanLines} (${humanPct}%)\n\n`
     );
+}
+
+/**
+ * DELETE rows are not stored in the live blame map (reindex drops them). Merge staged `git diff --cached`
+ * deletions so hook totals / YAML match what will be committed; AI vs human uses {@link BlameMap.wasLineDeletedByAi}.
+ */
+async function mergeStagedDeletionsIntoSnapshot(
+    blameSnapshot: Record<string, LineBlame[]>,
+    blameMap: BlameMap,
+    workspaceRoot: string,
+    fileKeyPrefix: string | null | undefined,
+    timestampIso: string
+): Promise<void> {
+    const repoRoot = await GitUtils.getRepoRoot(workspaceRoot);
+    if (!repoRoot) return;
+
+    const stagedFiles = await GitUtils.listStagedRepoRelativePaths(repoRoot);
+    for (const repoRel of stagedFiles) {
+        const stats = await GitUtils.getStagedDiffStats(repoRoot, repoRel);
+        if (stats.deletedCount === 0) continue;
+
+        const projRelMap = GitUtils.repoRelativeToProjectRelative(repoRoot, workspaceRoot, [repoRel]);
+        const mapPath = (projRelMap.get(repoRel) ?? repoRel).replace(/^\/+/, '');
+        const blameKey = fileKeyPrefix ? `${fileKeyPrefix}${mapPath}` : mapPath;
+
+        if (fileKeyPrefix && !blameKey.startsWith(fileKeyPrefix)) continue;
+
+        const deleteRows: LineBlame[] = [];
+        for (const oldLine of [...stats.deletedLines].sort((a, b) => a - b)) {
+            const deletedByAi = blameMap.wasLineDeletedByAi(blameKey, oldLine);
+            deleteRows.push({
+                lineNumber: oldLine,
+                authorType: deletedByAi ? 'AI' : 'HUMAN',
+                provider: deletedByAi ? 'github-copilot' : null,
+                timestamp: timestampIso,
+                commitSha: null,
+                model: deletedByAi ? 'unknown' : null,
+                prompt: null,
+                interactionType: null,
+                aiChars: deletedByAi ? 1 : 0,
+                humanChars: deletedByAi ? 0 : 1,
+                changeType: 'DELETE',
+                newLineNumber: null,
+                oldLineNumber: oldLine,
+                codingType: 'TYPING',
+            });
+        }
+
+        const prev =
+            blameSnapshot[blameKey] ??
+            blameMap.getBlame(blameKey).filter(e => e.commitSha == null);
+        const seenOld = new Set(
+            prev
+                .filter(e => e.changeType === 'DELETE' && e.oldLineNumber != null)
+                .map(e => e.oldLineNumber as number)
+        );
+        const merged = [...prev];
+        for (const row of deleteRows) {
+            if (row.oldLineNumber != null && !seenOld.has(row.oldLineNumber)) {
+                merged.push(row);
+                seenOld.add(row.oldLineNumber);
+            }
+        }
+        blameSnapshot[blameKey] = merged;
+    }
 }
 
 function escapeYamlString(s: string): string {
@@ -68,9 +129,12 @@ function buildReportYaml(
 
     const totalAiAdded = fileEntries.reduce((s, e) => s + e.aiLinesAdded, 0);
     const totalHumanAdded = fileEntries.reduce((s, e) => s + e.humanLinesAdded, 0);
+    const totalAiDeleted = fileEntries.reduce((s, e) => s + e.aiLinesDeleted, 0);
+    const totalHumanDeleted = fileEntries.reduce((s, e) => s + e.humanLinesDeleted, 0);
     const totalDeleted = fileEntries.reduce((s, e) => s + e.linesDeleted, 0);
     const totalChanges = totalAiAdded + totalHumanAdded + totalDeleted;
-    const overallPct = totalChanges > 0 ? ((100 * totalAiAdded) / totalChanges).toFixed(1) + '%' : '0.0%';
+    const aiMass = totalAiAdded + totalAiDeleted;
+    const overallPct = totalChanges > 0 ? ((100 * aiMass) / totalChanges).toFixed(1) + '%' : '0.0%';
 
     const allModels = new Set<string>();
     for (const e of fileEntries) {
@@ -84,7 +148,9 @@ function buildReportYaml(
     lines.push(`  total_lines_deleted: ${totalDeleted}`);
     lines.push(`  total_changes: ${totalChanges}`);
     lines.push(`  ai_lines_added: ${totalAiAdded}`);
+    lines.push(`  ai_lines_deleted: ${totalAiDeleted}`);
     lines.push(`  human_lines_added: ${totalHumanAdded}`);
+    lines.push(`  human_lines_deleted: ${totalHumanDeleted}`);
     lines.push(`  ai_percentage: "${overallPct}"`);
     lines.push(`  model_count: ${modelCount}`);
     lines.push('');
@@ -127,7 +193,9 @@ function buildReportYaml(
             lines.push(`    source: "${entry.source}"`);
             lines.push(`    model: "${entry.model}"`);
             lines.push(`    ai_lines_added: ${entry.aiLinesAdded}`);
+            lines.push(`    ai_lines_deleted: ${entry.aiLinesDeleted}`);
             lines.push(`    human_lines_added: ${entry.humanLinesAdded}`);
+            lines.push(`    human_lines_deleted: ${entry.humanLinesDeleted}`);
             lines.push(`    lines_deleted: ${entry.linesDeleted}`);
             lines.push(`    total_changes: ${entry.aiLinesAdded + entry.humanLinesAdded + entry.linesDeleted}`);
             lines.push(`    ai_percentage: "${entry.percentage}"`);
@@ -169,57 +237,6 @@ export function blameSnapshotToYamlForReport(entireBlame: Record<string, LineBla
     return lines.join('\n');
 }
 
-function buildFileEntries(
-    entireBlame: Record<string, LineBlame[]>,
-    interactionTypesFromBlame: Set<string>
-): FileEntry[] {
-    const fileEntries: FileEntry[] = [];
-    for (const [filePath, entries] of Object.entries(entireBlame)) {
-        if (entries.length === 0) continue;
-        const addedEntries = entries.filter(e => (e.changeType ?? 'ADD') === 'ADD');
-        const deletedCount = entries.filter(e => e.changeType === 'DELETE').length;
-
-        let aiLines = 0;
-        let humanLines = 0;
-        const sources = new Set<string>();
-        const modelsSet = new Set<string>();
-        const promptsSet = new Set<string>();
-
-        for (const e of addedEntries) {
-            if (e.authorType === 'AI') {
-                aiLines++;
-                if (e.provider) sources.add(e.provider);
-                const sanitized = sanitizeModelForReport(e.model);
-                if (sanitized) modelsSet.add(sanitized);
-                if (e.prompt) promptsSet.add(e.prompt);
-                if (e.interactionType?.trim()) interactionTypesFromBlame.add(e.interactionType);
-            } else {
-                humanLines++;
-            }
-        }
-
-        const totalAdded = aiLines + humanLines;
-        const totalAll = totalAdded + deletedCount;
-        const pct = totalAll > 0 ? ((100 * aiLines) / totalAll).toFixed(1) + '%' : '0.0%';
-        const modelDisplay = modelsSet.size === 0 ? 'unknown'
-            : modelsSet.size === 1 ? [...modelsSet][0]
-            : 'multiple';
-
-        fileEntries.push({
-            path: filePath,
-            source: sources.size === 1 ? [...sources][0] : 'multiple',
-            model: modelDisplay,
-            aiLinesAdded: aiLines,
-            humanLinesAdded: humanLines,
-            linesDeleted: deletedCount,
-            totalEntries: totalAll,
-            percentage: pct,
-            prompts: [...promptsSet],
-        });
-    }
-    return fileEntries;
-}
-
 /** Build report from a pre-built blame snapshot (used by CommitListener after building snapshot from diff). */
 export async function generateFromBlameSnapshot(
     workspaceRoot: string,
@@ -254,7 +271,7 @@ export async function generateFromBlameSnapshot(
     }
 }
 
-export async function generateContent(
+async function buildYamlPayload(
     workspaceRoot: string,
     blameMap: BlameMap,
     _traceStore: TraceStore,
@@ -263,7 +280,7 @@ export async function generateContent(
     metrics?: ReportMetrics | null,
     /** If set (multi-root), only include blame keys starting with this prefix (e.g. `my-app/`). */
     fileKeyPrefix?: string | null
-): Promise<string> {
+): Promise<{ yaml: string; hookTotals: HookTotals }> {
     const generatedAt = new Date().toISOString();
     const branch = (await GitUtils.getBranch(workspaceRoot)) || 'unknown';
     const finalCommitHash = commitHash || (await GitUtils.getLatestCommitSha(workspaceRoot)) || 'unknown';
@@ -277,12 +294,16 @@ export async function generateContent(
             continue;
         }
         let entries = blameMap.getBlame(filePath);
-        if (finalCommitHash && finalCommitHash !== 'unknown') {
-            entries = entries.filter(e => e.commitSha === finalCommitHash);
+        if (commitHash != null && commitHash !== '' && commitHash !== 'unknown') {
+            entries = entries.filter(e => e.commitSha === commitHash);
+        } else {
+            entries = entries.filter(e => e.commitSha == null);
         }
         if (entries.length === 0) continue;
         blameSnapshot[filePath] = entries;
     }
+
+    await mergeStagedDeletionsIntoSnapshot(blameSnapshot, blameMap, workspaceRoot, fileKeyPrefix, generatedAt);
 
     const fileEntries = buildFileEntries(blameSnapshot, interactionTypesFromBlame);
 
@@ -291,7 +312,7 @@ export async function generateContent(
         timeWaitingForAiMs: blameMap.totalTimeWaitingForAiMs,
     };
 
-    return buildReportYaml(
+    const yaml = buildReportYaml(
         generatedAt,
         branch,
         finalCommitHash,
@@ -301,6 +322,56 @@ export async function generateContent(
         interactionTypesFromBlame,
         metricsFromMap
     );
+    return { yaml, hookTotals: totalsFromFileEntries(fileEntries) };
+}
+
+export async function generateContent(
+    workspaceRoot: string,
+    blameMap: BlameMap,
+    traceStore: TraceStore,
+    commitHash?: string,
+    ideName: string = 'unknown',
+    metrics?: ReportMetrics | null,
+    /** If set (multi-root), only include blame keys starting with this prefix (e.g. `my-app/`). */
+    fileKeyPrefix?: string | null
+): Promise<string> {
+    const { yaml } = await buildYamlPayload(
+        workspaceRoot,
+        blameMap,
+        traceStore,
+        commitHash,
+        ideName,
+        metrics,
+        fileKeyPrefix
+    );
+    return yaml;
+}
+
+/** Same as {@link generateContent}, plus aggregated hook totals for `blamely-detector.ai` preamble. */
+export async function generateYamlAndHookTotals(
+    workspaceRoot: string,
+    blameMap: BlameMap,
+    traceStore: TraceStore,
+    commitHash?: string,
+    ideName: string = 'unknown',
+    metrics?: ReportMetrics | null,
+    fileKeyPrefix?: string | null
+): Promise<{ yaml: string; hookTotals: HookTotals } | null> {
+    try {
+        return await buildYamlPayload(
+            workspaceRoot,
+            blameMap,
+            traceStore,
+            commitHash,
+            ideName,
+            metrics,
+            fileKeyPrefix
+        );
+    } catch (err) {
+        console.error('[blamely] FAILED to generate ReportYaml payload:', err);
+        Logger.error('Failed to generate ReportYaml payload', err);
+        return null;
+    }
 }
 
 export async function generate(

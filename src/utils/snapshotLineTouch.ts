@@ -88,8 +88,10 @@ function contiguousRangesFromSortedLineNums(sorted: number[]): Array<{ start: nu
  *
  * VS Code {@link vscode.TextDocumentContentChangeEvent} ranges are relative to the document **before**
  * each successive edit, while {@code touched} from snapshot diff uses **final** line numbers — they often
- * mis-align on whole-buffer replaces. When intersection is empty but the nominal span covers most of the
- * file and {@code docLineCount} is passed, we attribute using {@code touched} alone (post-edit coords).
+ * mis-align on whole-buffer replaces. When intersection is empty, we prefer {@code touched} if it
+ * describes a smaller or modest edit than the nominal span (localized insert vs wrong full-buffer range).
+ * When the nominal span covers most of the file and {@code docLineCount} is passed, we still attribute
+ * using {@code touched} alone (post-edit coords).
  */
 export function narrowIntervalsByTouch(
     startLine: number,
@@ -116,6 +118,15 @@ export function narrowIntervalsByTouch(
         [...touched].some(ln => ln < 1 || ln > docLineCount)
     ) {
         return [{ start: startLine, end: endLine }];
+    }
+    const slack = 25;
+    const doc = docLineCount ?? 0;
+    if (
+        touched.size <= nominalSpan + slack ||
+        (nominalSpan < touched.size &&
+            (doc === 0 || touched.size < Math.floor(0.55 * doc)))
+    ) {
+        return contiguousRangesFromSortedLineNums([...touched].sort((a, b) => a - b));
     }
     if (
         docLineCount !== undefined &&

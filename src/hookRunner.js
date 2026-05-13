@@ -1,9 +1,11 @@
 /**
  * hookRunner.js — Executed by the Git pre-commit hook.
- * Reads `<git-dir>/blamely/blamely-detector.ai` when present (written by the extension; same YAML as `report.yml`,
- * plus a two-line # AI / # Human summary header for optional commit-message suffix). Not staged — lives under .git.
+ * Reads `<git-dir>/blamely/blamely-detector.ai` when present (written by the extension).
  *
- * One line: `[blamely] AI  N lines · P%  ████…  M lines · Q%  Human` (counts at bar edges).
+ * Shows AI vs Human **additions** (green / blue) and **deletions** (red) with a four-segment bar:
+ *   AI added | AI deleted | Human added | Human deleted
+ *
+ * Legacy files without `# ai_lines_added:` lines fall back to totals-only (deletions shown as 0).
  * Respects NO_COLOR / dumb TERM (plain ASCII only).
  */
 
@@ -61,24 +63,68 @@ function fmtPct(s) {
 }
 
 /**
- * Bar length `width`: green blocks = AI line share, blue blocks = Human line share.
+ * Largest-remainder allocation so segment widths sum exactly to `width`.
  */
-function attributionShareBar(aiLines, humanLines, width = 36) {
-    const total = aiLines + humanLines;
+function allocateSegments(counts, width) {
+    const total = counts.reduce((a, b) => a + b, 0);
     if (total <= 0) {
-        return paint('90', '░'.repeat(width));
+        return counts.map(() => 0);
     }
-    let aiBlocks = Math.round((aiLines / total) * width);
-    if (aiLines > 0 && aiBlocks === 0) {
-        aiBlocks = 1;
+    const exact = counts.map((c) => (c * width) / total);
+    const base = exact.map((x) => Math.floor(x));
+    let rem = width - base.reduce((a, b) => a + b, 0);
+    const frac = exact.map((x, i) => ({ i, r: x - base[i] }));
+    frac.sort((a, b) => b.r - a.r);
+    for (let k = 0; k < rem; k++) {
+        base[frac[k % frac.length].i]++;
     }
-    if (humanLines > 0 && aiBlocks === width) {
-        aiBlocks = width - 1;
+    return base;
+}
+
+/**
+ * Four-part bar: AI add (green 92), AI del (red 91), Human add (blue 94), Human del (red 91).
+ */
+function contributionBar(aiAdded, aiDeleted, humanAdded, humanDeleted, width = 40) {
+    const counts = [aiAdded, aiDeleted, humanAdded, humanDeleted];
+    const codes = ['92', '91', '94', '91'];
+    const blocks = allocateSegments(counts, width);
+    let out = '';
+    for (let i = 0; i < 4; i++) {
+        const piece = '█'.repeat(blocks[i]);
+        out += piece.length > 0 ? paint(codes[i], piece) : '';
     }
-    const humanBlocks = width - aiBlocks;
-    const greenSeg = paint('92', '█'.repeat(aiBlocks));
-    const blueSeg = paint('94', '█'.repeat(humanBlocks));
-    return greenSeg + blueSeg;
+    const joined = out.length > 0 ? out : paint('90', '░'.repeat(width));
+    return joined;
+}
+
+function parseDetectorTotals(content) {
+    const ma = /^#\s*ai_lines_added:\s*(\d+)/m.exec(content);
+    const md = /^#\s*ai_lines_deleted:\s*(\d+)/m.exec(content);
+    const mh = /^#\s*human_lines_added:\s*(\d+)/m.exec(content);
+    const mhd = /^#\s*human_lines_deleted:\s*(\d+)/m.exec(content);
+    if (ma && md && mh && mhd) {
+        return {
+            aiAdded: parseInt(ma[1], 10),
+            aiDeleted: parseInt(md[1], 10),
+            humanAdded: parseInt(mh[1], 10),
+            humanDeleted: parseInt(mhd[1], 10),
+        };
+    }
+    const aiMatch = content.match(/# AI-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
+    const humanMatch = content.match(/# Human-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
+    if (aiMatch && humanMatch) {
+        const aiLines = parseInt(aiMatch[1], 10);
+        const humanLines = parseInt(humanMatch[1], 10);
+        return {
+            aiAdded: aiLines,
+            aiDeleted: 0,
+            humanAdded: humanLines,
+            humanDeleted: 0,
+            legacyAiPct: fmtPct(aiMatch[2]),
+            legacyHumanPct: fmtPct(humanMatch[2]),
+        };
+    }
+    return null;
 }
 
 function main() {
@@ -97,32 +143,57 @@ function main() {
 
     try {
         const content = fs.readFileSync(detectorPath, 'utf-8');
-        const aiMatch = content.match(/# AI-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
-        const humanMatch = content.match(/# Human-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
+        const t = parseDetectorTotals(content);
 
-        if (!aiMatch || !humanMatch) {
+        if (!t) {
             console.log('[blamely] Detector missing AI/Human summary header — regenerate report');
             process.exit(0);
         }
 
-        const aiLines = parseInt(aiMatch[1], 10);
-        const humanLines = parseInt(humanMatch[1], 10);
-        const aiPct = fmtPct(aiMatch[2]);
-        const humanPct = fmtPct(humanMatch[2]);
+        const aiAdded = t.aiAdded;
+        const aiDeleted = t.aiDeleted;
+        const humanAdded = t.humanAdded;
+        const humanDeleted = t.humanDeleted;
 
-        const bar = attributionShareBar(aiLines, humanLines, 36);
-        const aiLabel = useColor ? paint('92', 'AI') : 'AI';
-        const humanLabel = useColor ? paint('94', 'Human') : 'Human';
-        const aiStats = useColor ? paint('92', `${aiLines} lines · ${aiPct}%`) : `${aiLines} lines · ${aiPct}%`;
-        const humanStats = useColor ? paint('94', `${humanLines} lines · ${humanPct}%`) : `${humanLines} lines · ${humanPct}%`;
+        const aiMass = aiAdded + aiDeleted;
+        const humanMass = humanAdded + humanDeleted;
+        const all = aiMass + humanMass;
 
-        console.log(`[blamely] ${aiLabel}  ${aiStats}  ${bar}  ${humanStats}  ${humanLabel}`);
+        const aiPct =
+            t.legacyAiPct !== undefined
+                ? t.legacyAiPct
+                : all > 0
+                  ? ((100 * aiMass) / all).toFixed(1)
+                  : '0.0';
+        const humanPct =
+            t.legacyHumanPct !== undefined
+                ? t.legacyHumanPct
+                : all > 0
+                  ? ((100 * humanMass) / all).toFixed(1)
+                  : '0.0';
+
+        const bar = contributionBar(aiAdded, aiDeleted, humanAdded, humanDeleted, 40);
+
+        const aiLabel = paint('92', 'AI');
+        const humanLabel = paint('94', 'Human');
+
+        const aiAdds = paint('92', `+${aiAdded}`);
+        const aiDels = aiDeleted > 0 ? ` ${paint('91', `−${aiDeleted}`)}` : '';
+        const humAdds = paint('94', `+${humanAdded}`);
+        const humDels = humanDeleted > 0 ? ` ${paint('91', `−${humanDeleted}`)}` : '';
+
+        const aiShare = paint('92', `${aiPct}%`);
+        const humanShare = paint('94', `${humanPct}%`);
+
+        console.log(
+            `[blamely] ${aiLabel}  ${aiAdds}${aiDels}  (${aiShare})  ${bar}  (${humanShare})  ${humAdds}${humDels}  ${humanLabel}`
+        );
 
         const sha = run('git rev-parse --short=8 HEAD') || '00000000';
         const commitMsgPath = process.argv[2];
         if (commitMsgPath && fs.existsSync(commitMsgPath)) {
             const existingMsg = fs.readFileSync(commitMsgPath, 'utf-8');
-            const suffix = `\n\n[blamely: ${sha} — AI: ${aiPct}%, Human: ${humanPct}%]`;
+            const suffix = `\n\n[blamely: ${sha} — AI +${aiAdded}/−${aiDeleted} (${aiPct}%), Human +${humanAdded}/−${humanDeleted} (${humanPct}%)]`;
             fs.writeFileSync(commitMsgPath, existingMsg.trimEnd() + suffix + '\n');
         }
     } catch (err) {

@@ -14,6 +14,9 @@ import {
 import * as Logger from '../utils/Logger';
 import { blameFileKey, blameKeyBelongsToRepo, workspaceFoldersUnderRepo } from '../utils/WorkspacePaths';
 
+/** Optional UI hook after post-commit cleanup (e.g. suppress History webview, clear trace files when a git note was saved). */
+export type PostCommitUiCallback = (opts: { repoRoot: string; gitNoteWritten: boolean }) => void;
+
 export class CommitListener implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     private blameMap: BlameMap;
@@ -21,16 +24,19 @@ export class CommitListener implements vscode.Disposable {
     private lastKnownShaByRepo = new Map<string, string>();
     private pollInterval: NodeJS.Timeout | null = null;
     private onCommitCompleted: () => void;
+    private onPostCommitUi?: PostCommitUiCallback;
     private processing = false;
 
     constructor(
         blameMap: BlameMap,
         traceStore: TraceStore,
-        onCommitCompleted: () => void
+        onCommitCompleted: () => void,
+        onPostCommitUi?: PostCommitUiCallback
     ) {
         this.blameMap = blameMap;
         this.traceStore = traceStore;
         this.onCommitCompleted = onCommitCompleted;
+        this.onPostCommitUi = onPostCommitUi;
         this.start();
     }
 
@@ -225,17 +231,8 @@ export class CommitListener implements vscode.Disposable {
             }
             this.onCommitCompleted();
             Logger.info(`Post-commit: cleared ${keysToRemove.length} tracked file(s) for repo, UI refreshed`);
-            this.openHistoryView();
+            this.onPostCommitUi?.({ repoRoot: resolvedRoot, gitNoteWritten });
         }
-    }
-
-    /** Open Source Control and focus the Blamely History view after commit (status bar reset). */
-    private openHistoryView(): void {
-        void vscode.commands.executeCommand('workbench.view.scm').then(() => {
-            setTimeout(() => {
-                void vscode.commands.executeCommand('blamelyHistory.focus');
-            }, 100);
-        });
     }
 
     async prepareForCommit(): Promise<void> {

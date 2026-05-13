@@ -52,21 +52,46 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private workspaceRoot: string;
 
+    /** After commit: do not run git log / note fetch until the user clicks Refresh. */
+    private historySuppressedUntilManualRefresh = false;
+
     constructor(workspaceRoot: string) {
         this.workspaceRoot = workspaceRoot;
+    }
+
+    /**
+     * Call after a workspace commit. Stops automatic history loading; clears the History webview.
+     * When a Blamely git note was saved, the message explains that persisted trace history was cleared.
+     */
+    notifyPostCommit(options: { gitNoteWritten: boolean }): void {
+        this.historySuppressedUntilManualRefresh = true;
+        if (!this.view) return;
+        const msg = options.gitNoteWritten
+            ? 'History was cleared after this commit (Blamely git note saved). Local trace session files were removed. Click Refresh to load commit reports from git notes again.'
+            : 'History was cleared after this commit. Click Refresh to load commit reports from git notes.';
+        this.view.webview.html = this.buildEmptyHtml(msg);
     }
 
     resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
         webviewView.webview.options = { enableScripts: true };
         webviewView.webview.onDidReceiveMessage(msg => {
-            if (msg.command === 'refresh') this.refresh();
+            if (msg.command === 'refresh') {
+                this.historySuppressedUntilManualRefresh = false;
+                void this.refresh();
+            }
         });
-        this.refresh();
+        void this.refresh();
     }
 
     async refresh(): Promise<void> {
         if (!this.view) return;
+        if (this.historySuppressedUntilManualRefresh) {
+            this.view.webview.html = this.buildEmptyHtml(
+                'History loading is paused after your last commit. Click Refresh above to load reports from git notes.'
+            );
+            return;
+        }
         try {
             const data = await this.loadOverallData();
             this.view.webview.html = this.buildHtml(data);

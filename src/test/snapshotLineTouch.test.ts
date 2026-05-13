@@ -58,8 +58,18 @@ describe('snapshotLineTouch', () => {
             expect(narrowIntervalsByTouch(1, 291, t, 291)).to.deep.equal([{ start: 50, end: 51 }]);
         });
 
-        it('trusts touched when nominal range is off-document vs snapshot coords', () => {
-            expect(narrowIntervalsByTouch(100, 111, new Set([3, 4]), 12)).to.deep.equal([{ start: 3, end: 4 }]);
+        it('prefers touched over a huge misaligned nominal span (mid-file insert)', () => {
+            const t = new Set<number>();
+            for (let i = 50; i <= 69; i++) {
+                t.add(i);
+            }
+            expect(narrowIntervalsByTouch(1, 190, t, 200)).to.deep.equal([{ start: 50, end: 69 }]);
+        });
+
+        it('prefers touched when nominal span understates and does not overlap touched', () => {
+            expect(narrowIntervalsByTouch(1, 5, new Set([50, 51, 52, 53, 54, 55, 56, 57, 58, 59]), 100)).to.deep.equal([
+                { start: 50, end: 59 },
+            ]);
         });
     });
 });

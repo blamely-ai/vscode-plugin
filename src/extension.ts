@@ -451,7 +451,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
 
         // Initialize Git integration
-        commitListener = new CommitListener(blameMap, traceStore, onBlameUpdated);
+        commitListener = new CommitListener(blameMap, traceStore, onBlameUpdated, ({ repoRoot, gitNoteWritten }) => {
+            historyProvider.notifyPostCommit({ gitNoteWritten });
+            if (gitNoteWritten) {
+                void traceStore.resetTraceAfterBlamelyNote(repoRoot);
+            }
+        });
 
         // Initialize Chat Participant for prompt/model capture
         chatParticipant = new ChatParticipant(traceStore, blameMap, onBlameUpdated);
@@ -720,6 +725,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                                     `Report this id to Blamely or add under trackedAiApplyCommands / AiContextExtractor.`
                             );
                         }
+                        return;
+                    }
+                    if (
+                        AiContextExtractor.isInlineGhostSuggestionCommand(e.command) &&
+                        !vscode.workspace.getConfiguration('blamely').get<boolean>(
+                            'attributeInlineGhostCompletion',
+                            true
+                        )
+                    ) {
                         return;
                     }
                     changeTracker.recordChatApplyCommandObserved(e.command);
@@ -999,31 +1013,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
 
             vscode.commands.registerCommand('blamely.acceptInlineSuggestion', async () => {
+                const attrGhost = vscode.workspace
+                    .getConfiguration('blamely')
+                    .get<boolean>('attributeInlineGhostCompletion', true);
                 const ctx = await AiContextExtractor.extract('editor.action.inlineSuggest.commit');
-                changeTracker.markNextChangeAsAi(
-                    AiContextExtractor.getAiWindowDuration('completion'),
-                    null, ctx.model, ctx.provider, 'completion'
-                );
+                if (attrGhost) {
+                    changeTracker.markNextChangeAsAi(
+                        AiContextExtractor.getAiWindowDuration('completion'),
+                        null,
+                        ctx.model,
+                        ctx.provider,
+                        'completion'
+                    );
+                }
                 await vscode.commands.executeCommand('editor.action.inlineSuggest.commit');
                 collapseSelectionAfterAccept();
             }),
 
             vscode.commands.registerCommand('blamely.acceptNextWord', async () => {
+                const attrGhost = vscode.workspace
+                    .getConfiguration('blamely')
+                    .get<boolean>('attributeInlineGhostCompletion', true);
                 const ctx = await AiContextExtractor.extract('editor.action.inlineSuggest.acceptNextWord');
-                changeTracker.markNextChangeAsAi(
-                    AiContextExtractor.getAiWindowDuration('completion'),
-                    null, ctx.model, ctx.provider, 'completion'
-                );
+                if (attrGhost) {
+                    changeTracker.markNextChangeAsAi(
+                        AiContextExtractor.getAiWindowDuration('completion'),
+                        null,
+                        ctx.model,
+                        ctx.provider,
+                        'completion'
+                    );
+                }
                 await vscode.commands.executeCommand('editor.action.inlineSuggest.acceptNextWord');
                 collapseSelectionAfterAccept();
             }),
 
             vscode.commands.registerCommand('blamely.acceptNextLine', async () => {
+                const attrGhost = vscode.workspace
+                    .getConfiguration('blamely')
+                    .get<boolean>('attributeInlineGhostCompletion', true);
                 const ctx = await AiContextExtractor.extract('editor.action.inlineSuggest.acceptNextLine');
-                changeTracker.markNextChangeAsAi(
-                    AiContextExtractor.getAiWindowDuration('completion'),
-                    null, ctx.model, ctx.provider, 'completion'
-                );
+                if (attrGhost) {
+                    changeTracker.markNextChangeAsAi(
+                        AiContextExtractor.getAiWindowDuration('completion'),
+                        null,
+                        ctx.model,
+                        ctx.provider,
+                        'completion'
+                    );
+                }
                 await vscode.commands.executeCommand('editor.action.inlineSuggest.acceptNextLine');
                 collapseSelectionAfterAccept();
             }),
@@ -1245,7 +1283,7 @@ async function generateReports(): Promise<void> {
         };
         if (folders.length === 1) {
             const root = folders[0].uri.fsPath;
-            const yaml = await ReportYaml.generate(
+            const payload = await ReportYaml.generateYamlAndHookTotals(
                 root,
                 blameMap,
                 traceStore,
@@ -1255,15 +1293,15 @@ async function generateReports(): Promise<void> {
                 null
             );
             const repo = await GitUtils.getRepoRoot(root);
-            if (yaml && repo) {
+            if (payload && repo) {
+                const { yaml, hookTotals } = payload;
                 const branch = await GitUtils.getBranch(root);
                 const reportPath = await BlamelyRepoPaths.reportYamlPath(repo, branch);
                 if (reportPath) {
                     await fs.promises.mkdir(path.dirname(reportPath), { recursive: true });
                     await fs.promises.writeFile(reportPath, yaml, 'utf-8');
                 }
-                const summary = blameMap.getSummary();
-                const preamble = ReportYaml.legacyPreCommitDetectorPreamble(summary.aiLines, summary.humanLines);
+                const preamble = ReportYaml.detectorHookPreamble(hookTotals);
                 const detectorPath = await GitUtils.blamelyDetectorAiPath(repo);
                 if (detectorPath) {
                     await fs.promises.mkdir(path.dirname(detectorPath), { recursive: true });
@@ -1274,7 +1312,7 @@ async function generateReports(): Promise<void> {
         }
         for (const folder of folders) {
             const prefix = `${folder.name}/`;
-            const yaml = await ReportYaml.generate(
+            const payload = await ReportYaml.generateYamlAndHookTotals(
                 folder.uri.fsPath,
                 blameMap,
                 traceStore,
@@ -1284,18 +1322,15 @@ async function generateReports(): Promise<void> {
                 prefix
             );
             const repo = await GitUtils.getRepoRoot(folder.uri.fsPath);
-            if (yaml && repo) {
+            if (payload && repo) {
+                const { yaml, hookTotals } = payload;
                 const branch = await GitUtils.getBranch(folder.uri.fsPath);
                 const reportPath = await BlamelyRepoPaths.reportYamlPath(repo, branch);
                 if (reportPath) {
                     await fs.promises.mkdir(path.dirname(reportPath), { recursive: true });
                     await fs.promises.writeFile(reportPath, yaml, 'utf-8');
                 }
-                const restrict = new Set(
-                    blameMap.getTrackedFiles().filter((k) => k.startsWith(prefix))
-                );
-                const summary = blameMap.getSummary(restrict);
-                const preamble = ReportYaml.legacyPreCommitDetectorPreamble(summary.aiLines, summary.humanLines);
+                const preamble = ReportYaml.detectorHookPreamble(hookTotals);
                 const detectorPath = await GitUtils.blamelyDetectorAiPath(repo);
                 if (detectorPath) {
                     await fs.promises.mkdir(path.dirname(detectorPath), { recursive: true });

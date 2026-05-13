@@ -63,6 +63,12 @@ export const AI_COMMAND_PATTERNS = {
     ],
 };
 
+/** Command ids for inline ghost text (Copilot / Cursor Tab) — accepting them is product-default AI. */
+export function isInlineGhostSuggestionCommand(commandId: string): boolean {
+    const id = commandId.toLowerCase();
+    return AI_COMMAND_PATTERNS.completion.some(p => id === p.toLowerCase());
+}
+
 /**
  * True when this command should open the "next edit is AI" window.
  * Must stay tighter than AiContextExtractor.isAiRelatedCommand to avoid unrelated editor IDs.

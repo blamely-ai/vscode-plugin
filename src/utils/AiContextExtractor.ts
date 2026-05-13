@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as Logger from './Logger';
+import { sanitizeModelForReport } from './modelSanitize';
 import { AI_COMMAND_PATTERNS } from './trackedAiApplyCommands';
 import { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
 
-export { AI_COMMAND_PATTERNS, matchesTrackedAiApplyCommand } from './trackedAiApplyCommands';
+export { AI_COMMAND_PATTERNS, matchesTrackedAiApplyCommand, isInlineGhostSuggestionCommand } from './trackedAiApplyCommands';
 export { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
 
 export interface AiContext {
@@ -360,23 +361,7 @@ export function resolveProviderName(rawId: string | null): string {
     return rawId;
 }
 
-/**
- * Sanitize a model name: reject package/class names, trim, validate.
- * Mirrors IntelliJ AiContextExtractor.sanitizeModelForReport().
- */
-export function sanitizeModelForReport(model: string | null): string | null {
-    if (!model || model.trim().length < 2) return null;
-    const trimmed = model.trim();
-    if (looksLikePackageName(trimmed)) return null;
-    return trimmed;
-}
-
-function looksLikePackageName(s: string): boolean {
-    const lower = s.toLowerCase();
-    if (lower.includes('com.') || lower.includes('org.') || lower.includes('net.')) return true;
-    if (/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/.test(lower)) return true;
-    return false;
-}
+export { sanitizeModelForReport } from './modelSanitize';
 
 /** Check if a string looks like a known model name. */
 export function looksLikeModelName(s: string): boolean {

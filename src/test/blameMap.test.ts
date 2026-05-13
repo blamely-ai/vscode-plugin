@@ -281,6 +281,21 @@ describe('BlameIndex.reindex', () => {
         expect(result[1].lineNumber).to.equal(6);
     });
 
+    it('should remove every line of a multi-line empty delete — not treat first line as surviving', () => {
+        const entries: LineBlame[] = [
+            makeEntry({ lineNumber: 1 }),
+            makeEntry({ lineNumber: 3, authorType: 'AI', provider: 'copilot' }),
+            makeEntry({ lineNumber: 4, authorType: 'AI', provider: 'copilot' }),
+            makeEntry({ lineNumber: 5, authorType: 'AI', provider: 'copilot' }),
+            makeEntry({ lineNumber: 10 }),
+        ];
+        // Multi-line range + insertedText "" must pass linesInserted=0 (not 1 from ''.split)
+        const result = reindex(entries, 3, 0, 3);
+        expect(result).to.have.length(2);
+        expect(result[0].lineNumber).to.equal(1);
+        expect(result[1].lineNumber).to.equal(7);
+    });
+
     it('should handle replacement (delete + insert) — surviving line preserved', () => {
         const entries: LineBlame[] = [
             makeEntry({ lineNumber: 1 }),

@@ -188,6 +188,11 @@
           "default": true,
           "description": "Show attribution gutter icons and hovers in the editor"
         },
+        "blamely.attributeInlineGhostCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (default), accepting inline ghost completions (grey suggestion text — Copilot, Cursor Tab, etc.) is attributed as AI and shows AI gutter icons. Set false to treat those accepts like normal typing (chat / composer applies still count as AI)."
+        },
         "blamely.debugChatAttribution": {
           "type": "boolean",
           "default": false,

@@ -1,5 +1,9 @@
 import { expect } from 'chai';
-import { AI_COMMAND_PATTERNS, matchesTrackedAiApplyCommand } from '../utils/trackedAiApplyCommands';
+import {
+    AI_COMMAND_PATTERNS,
+    isInlineGhostSuggestionCommand,
+    matchesTrackedAiApplyCommand,
+} from '../utils/trackedAiApplyCommands';
 
 describe('trackedAiApplyCommands', () => {
     it('matches new Cursor composer / CLI-style apply command IDs', () => {
@@ -57,5 +61,11 @@ describe('trackedAiApplyCommands', () => {
         const panelSet = new Set(AI_COMMAND_PATTERNS.chatPanel);
         expect(panelSet.has('cursor.agent.applyAll')).to.equal(true);
         expect(panelSet.has('cline.acceptApproval')).to.equal(true);
+    });
+
+    it('isInlineGhostSuggestionCommand detects VS Code inline suggest commits only', () => {
+        expect(isInlineGhostSuggestionCommand('editor.action.inlineSuggest.commit')).to.equal(true);
+        expect(isInlineGhostSuggestionCommand('editor.action.inlineSuggest.acceptNextWord')).to.equal(true);
+        expect(isInlineGhostSuggestionCommand('workbench.action.chat.apply')).to.equal(false);
     });
 });

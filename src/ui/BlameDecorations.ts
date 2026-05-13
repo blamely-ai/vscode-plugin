@@ -43,10 +43,11 @@ export class BlameDecorations implements vscode.Disposable {
             gutterIconSize: 'contain',
         });
 
-        const editorChange = vscode.window.onDidChangeActiveTextEditor(
-            () => this.updateDecorations()
-        );
+        const editorChange = vscode.window.onDidChangeActiveTextEditor(() => this.updateDecorations());
         this.disposables.push(editorChange);
+
+        const visibleChange = vscode.window.onDidChangeVisibleTextEditors(() => this.updateDecorations());
+        this.disposables.push(visibleChange);
 
         const docChange = vscode.workspace.onDidChangeTextDocument(() => {
             this.updateDecorations();
@@ -70,19 +71,34 @@ export class BlameDecorations implements vscode.Disposable {
 
     private applyDecorations(): void {
         const config = vscode.workspace.getConfiguration('blamely');
-        if (!config.get('showGutterDecorations', true)) {
+        const show = config.get('showGutterDecorations', true);
+        const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.scheme === 'file');
+
+        if (!show) {
+            for (const editor of editors) {
+                this.clearEditorDecorations(editor);
+            }
             return;
         }
 
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.uri.scheme !== 'file') {
-            return;
+        for (const editor of editors) {
+            this.applyDecorationsForFileEditor(editor);
         }
+    }
 
+    private clearEditorDecorations(editor: vscode.TextEditor): void {
+        try {
+            editor.setDecorations(this.aiDecorationType, []);
+            editor.setDecorations(this.humanDecorationType, []);
+        } catch {
+            /* ignore UI errors */
+        }
+    }
+
+    private applyDecorationsForFileEditor(editor: vscode.TextEditor): void {
         const relativePath = blameFileKey(editor.document.uri);
 
         const rawEntries = this.blameMap.getBlame(relativePath).filter(e => e.commitSha == null);
-        // Same line can appear more than once in storage edge cases — one decoration + tooltip per line.
         const byLine = new Map<number, LineBlame>();
         for (const e of rawEntries) {
             const existing = byLine.get(e.lineNumber);
@@ -96,7 +112,7 @@ export class BlameDecorations implements vscode.Disposable {
         const humanRanges: vscode.DecorationOptions[] = [];
 
         for (const entry of entries) {
-            const lineIndex = entry.lineNumber - 1; // 0-indexed
+            const lineIndex = entry.lineNumber - 1;
             if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
 
             let lineLength = 0;
@@ -105,8 +121,6 @@ export class BlameDecorations implements vscode.Disposable {
             } catch {
                 continue;
             }
-            // Empty line: use a zero-width range on that line only so we do not overlap the next line
-            // (overlap caused duplicate 👤 Human Written hovers when gutter ranges stacked).
             const range = lineLength === 0
                 ? new vscode.Range(lineIndex, 0, lineIndex, 0)
                 : new vscode.Range(lineIndex, 0, lineIndex, lineLength);
@@ -142,8 +156,8 @@ export class BlameDecorations implements vscode.Disposable {
         try {
             editor.setDecorations(this.aiDecorationType, aiRanges);
             editor.setDecorations(this.humanDecorationType, humanRanges);
-        } catch (err) {
-            // Ignore UI rendering errors (e.g., "Make sure the ref is set...")
+        } catch {
+            /* ignore UI rendering errors */
         }
     }
 
