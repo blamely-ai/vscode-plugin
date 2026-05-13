@@ -1,0 +1,6007 @@
+scope: "this_commit"
+commitDate: "2026-05-13T20:37:43.803820Z"
+detector_version: "0.2.0"
+branch: "main"
+commit_hash: "28820a412b22e164d9dab4494a50681d7f1d862d"
+commit_message: "feat: add inline ghost suggestion command detection and enhance blame report with staged deletions"
+
+summary:
+  total_files_changed: 17
+  total_lines_added: 687
+  total_lines_deleted: 278
+  total_changes: 965
+  ai_lines_added: 0
+  human_lines_added: 687
+  ai_percentage: "0.0%"
+  model_count: 0
+
+metrics:
+  first_start_coding_time: null
+  time_waiting_for_ai_ms: 0
+
+agent_info:
+  ide: "IntelliJ"
+  models:
+    - unknown
+  interaction_types:
+    - unknown
+
+files:
+  - path: "CHANGELOG.md"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 22
+    lines_deleted: 21
+    total_changes: 43
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "package.json"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 5
+    lines_deleted: 0
+    total_changes: 5
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/extension.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 59
+    lines_deleted: 24
+    total_changes: 83
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/git/CommitListener.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 8
+    lines_deleted: 11
+    total_changes: 19
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/git/GitUtils.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 56
+    lines_deleted: 27
+    total_changes: 83
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/hookRunner.js"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 103
+    lines_deleted: 32
+    total_changes: 135
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/providers/ChangeTracker.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 155
+    lines_deleted: 54
+    total_changes: 209
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/report/ReportYaml.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 142
+    lines_deleted: 71
+    total_changes: 213
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/store/TraceStore.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 23
+    lines_deleted: 0
+    total_changes: 23
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/test/blameMap.test.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 15
+    lines_deleted: 0
+    total_changes: 15
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/test/snapshotLineTouch.test.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 12
+    lines_deleted: 2
+    total_changes: 14
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/test/trackedAiApplyCommands.test.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 11
+    lines_deleted: 1
+    total_changes: 12
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/ui/BlameDecorations.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 27
+    lines_deleted: 13
+    total_changes: 40
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/ui/HistoryProvider.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 27
+    lines_deleted: 2
+    total_changes: 29
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/utils/AiContextExtractor.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 3
+    lines_deleted: 18
+    total_changes: 21
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/utils/snapshotLineTouch.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 13
+    lines_deleted: 2
+    total_changes: 15
+    ai_percentage: "0.0%"
+    prompts:
+      []
+  - path: "src/utils/trackedAiApplyCommands.ts"
+    source: "multiple"
+    model: "unknown"
+    ai_lines_added: 0
+    human_lines_added: 6
+    lines_deleted: 0
+    total_changes: 6
+    ai_percentage: "0.0%"
+    prompts:
+      []
+blames:
+  "CHANGELOG.md":
+    - lineNumber: 7
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 7
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 8
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 9
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 10
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 11
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 11
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 12
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 13
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 13
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 14
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 14
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 15
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 15
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 16
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 16
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 17
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 17
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 18
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 19
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 21
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 21
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 23
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 23
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 24
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 25
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 25
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 26
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 27
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 27
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 28
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 29
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 29
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 30
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 31
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 32
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 32
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 33
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 34
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 34
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 35
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 35
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 36
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "package.json":
+    - lineNumber: 191
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 192
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 193
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 194
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 195
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/extension.ts":
+    - lineNumber: 454
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 454
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 455
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 456
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 457
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 458
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 459
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 730
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 731
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 732
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 733
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 734
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 735
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 736
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 737
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 738
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1003
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1004
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1005
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1006
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1013
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1014
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1015
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1016
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1016
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1017
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1018
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1020
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1021
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1022
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1023
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1023
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1024
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1024
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1025
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1025
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1026
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1026
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1027
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1028
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1034
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1035
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1036
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1038
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1039
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1040
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1041
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1042
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1043
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1044
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1045
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1046
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1052
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1053
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1054
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1056
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1057
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1058
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1059
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1060
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1061
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1062
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1063
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1064
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1248
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1258
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1265
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1266
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1277
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1286
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1287
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1294
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1295
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1296
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1296
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1297
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1297
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1298
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1304
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1315
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1325
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1326
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1333
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/git/CommitListener.ts":
+    - lineNumber: 17
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 18
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 19
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 27
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 29
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 33
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 34
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 39
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 228
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 232
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 233
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 234
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 234
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 235
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 236
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 237
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 238
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 239
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 240
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+  "src/git/GitUtils.ts":
+    - lineNumber: 137
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 137
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 138
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 138
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 139
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 139
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 140
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 140
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 141
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 141
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 142
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 142
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 143
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 143
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 144
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 144
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 145
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 145
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 146
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 147
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 148
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 149
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 150
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 151
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 151
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 152
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 153
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 154
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 155
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 156
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 157
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 158
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 159
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 160
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 161
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 162
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 168
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 177
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 178
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 179
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 180
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 181
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 182
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 183
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 184
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 185
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 186
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 187
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 188
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 189
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 190
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 191
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 192
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 193
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 194
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 195
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 196
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 197
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 198
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 199
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 200
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 201
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 202
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 203
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 204
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 205
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 206
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 207
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 208
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 209
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 210
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 211
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 212
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 213
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 214
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 215
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 216
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 217
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 218
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 219
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 220
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 221
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 222
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/hookRunner.js":
+    - lineNumber: 3
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 3
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 4
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 5
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 6
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 6
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 7
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 8
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 64
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 72
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 74
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 75
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 75
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 76
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 76
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 77
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 78
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 78
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 80
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 81
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 81
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 82
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 83
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 84
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 85
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 86
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 87
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 88
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 89
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 90
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 93
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 94
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 96
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 97
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 98
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 99
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 100
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 100
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 101
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 101
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 102
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 103
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 103
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 104
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 105
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 106
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 107
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 108
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 108
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 109
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 109
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 110
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 110
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 111
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 111
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 112
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 112
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 113
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 113
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 114
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 114
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 115
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 115
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 116
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 116
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 117
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 117
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 118
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 118
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 119
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 119
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 120
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 121
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 122
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 123
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 124
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 125
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 125
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 126
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 127
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 146
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 148
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 153
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 154
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 155
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 156
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 157
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 158
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 159
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 160
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 161
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 162
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 163
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 164
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 165
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 166
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 167
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 168
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 169
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 170
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 171
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 172
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 173
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 174
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 175
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 176
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 177
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 178
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 179
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 180
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 181
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 182
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 183
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 184
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 185
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 186
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 187
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 188
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 189
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 190
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 196
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/providers/ChangeTracker.ts":
+    - lineNumber: 30
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 52
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 53
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 54
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 55
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 56
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 193
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 199
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 200
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 201
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 202
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 203
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 204
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 205
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 206
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 207
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 222
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 223
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 224
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 225
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 226
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 227
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 228
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 229
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 230
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 231
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 232
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 233
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 234
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 235
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 236
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 237
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 238
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 239
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 240
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 241
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 242
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 243
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 244
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 245
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 246
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 247
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 248
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 249
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 276
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 328
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 769
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1028
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1038
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1039
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1075
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1076
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1077
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1078
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1079
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1080
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1081
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1140
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1140
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1141
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1141
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1142
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1142
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1143
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1144
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1145
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1146
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1147
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1147
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1148
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1148
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1149
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1150
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1150
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1151
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1151
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1152
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1152
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1153
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1153
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1154
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1154
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1155
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1156
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1157
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1158
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1159
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1160
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1161
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1162
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1165
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1166
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1167
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1171
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1172
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1173
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1182
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1183
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1184
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1187
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1188
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1196
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1208
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1209
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1211
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1212
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1213
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1216
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1218
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1219
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1220
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1221
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1222
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1223
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1224
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1225
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1226
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1227
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1228
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1229
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1230
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1231
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1232
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1233
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1234
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1235
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1236
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1237
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1238
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1239
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1240
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1241
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1242
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1243
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1244
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1245
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1246
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1247
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1248
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1249
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1250
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1254
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1255
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1256
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1260
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1261
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1262
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1263
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1264
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1265
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1266
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1267
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1268
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1269
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1270
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1271
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1272
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1273
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1282
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1282
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1283
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1284
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1285
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1286
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1287
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1293
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1294
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1294
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1295
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1296
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1297
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1306
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1311
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1316
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1317
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1322
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1327
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1336
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1340
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1341
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1346
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1353
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1372
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1373
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1374
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 1388
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1402
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1403
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1404
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1405
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1406
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1407
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1408
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1409
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1410
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1411
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1412
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1413
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1418
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1419
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1424
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1429
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1441
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1442
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1447
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1454
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1473
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1474
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 1475
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/report/ReportYaml.ts":
+    - lineNumber: 5
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 5
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 6
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 7
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 8
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 9
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 10
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 11
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 12
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 12
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 13
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 13
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 14
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 15
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 16
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 17
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 18
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 19
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 20
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 20
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 21
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 22
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 23
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 24
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 36
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 37
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 38
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 39
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 40
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 41
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 42
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 43
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 44
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 45
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 46
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 47
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 48
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 49
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 50
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 51
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 52
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 53
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 54
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 55
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 56
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 57
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 58
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 59
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 60
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 61
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 62
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 63
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 64
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 65
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 70
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 72
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 74
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 75
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 76
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 77
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 78
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 80
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 81
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 82
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 83
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 84
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 85
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 86
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 87
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 88
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 89
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 90
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 93
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 94
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 95
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 96
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 97
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 98
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 99
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 100
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 132
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 133
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 136
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 137
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 151
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 153
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 172
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 173
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 174
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 175
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 176
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 177
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 178
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 179
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 180
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 181
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 182
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 183
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 184
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 185
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 186
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 187
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 188
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 189
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 190
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 191
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 192
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 193
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 194
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 195
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 196
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 196
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 197
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 198
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 198
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 199
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 200
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 201
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 202
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 203
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 204
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 205
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 206
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 207
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 208
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 209
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 210
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 211
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 212
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 213
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 214
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 215
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 216
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 217
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 218
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 219
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 220
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 221
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 222
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 257
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 266
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 274
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 280
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 281
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 283
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 294
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 297
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 298
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 299
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 300
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 306
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 307
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 315
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 325
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 326
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 327
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 328
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 329
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 330
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 331
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 332
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 333
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 334
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 335
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 336
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 337
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 338
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 339
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 340
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 341
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 342
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 343
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 344
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 345
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 346
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 347
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 348
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 349
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 350
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 351
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 352
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 353
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 354
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 355
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 356
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 357
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 358
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 359
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 360
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 361
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 362
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 363
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 364
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 365
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 366
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 367
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 368
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 369
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 370
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 371
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 372
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 373
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 374
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/store/TraceStore.ts":
+    - lineNumber: 326
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 327
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 328
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 329
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 330
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 331
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 332
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 333
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 334
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 335
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 336
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 337
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 338
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 339
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 340
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 341
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 342
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 343
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 344
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 345
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 346
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 347
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 348
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/test/blameMap.test.ts":
+    - lineNumber: 284
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 285
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 286
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 287
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 288
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 289
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 290
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 291
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 292
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 293
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 294
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 295
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 296
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 297
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 298
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/test/snapshotLineTouch.test.ts":
+    - lineNumber: 61
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 61
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 62
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 62
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 63
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 64
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 65
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 70
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 72
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/test/trackedAiApplyCommands.test.ts":
+    - lineNumber: 2
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 2
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 3
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 4
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 5
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 6
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 65
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 70
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/ui/BlameDecorations.ts":
+    - lineNumber: 46
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 46
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 47
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 48
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 49
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 50
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 51
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 74
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 75
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 76
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 77
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 77
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 78
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 78
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 80
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 84
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 85
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 85
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 87
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 88
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 89
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 90
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 93
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 94
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 95
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 96
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 98
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 99
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 108
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 109
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 115
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 145
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 146
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 159
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 160
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/ui/HistoryProvider.ts":
+    - lineNumber: 55
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 56
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 57
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 62
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 63
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 63
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 64
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 65
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 65
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 70
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 72
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 73
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 74
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 79
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 80
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 81
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 82
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 84
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 89
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 90
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 93
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 94
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/utils/AiContextExtractor.ts":
+    - lineNumber: 3
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 6
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 7
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 363
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 364
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 364
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 365
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 366
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 367
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 368
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 369
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 370
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 371
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 372
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 373
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 374
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 375
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 376
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 377
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 378
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 379
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+  "src/utils/snapshotLineTouch.ts":
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 91
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 92
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "DELETE"
+      codingType: "TYPING"
+    - lineNumber: 93
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 94
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 122
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 123
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 124
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 125
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 126
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 127
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 128
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 129
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 130
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+  "src/utils/trackedAiApplyCommands.ts":
+    - lineNumber: 66
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 67
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 68
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 69
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 70
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
+    - lineNumber: 71
+      authorType: "HUMAN"
+      provider: null
+      model: null
+      changeType: "ADD"
+      codingType: "TYPING"
