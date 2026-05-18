@@ -1,5 +1,6 @@
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { TraceStore } from '../store/TraceStore';
+import { type CliTraceSession } from '../store/CliTraceLoader';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import {
@@ -17,11 +18,10 @@ export interface ReportMetrics {
     timeWaitingForAiMs: number;
 }
 
-const DETECTOR_VERSION = '1.1.0';
+const DETECTOR_VERSION = '0.1.2';
 
 /**
- * Two-line header read by `hookRunner.js` pre-commit (regex on # AI / # Human lines).
- * Prepended to `<git-dir>/blamely/blamely-detector.ai` when reports are generated.
+ * Legacy two-line header (regex on # AI / # Human). Kept for tests; hookRunner aggregates `.blame.json` instead.
  */
 export function legacyPreCommitDetectorPreamble(aiLines: number, humanLines: number): string {
     const added = aiLines + humanLines;
@@ -64,12 +64,13 @@ async function mergeStagedDeletionsIntoSnapshot(
             deleteRows.push({
                 lineNumber: oldLine,
                 authorType: deletedByAi ? 'AI' : 'HUMAN',
-                provider: deletedByAi ? 'github-copilot' : null,
+                provider: null,
                 timestamp: timestampIso,
                 commitSha: null,
                 model: deletedByAi ? 'unknown' : null,
                 prompt: null,
                 interactionType: null,
+                ide: null,
                 aiChars: deletedByAi ? 1 : 0,
                 humanChars: deletedByAi ? 0 : 1,
                 changeType: 'DELETE',
@@ -108,6 +109,81 @@ function yamlStr(value: string | null): string {
     return `"${escaped}"`;
 }
 
+function buildCliTracesYaml(sessions: CliTraceSession[]): string {
+    if (sessions.length === 0) { return ''; }
+    const lines: string[] = ['', 'cli_traces:'];
+    for (const s of sessions) {
+        lines.push(`  - trace_id: ${escapeYamlString(s.trace_id)}`);
+        lines.push(`    started_at: ${escapeYamlString(s.started_at)}`);
+        lines.push(`    ended_at: ${escapeYamlString(s.ended_at)}`);
+        lines.push(`    branch: ${escapeYamlString(s.git?.branch ?? 'unknown')}`);
+        lines.push('    traced_command:');
+        for (const arg of (s.traced_command?.argv ?? [])) {
+            lines.push(`      - ${escapeYamlString(arg)}`);
+        }
+        if (s.report_model) {
+            lines.push(`    report_model: ${escapeYamlString(s.report_model)}`);
+        }
+        lines.push('    files:');
+        if (!s.files || s.files.length === 0) {
+            lines.push('      []');
+        } else {
+            for (const f of s.files) {
+                lines.push(`      - path: ${escapeYamlString(f.path)}`);
+                lines.push(`        classification: ${escapeYamlString(f.classification)}`);
+                lines.push(`        confidence: ${escapeYamlString(f.confidence)}`);
+            }
+        }
+    }
+    return lines.join('\n');
+}
+
+function emitChangeRows(fileEntries: LineBlame[]): string[] {
+    const lines: string[] = [];
+    const sorted = [...fileEntries].sort((a, b) => {
+        const la = a.changeType === 'DELETE' ? (a.oldLineNumber ?? a.lineNumber) : (a.newLineNumber ?? a.lineNumber);
+        const lb = b.changeType === 'DELETE' ? (b.oldLineNumber ?? b.lineNumber) : (b.newLineNumber ?? b.lineNumber);
+        return la - lb;
+    });
+    for (const e of sorted) {
+        const ln = e.changeType === 'DELETE' ? (e.oldLineNumber ?? e.lineNumber) : (e.newLineNumber ?? e.lineNumber);
+        lines.push(`      - lineNumber: ${ln}`);
+        lines.push(`        authorType: "${e.authorType}"`);
+        lines.push(`        model: ${e.model != null && e.model !== '' ? escapeYamlString(e.model) : 'null'}`);
+        lines.push(
+            `        date: ${e.timestamp != null && e.timestamp.trim() !== '' ? escapeYamlString(e.timestamp) : 'null'}`
+        );
+        lines.push(
+            `        interactionType: ${e.interactionType != null && e.interactionType !== '' ? escapeYamlString(e.interactionType) : 'null'}`
+        );
+        lines.push(`        changeType: "${e.changeType}"`);
+        lines.push(`        codingType: "${e.codingType ?? 'TYPING'}"`);
+    }
+    return lines;
+}
+
+function collectIdesFromBlame(
+    blameByFile: Record<string, LineBlame[]> | null | undefined,
+    fallbackIde: string
+): string[] {
+    const s = new Set<string>();
+    if (blameByFile) {
+        for (const rows of Object.values(blameByFile)) {
+            for (const e of rows) {
+                const t = e.ide?.trim();
+                if (t) {
+                    s.add(t);
+                }
+            }
+        }
+    }
+    const fb = fallbackIde.trim();
+    if (fb && !s.has(fb)) {
+        s.add(fb);
+    }
+    return [...s].sort();
+}
+
 function buildReportYaml(
     generatedAt: string,
     branch: string,
@@ -116,7 +192,9 @@ function buildReportYaml(
     fileEntries: FileEntry[],
     ideName: string,
     interactionTypesSet: Set<string>,
-    metrics?: ReportMetrics | null
+    metrics?: ReportMetrics | null,
+    cliTraceSessions?: CliTraceSession[],
+    blameByFile?: Record<string, LineBlame[]> | null
 ): string {
     const lines: string[] = [];
     lines.push(`scope: "this_commit"`);
@@ -165,10 +243,18 @@ function buildReportYaml(
     lines.push('');
 
     lines.push('agent_info:');
-    lines.push(`  ide: "${ideName}"`);
+    const ideList = collectIdesFromBlame(blameByFile, ideName);
+    lines.push('  ide:');
+    if (ideList.length === 0) {
+        lines.push('    []');
+    } else {
+        for (const id of ideList) {
+            lines.push(`    - ${escapeYamlString(id)}`);
+        }
+    }
     lines.push('  models:');
     if (allModels.size === 0) {
-        lines.push('    - unknown');
+        lines.push('    []');
     } else {
         for (const model of allModels) {
             lines.push(`    - "${model}"`);
@@ -176,7 +262,7 @@ function buildReportYaml(
     }
     lines.push('  interaction_types:');
     if (interactionTypesSet.size === 0) {
-        lines.push('    - unknown');
+        lines.push('    []');
     } else {
         for (const t of interactionTypesSet) {
             lines.push(`    - ${t}`);
@@ -190,24 +276,21 @@ function buildReportYaml(
     } else {
         for (const entry of fileEntries) {
             lines.push(`  - path: ${escapeYamlString(entry.path)}`);
-            lines.push(`    source: "${entry.source}"`);
-            lines.push(`    model: "${entry.model}"`);
-            lines.push(`    ai_lines_added: ${entry.aiLinesAdded}`);
-            lines.push(`    ai_lines_deleted: ${entry.aiLinesDeleted}`);
-            lines.push(`    human_lines_added: ${entry.humanLinesAdded}`);
-            lines.push(`    human_lines_deleted: ${entry.humanLinesDeleted}`);
-            lines.push(`    lines_deleted: ${entry.linesDeleted}`);
-            lines.push(`    total_changes: ${entry.aiLinesAdded + entry.humanLinesAdded + entry.linesDeleted}`);
-            lines.push(`    ai_percentage: "${entry.percentage}"`);
-            lines.push('    prompts:');
-            if (entry.prompts.length === 0) {
+            lines.push('    changes:');
+            const blameRows =
+                blameByFile && Object.prototype.hasOwnProperty.call(blameByFile, entry.path)
+                    ? blameByFile[entry.path]!
+                    : [];
+            if (blameRows.length === 0) {
                 lines.push('      []');
             } else {
-                for (const p of entry.prompts) {
-                    lines.push(`      - ${escapeYamlString(p)}`);
-                }
+                lines.push(...emitChangeRows(blameRows));
             }
         }
+    }
+
+    if (cliTraceSessions && cliTraceSessions.length > 0) {
+        lines.push(buildCliTracesYaml(cliTraceSessions));
     }
 
     return lines.join('\n') + '\n';
@@ -226,8 +309,8 @@ export function blameSnapshotToYamlForReport(entireBlame: Record<string, LineBla
         for (const e of entries) {
             lines.push(`    - lineNumber: ${e.newLineNumber ?? e.lineNumber}`);
             lines.push(`      authorType: "${e.authorType}"`);
-            lines.push(`      provider: ${yamlStr(e.provider)}`);
             lines.push(`      model: ${yamlStr(e.model)}`);
+            lines.push(`      date: ${e.timestamp?.trim() ? yamlStr(e.timestamp) : 'null'}`);
             if (e.prompt) lines.push(`      prompt: ${yamlStr(e.prompt)}`);
             if (e.interactionType) lines.push(`      interactionType: ${yamlStr(e.interactionType)}`);
             lines.push(`      changeType: "${e.changeType}"`);
@@ -263,7 +346,9 @@ export async function generateFromBlameSnapshot(
             fileEntries,
             ideName,
             interactionTypesFromBlame,
-            metrics ?? null
+            metrics ?? null,
+            undefined,
+            entireBlame
         );
     } catch (err) {
         Logger.error('Failed to generate ReportYaml from snapshot', err);
@@ -279,7 +364,8 @@ async function buildYamlPayload(
     ideName: string = 'unknown',
     metrics?: ReportMetrics | null,
     /** If set (multi-root), only include blame keys starting with this prefix (e.g. `my-app/`). */
-    fileKeyPrefix?: string | null
+    fileKeyPrefix?: string | null,
+    cliTraceSessions?: CliTraceSession[]
 ): Promise<{ yaml: string; hookTotals: HookTotals }> {
     const generatedAt = new Date().toISOString();
     const branch = (await GitUtils.getBranch(workspaceRoot)) || 'unknown';
@@ -320,7 +406,9 @@ async function buildYamlPayload(
         fileEntries,
         ideName,
         interactionTypesFromBlame,
-        metricsFromMap
+        metricsFromMap,
+        cliTraceSessions,
+        blameSnapshot
     );
     return { yaml, hookTotals: totalsFromFileEntries(fileEntries) };
 }
@@ -333,7 +421,8 @@ export async function generateContent(
     ideName: string = 'unknown',
     metrics?: ReportMetrics | null,
     /** If set (multi-root), only include blame keys starting with this prefix (e.g. `my-app/`). */
-    fileKeyPrefix?: string | null
+    fileKeyPrefix?: string | null,
+    cliTraceSessions?: CliTraceSession[]
 ): Promise<string> {
     const { yaml } = await buildYamlPayload(
         workspaceRoot,
@@ -342,12 +431,13 @@ export async function generateContent(
         commitHash,
         ideName,
         metrics,
-        fileKeyPrefix
+        fileKeyPrefix,
+        cliTraceSessions
     );
     return yaml;
 }
 
-/** Same as {@link generateContent}, plus aggregated hook totals for `blamely-detector.ai` preamble. */
+/** Same as {@link generateContent}, plus {@link HookTotals} for callers that need aggregated line counts. */
 export async function generateYamlAndHookTotals(
     workspaceRoot: string,
     blameMap: BlameMap,
@@ -355,7 +445,8 @@ export async function generateYamlAndHookTotals(
     commitHash?: string,
     ideName: string = 'unknown',
     metrics?: ReportMetrics | null,
-    fileKeyPrefix?: string | null
+    fileKeyPrefix?: string | null,
+    cliTraceSessions?: CliTraceSession[]
 ): Promise<{ yaml: string; hookTotals: HookTotals } | null> {
     try {
         return await buildYamlPayload(
@@ -365,7 +456,8 @@ export async function generateYamlAndHookTotals(
             commitHash,
             ideName,
             metrics,
-            fileKeyPrefix
+            fileKeyPrefix,
+            cliTraceSessions
         );
     } catch (err) {
         console.error('[blamely] FAILED to generate ReportYaml payload:', err);
@@ -381,10 +473,11 @@ export async function generate(
     commitHash?: string,
     ideName: string = 'unknown',
     metrics?: ReportMetrics | null,
-    fileKeyPrefix?: string | null
+    fileKeyPrefix?: string | null,
+    cliTraceSessions?: CliTraceSession[]
 ): Promise<string> {
     try {
-        return await generateContent(workspaceRoot, blameMap, traceStore, commitHash, ideName, metrics, fileKeyPrefix);
+        return await generateContent(workspaceRoot, blameMap, traceStore, commitHash, ideName, metrics, fileKeyPrefix, cliTraceSessions);
     } catch (err) {
         console.error('[blamely] FAILED to generate ReportYaml string:', err);
         Logger.error('Failed to generate ReportYaml string', err);

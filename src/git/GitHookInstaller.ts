@@ -25,23 +25,12 @@ export async function install(workspaceRoot: string, extensionPath: string): Pro
         await fs.promises.mkdir(path.dirname(destRunner), { recursive: true });
         const srcRunner = path.join(extensionPath, 'out', 'hookRunner.js');
 
-        const absGitDir = path.isAbsolute(gitDir) ? gitDir : path.resolve(workspaceRoot, gitDir);
-        const fallbackRunner = path.join(absGitDir, 'blamely', 'hookRunner.js');
-
         try {
             await fs.promises.copyFile(srcRunner, destRunner);
             Logger.info(`Copied hook runner to ${destRunner}`);
         } catch (err) {
             Logger.error(`Cannot copy hookRunner from ${srcRunner}`, err);
             return false;
-        }
-
-        try {
-            await fs.promises.mkdir(path.dirname(fallbackRunner), { recursive: true });
-            await fs.promises.copyFile(srcRunner, fallbackRunner);
-            Logger.info(`Copied hook runner fallback to ${fallbackRunner}`);
-        } catch (err) {
-            Logger.warn(`Could not write git-dir hookRunner fallback (${fallbackRunner}): ${err}`);
         }
 
         const hookPath = path.join(hooksDir, 'pre-commit');
@@ -56,13 +45,14 @@ export async function install(workspaceRoot: string, extensionPath: string): Pro
             // No existing hook
         }
 
-        const content = hookScriptContent(destRunner, fallbackRunner);
+        // Primary-only: ~/.blamely/repos/<repoKey>/hookRunner.js (no writes under .git/blamely).
+        const content = hookScriptContent(destRunner, destRunner);
         await fs.promises.writeFile(hookPath, content, { mode: 0o755 });
         Logger.info(`Pre-commit hook installed at ${hookPath}`);
 
         if (isWindows()) {
             const batPath = hookPath + '.bat';
-            const batContent = hookBatWrapper(destRunner, fallbackRunner);
+            const batContent = hookBatWrapper(destRunner, destRunner);
             await fs.promises.writeFile(batPath, batContent);
             Logger.info(`Windows .bat wrapper installed at ${batPath}`);
         }

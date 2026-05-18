@@ -14,7 +14,9 @@ function dataUriForSvg(svg: string): vscode.Uri {
 
 /**
  * Editor line decorations: gutter icon, ruler, optional background, and hover tooltips for AI & Human.
- * Shows on every changed and new line with uncommitted blame (commit_sha == null).
+ * Shows one icon per line for blame rows in memory (IDE session + loaded .blame.json). Rows with
+ * commitSha set still decorate — CLI snapshots record HEAD at trace end, so filtering only
+ * uncommitted lines would hide them. DELETE rows are skipped (no stable line in the open doc).
  * Tooltip content matches IntelliJ BlameLineMarkerProvider.
  */
 export class BlameDecorations implements vscode.Disposable {
@@ -53,6 +55,13 @@ export class BlameDecorations implements vscode.Disposable {
             this.updateDecorations();
         });
         this.disposables.push(docChange);
+
+        const cfgChange = vscode.workspace.onDidChangeConfiguration(ev => {
+            if (ev.affectsConfiguration('blamely')) {
+                this.updateDecorations();
+            }
+        });
+        this.disposables.push(cfgChange);
 
         this.updateDecorations();
     }
@@ -98,7 +107,7 @@ export class BlameDecorations implements vscode.Disposable {
     private applyDecorationsForFileEditor(editor: vscode.TextEditor): void {
         const relativePath = blameFileKey(editor.document.uri);
 
-        const rawEntries = this.blameMap.getBlame(relativePath).filter(e => e.commitSha == null);
+        const rawEntries = this.blameMap.getBlame(relativePath).filter(e => e.changeType !== 'DELETE');
         const byLine = new Map<number, LineBlame>();
         for (const e of rawEntries) {
             const existing = byLine.get(e.lineNumber);
@@ -132,16 +141,10 @@ export class BlameDecorations implements vscode.Disposable {
                 if (entry.model) {
                     hoverMessage.appendMarkdown(`- **Model:** \`${this.escapeMd(entry.model)}\`\n`);
                 }
-                if (entry.interactionType) {
-                    hoverMessage.appendMarkdown(`- **Source:** \`${this.escapeMd(entry.interactionType)}\`\n`);
-                }
                 if (entry.prompt) {
                     hoverMessage.appendMarkdown(`- **Prompt:** ${this.quotePrompt(entry.prompt)}\n`);
                 }
                 hoverMessage.appendMarkdown(`- **Updated:** ${this.formatTimestamp(entry.timestamp)}\n`);
-                if (entry.commitSha) {
-                    hoverMessage.appendMarkdown(`- **Commit:** \`${entry.commitSha.slice(0, 8)}\`\n`);
-                }
                 aiRanges.push({ range, hoverMessage });
             } else {
                 hoverMessage.appendMarkdown(`- **Author:** Human\n`);

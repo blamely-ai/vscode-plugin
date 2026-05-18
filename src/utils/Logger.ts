@@ -47,6 +47,14 @@ export function show(): void {
     getChannel().show(true);
 }
 
+/** Append lines without the standard [INFO ISO...] prefix (e.g. post-commit attribution bar block). */
+export function appendPlainBlock(text: string): void {
+    const ch = getChannel();
+    for (const line of text.split('\n')) {
+        ch.appendLine(line);
+    }
+}
+
 export function dispose(): void {
     outputChannel?.dispose();
     outputChannel = undefined;

@@ -1,3 +1,5 @@
+import { currentIdeLabel } from '../utils/ideLabel';
+
 export interface LineBlame {
     lineNumber: number;
     authorType: 'HUMAN' | 'AI';
@@ -7,6 +9,8 @@ export interface LineBlame {
     model: string | null;
     prompt: string | null;
     interactionType: string | null;
+    /** IDE / product label for this line (e.g. Cursor, Visual Studio Code, ai_cli). */
+    ide: string | null;
     aiChars: number;
     humanChars: number;
     changeType: 'ADD' | 'DELETE';
@@ -17,6 +21,54 @@ export interface LineBlame {
 
 function normPath(path: string): string {
     return path.replace(/\\/g, '/');
+}
+
+/** AI wins only on strict majority; ties use CLI-bulk heuristic (see authorTypeFromCharTotals). */
+function authorTypeFromCharTotals(
+    aiChars: number,
+    humanChars: number,
+    interactionType: string | null | undefined,
+    codingType: 'TYPING' | 'BULK_INSERT'
+): 'AI' | 'HUMAN' {
+    const total = aiChars + humanChars;
+    if (total <= 0) {
+        return 'HUMAN';
+    }
+    if (aiChars > humanChars) {
+        return 'AI';
+    }
+    if (humanChars > aiChars) {
+        return 'HUMAN';
+    }
+    const cliBulk =
+        (interactionType?.startsWith('blamely-cli-') ?? false) && codingType === 'BULK_INSERT';
+    return cliBulk ? 'HUMAN' : 'AI';
+}
+
+function shouldPreserveIdeBlameOverDiskSnapshot(m: LineBlame, d: LineBlame | undefined): boolean {
+    if (m.authorType === 'HUMAN') {
+        return true;
+    }
+    if (m.humanChars > m.aiChars) {
+        return true;
+    }
+    const mCli = m.interactionType?.startsWith('blamely-cli-') ?? false;
+    if (!mCli && m.interactionType) {
+        return true;
+    }
+    if (m.codingType === 'TYPING' && m.humanChars > 0) {
+        return true;
+    }
+    if (d?.interactionType?.startsWith('blamely-cli-') && m.codingType === 'TYPING') {
+        return true;
+    }
+    if (
+        d?.interactionType?.startsWith('blamely-cli-') &&
+        (m.aiChars !== d.aiChars || m.humanChars !== d.humanChars)
+    ) {
+        return true;
+    }
+    return false;
 }
 
 export class BlameMap {
@@ -160,13 +212,28 @@ export class BlameMap {
                 }
 
                 const totalChars = entry.aiChars + entry.humanChars;
-                entry.authorType = (totalChars > 0 && entry.aiChars >= entry.humanChars) ? 'AI' : 'HUMAN';
+                entry.authorType = authorTypeFromCharTotals(
+                    entry.aiChars,
+                    entry.humanChars,
+                    entry.interactionType,
+                    entry.codingType
+                );
 
                 if (entry.authorType === 'AI') {
                     entry.provider = provider || entry.provider;
                     entry.model = model || entry.model;
                     entry.prompt = prompt || entry.prompt;
-                    if (interactionType !== null) entry.interactionType = interactionType;
+                    if (interactionType !== null) {
+                        entry.interactionType = interactionType;
+                    }
+                } else {
+                    entry.provider = null;
+                    entry.model = null;
+                    entry.prompt = null;
+                    entry.interactionType = null;
+                    if (codingType === 'TYPING') {
+                        entry.codingType = 'TYPING';
+                    }
                 }
 
                 if (codingType !== 'TYPING') {
@@ -186,6 +253,7 @@ export class BlameMap {
                     model: model,
                     prompt: prompt,
                     interactionType: authorType === 'AI' ? interactionType : null,
+                    ide: currentIdeLabel(),
                     aiChars: authorType === 'AI' ? charsThisLine : 0,
                     humanChars: authorType === 'HUMAN' ? charsThisLine : 0,
                     changeType: 'ADD',
@@ -194,8 +262,18 @@ export class BlameMap {
                     codingType: codingType,
                 };
 
-                const totalChars = blame.aiChars + blame.humanChars;
-                blame.authorType = (totalChars > 0 && blame.aiChars >= blame.humanChars) ? 'AI' : 'HUMAN';
+                blame.authorType = authorTypeFromCharTotals(
+                    blame.aiChars,
+                    blame.humanChars,
+                    blame.interactionType,
+                    blame.codingType
+                );
+                if (blame.authorType === 'HUMAN') {
+                    blame.interactionType = null;
+                    blame.model = null;
+                    blame.prompt = null;
+                    blame.provider = null;
+                }
 
                 entries.push(blame);
                 affected.push(blame);
@@ -239,6 +317,7 @@ export class BlameMap {
                 model: src.model,
                 prompt: src.prompt,
                 interactionType: src.interactionType,
+                ide: src.ide ?? currentIdeLabel(),
                 aiChars: src.aiChars,
                 humanChars: src.humanChars,
                 changeType: 'ADD',
@@ -334,6 +413,42 @@ export class BlameMap {
         this.map.set(normPath(filePath), [...entries]);
     }
 
+    /**
+     * Merge disk snapshot into memory without replacing IDE-owned lines (human edits or IDE AI).
+     * Used when .blame.json changes on disk so a stale CLI trace cannot clobber in-editor attribution.
+     */
+    mergeFileBlameFromDiskSnapshot(filePath: string, diskEntries: LineBlame[]): void {
+        const key = normPath(filePath);
+        const mem = this.map.get(key);
+        if (!mem || mem.length === 0) {
+            this.map.set(key, [...diskEntries]);
+            return;
+        }
+        const diskByLine = new Map<number, LineBlame>();
+        for (const e of diskEntries) {
+            diskByLine.set(e.lineNumber, e);
+        }
+        const memByLine = new Map<number, LineBlame>();
+        for (const e of mem) {
+            memByLine.set(e.lineNumber, e);
+        }
+        const lines = new Set<number>([...diskByLine.keys(), ...memByLine.keys()]);
+        const sorted = [...lines].sort((a, b) => a - b);
+        const out: LineBlame[] = [];
+        for (const ln of sorted) {
+            const m = memByLine.get(ln);
+            const d = diskByLine.get(ln);
+            if (m && shouldPreserveIdeBlameOverDiskSnapshot(m, d)) {
+                out.push(m);
+            } else if (d) {
+                out.push({ ...d });
+            } else if (m) {
+                out.push(m);
+            }
+        }
+        this.map.set(key, out);
+    }
+
     removeFile(filePath: string): void {
         const key = normPath(filePath);
         this.map.delete(key);
@@ -388,9 +503,9 @@ export class BlameMap {
     }
 
     /**
-     * Summary counts only uncommitted (commitSha == null) entries.
-     * Merges by normalized path and by line so duplicates are not double-counted.
-     * Matches IntelliJ BlameMap.getSummary().
+     * Summary counts ADD attribution lines currently in the map (merges by normalized path and line).
+     * Rows with commitSha set are included so CLI / disk snapshots (HEAD at trace end) update the status bar.
+     * DELETE rows are excluded. Matches gutter / loaded .blame.json scope.
      *
      * When {@link restrictToBlameKeys} is set (e.g. paths Git still reports as dirty), only those files
      * contribute — same scope as the sidebar Changes list so the status bar matches after discard/commit.
@@ -425,7 +540,7 @@ export class BlameMap {
         for (const entries of byNormPath.values()) {
             const byLine = new Map<number, LineBlame>();
             for (const entry of entries) {
-                if (entry.commitSha !== null && entry.commitSha !== undefined) continue;
+                if (entry.changeType === 'DELETE') continue;
                 const line = entry.lineNumber;
                 const total = entry.aiChars + entry.humanChars;
                 const current = byLine.get(line);

@@ -34,9 +34,10 @@
   "main": "./out/extension.js",
   "scripts": {
     "clean:out": "node -e \"require('fs').rmSync('out',{recursive:true,force:true});\"",
+    "sync-hook-runner": "node scripts/sync-hook-runner.cjs",
     "vscode:prepublish": "npm run clean:out && npm run compile:release && npm run obfuscate",
-    "compile": "tsc -p ./ && cp src/hookRunner.js out/hookRunner.js",
-    "compile:release": "tsc -p ./tsconfig.release.json && cp src/hookRunner.js out/hookRunner.js",
+    "compile": "npm run sync-hook-runner && tsc -p ./ && cp src/hookRunner.js out/hookRunner.js",
+    "compile:release": "npm run sync-hook-runner && tsc -p ./tsconfig.release.json && cp src/hookRunner.js out/hookRunner.js",
     "obfuscate": "node scripts/obfuscate-out.cjs",
     "vsix": "npm run vscode:prepublish && npx @vscode/vsce package --no-dependencies",
     "watch": "tsc -watch -p ./",
@@ -181,7 +182,17 @@
         "blamely.reportOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "Regenerate report and `<git-dir>/blamely/blamely-detector.ai` on every file save"
+          "description": "Regenerate shared `report.yml` under ~/.blamely/repos/.../branches/<branch>/ on every file save"
+        },
+        "blamely.reportOnBlameChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Regenerate `report.yml` after attribution updates (AI/human detection, CLI trace merge). Debounced ~1.2s."
+        },
+        "blamely.showPostCommitAttributionInOutput": {
+          "type": "boolean",
+          "default": true,
+          "description": "After a commit, show a text AI vs Human attribution bar in the Blamely output channel (same idea as blamely-cli’s post-commit progress bar). Useful when you commit from SCM or Claude/Copilot chat and Git hook output is not visible."
         },
         "blamely.showGutterDecorations": {
           "type": "boolean",

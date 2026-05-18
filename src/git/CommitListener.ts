@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
@@ -12,7 +13,14 @@ import {
     getDiffStats,
 } from './GitUtils';
 import * as Logger from '../utils/Logger';
-import { blameFileKey, blameKeyBelongsToRepo, workspaceFoldersUnderRepo } from '../utils/WorkspacePaths';
+import { countAiHumanLineDeltas, formatPostCommitAttributionBar } from '../utils/attributionBarText';
+import {
+    blameFileKey,
+    blameKeyBelongsToRepo,
+    normalizeLoadedBlameKey,
+    workspaceFoldersUnderRepo,
+} from '../utils/WorkspacePaths';
+import * as BlamelyRepoPaths from '../store/BlamelyRepoPaths';
 
 /** Optional UI hook after post-commit cleanup (e.g. suppress History webview, clear trace files when a git note was saved). */
 export type PostCommitUiCallback = (opts: { repoRoot: string; gitNoteWritten: boolean }) => void;
@@ -117,106 +125,226 @@ export class CommitListener implements vscode.Disposable {
         let gitNoteWritten = false;
 
         try {
-            let changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
-            if (changedRepoRelative.length === 0) {
-                await new Promise(r => setTimeout(r, 300));
-                changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
-            }
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Blamely',
+                    cancellable: false,
+                },
+                async progress => {
+                    const br = await GitUtils.getBranch(resolvedRoot);
+                    progress.report({ message: 'Post-commit: archiving blame snapshots…' });
+                    await BlamelyRepoPaths.archiveBranchBlameSnapshotsToClosed(resolvedRoot, br, commitSha);
+                    const archivedSnapshotsDir = BlamelyRepoPaths.closedCommitSnapshotsDir(
+                        resolvedRoot,
+                        br,
+                        commitSha
+                    );
+                    const legacyArchivedDir = BlamelyRepoPaths.legacyClosedCommitSnapshotsDir(
+                        resolvedRoot,
+                        br,
+                        commitSha
+                    );
 
-            const entireBlame: Record<string, LineBlame[]> = {};
-            const ts = new Date().toISOString();
+                    progress.report({ message: 'Post-commit: building report from blame.json…' });
+                    let changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
+                    if (changedRepoRelative.length === 0) {
+                        await new Promise(r => setTimeout(r, 300));
+                        changedRepoRelative = await getFilesChangedInCommit(resolvedRoot, commitSha);
+                    }
 
-            for (const repoRel of changedRepoRelative) {
-                const absPath = path.normalize(path.join(resolvedRoot, repoRel));
-                const uri = vscode.Uri.file(absPath);
-                const projectRel = blameFileKey(uri);
-                const stats = await GitUtils.getDiffStats(resolvedRoot, commitSha, repoRel);
-                if (stats.addedCount === 0 && stats.deletedCount === 0) {
-                    continue;
+                    const entireBlame: Record<string, LineBlame[]> = {};
+                    const ts = new Date().toISOString();
+
+                    for (const repoRel of changedRepoRelative) {
+                        const absPath = path.normalize(path.join(resolvedRoot, repoRel));
+                        const uri = vscode.Uri.file(absPath);
+                        const projectRel = blameFileKey(uri);
+                        const stats = await GitUtils.getDiffStats(resolvedRoot, commitSha, repoRel);
+                        if (stats.addedCount === 0 && stats.deletedCount === 0) {
+                            continue;
+                        }
+
+                        const trackerBlame = this.blameMap.getBlame(projectRel);
+                        const trackerByLine = new Map(trackerBlame.map(e => [e.lineNumber, e]));
+                        const entries: LineBlame[] = [];
+
+                        const diskByLine = new Map<number, LineBlame>();
+                        let jsonPath = BlameSerializer.resolveArchivedBlameSnapshotPath(
+                            archivedSnapshotsDir,
+                            repoRel,
+                            projectRel
+                        );
+                        if (!jsonPath && legacyArchivedDir) {
+                            jsonPath = BlameSerializer.resolveArchivedBlameSnapshotPath(
+                                legacyArchivedDir,
+                                repoRel,
+                                projectRel
+                            );
+                        }
+                        if (jsonPath) {
+                            const diskRows = await BlameSerializer.loadBlameFromSnapshotFile(jsonPath);
+                            for (const row of diskRows) {
+                                if ((row.changeType ?? 'ADD') === 'ADD') {
+                                    diskByLine.set(row.lineNumber, row);
+                                }
+                            }
+                        }
+
+                        for (const line of stats.addedLines.sort((a, b) => a - b)) {
+                            const disk = diskByLine.get(line);
+                            const tracked = trackerByLine.get(line);
+                            const authorType = disk?.authorType ?? tracked?.authorType ?? 'HUMAN';
+                            const model =
+                                authorType === 'AI'
+                                    ? (disk?.model ?? tracked?.model ?? null)
+                                    : null;
+                            const prompt =
+                                authorType === 'AI' ? (disk?.prompt ?? tracked?.prompt ?? null) : null;
+                            const interaction =
+                                authorType === 'AI'
+                                    ? (disk?.interactionType ?? tracked?.interactionType ?? null)
+                                    : null;
+                            const aiC =
+                                authorType === 'AI' ? (disk?.aiChars ?? tracked?.aiChars ?? 1) : 0;
+                            const humC =
+                                authorType === 'HUMAN'
+                                    ? (disk?.humanChars ?? tracked?.humanChars ?? 1)
+                                    : 0;
+                            entries.push({
+                                lineNumber: line,
+                                authorType: authorType,
+                                provider: null,
+                                timestamp: ts,
+                                commitSha: commitSha,
+                                model,
+                                prompt,
+                                interactionType: interaction,
+                                ide: disk?.ide ?? tracked?.ide ?? null,
+                                aiChars: aiC,
+                                humanChars: humC,
+                                changeType: 'ADD',
+                                newLineNumber: line,
+                                oldLineNumber: null,
+                                codingType: disk?.codingType ?? tracked?.codingType ?? 'TYPING',
+                            });
+                        }
+
+                        for (const oldLine of stats.deletedLines.sort((a, b) => a - b)) {
+                            const deletedByAi = this.blameMap.wasLineDeletedByAi(projectRel, oldLine);
+                            const authorType = deletedByAi ? 'AI' : 'HUMAN';
+                            entries.push({
+                                lineNumber: oldLine,
+                                authorType: authorType,
+                                provider: null,
+                                timestamp: ts,
+                                commitSha: commitSha,
+                                model: deletedByAi ? 'unknown' : null,
+                                prompt: null,
+                                interactionType: null,
+                                ide: null,
+                                aiChars: deletedByAi ? 1 : 0,
+                                humanChars: deletedByAi ? 0 : 1,
+                                changeType: 'DELETE',
+                                newLineNumber: null,
+                                oldLineNumber: oldLine,
+                                codingType: 'TYPING',
+                            });
+                        }
+
+                        if (entries.length > 0) {
+                            entries.sort(
+                                (a, b) =>
+                                    (a.newLineNumber ?? a.oldLineNumber ?? 0) -
+                                    (b.newLineNumber ?? b.oldLineNumber ?? 0)
+                            );
+                            entireBlame[repoRel] = entries;
+                        }
+                    }
+
+                    progress.report({ message: 'Post-commit: git note & report…' });
+                    const reportMetrics: ReportYaml.ReportMetrics = {
+                        firstStartCodingTimeMs: this.blameMap.firstStartCodingTimeMs,
+                        timeWaitingForAiMs: this.blameMap.totalTimeWaitingForAiMs,
+                    };
+                    /** Full YAML for this commit (always written under logs/commits/<sha>/report.yml). */
+                    const generatedReport = await ReportYaml.generateFromBlameSnapshot(
+                        resolvedRoot,
+                        entireBlame,
+                        this.traceStore,
+                        commitSha,
+                        vscode.env.appName,
+                        reportMetrics
+                    );
+                    /** Git note body: prefer existing per-branch report.yml so user edits are not overwritten on disk. */
+                    let noteYamlPrefix = generatedReport.trimEnd();
+                    try {
+                        const branchReportPath = await BlamelyRepoPaths.reportYamlPath(resolvedRoot, br);
+                        if (branchReportPath && fs.existsSync(branchReportPath)) {
+                            const existing = await fs.promises.readFile(branchReportPath, 'utf-8');
+                            if (existing.trim().length > 0) {
+                                noteYamlPrefix = existing.replace(/\s+$/, '');
+                            }
+                        }
+                    } catch {
+                        /* use generatedReport */
+                    }
+                    try {
+                        const reportPath = BlamelyRepoPaths.commitLogReportPath(resolvedRoot, commitSha);
+                        if (reportPath) {
+                            await fs.promises.mkdir(path.dirname(reportPath), { recursive: true });
+                            await fs.promises.writeFile(reportPath, generatedReport, 'utf-8');
+                        }
+                    } catch (err) {
+                        Logger.warn(`Blamely: commit log report.yml: ${err}`);
+                    }
+                    const snapshotYaml = ReportYaml.blameSnapshotToYamlForReport(entireBlame);
+                    const noteContent = `${noteYamlPrefix}\n---\nblames:\n${snapshotYaml}`;
+
+                    try {
+                        gitNoteWritten = await GitUtils.addGitNote(
+                            commitSha,
+                            noteContent,
+                            resolvedRoot
+                        );
+                        await GitUtils.pushGitNotes(resolvedRoot);
+                        if (gitNoteWritten) {
+                            Logger.info(`Attached and pushed blamely git note for commit ${commitSha}`);
+                        }
+                    } catch (err) {
+                        Logger.error(`Failed to handle git notes for commit ${commitSha}`, err);
+                    }
+
+                    try {
+                        if (
+                            vscode.workspace
+                                .getConfiguration('blamely')
+                                .get<boolean>('showPostCommitAttributionInOutput', true)
+                        ) {
+                            const { ai, human } = countAiHumanLineDeltas(entireBlame);
+                            Logger.appendPlainBlock('');
+                            Logger.appendPlainBlock(formatPostCommitAttributionBar(ai, human, 42));
+                            Logger.show();
+                        }
+                    } catch {
+                        /* ignore output channel failures */
+                    }
                 }
-
-                const trackerBlame = this.blameMap.getBlame(projectRel);
-                const trackerByLine = new Map(trackerBlame.map(e => [e.lineNumber, e]));
-                const entries: LineBlame[] = [];
-
-                for (const line of stats.addedLines.sort((a, b) => a - b)) {
-                    const tracked = trackerByLine.get(line);
-                    const authorType = tracked?.authorType ?? 'HUMAN';
-                    const provider = authorType === 'AI' ? (tracked?.provider ?? 'unknown') : null;
-                    const model = authorType === 'AI' ? (tracked?.model ?? null) : null;
-                    const prompt = authorType === 'AI' ? (tracked?.prompt ?? null) : null;
-                    entries.push({
-                        lineNumber: line,
-                        authorType: authorType,
-                        provider,
-                        timestamp: ts,
-                        commitSha: commitSha,
-                        model,
-                        prompt,
-                        interactionType: null,
-                        aiChars: authorType === 'AI' ? 1 : 0,
-                        humanChars: authorType === 'HUMAN' ? 1 : 0,
-                        changeType: 'ADD',
-                        newLineNumber: line,
-                        oldLineNumber: null,
-                        codingType: tracked?.codingType ?? 'TYPING',
-                    });
-                }
-
-                for (const oldLine of stats.deletedLines.sort((a, b) => a - b)) {
-                    const deletedByAi = this.blameMap.wasLineDeletedByAi(projectRel, oldLine);
-                    const authorType = deletedByAi ? 'AI' : 'HUMAN';
-                    entries.push({
-                        lineNumber: oldLine,
-                        authorType: authorType,
-                        provider: deletedByAi ? 'github-copilot' : null,
-                        timestamp: ts,
-                        commitSha: commitSha,
-                        model: deletedByAi ? 'unknown' : null,
-                        prompt: null,
-                        interactionType: null,
-                        aiChars: deletedByAi ? 1 : 0,
-                        humanChars: deletedByAi ? 0 : 1,
-                        changeType: 'DELETE',
-                        newLineNumber: null,
-                        oldLineNumber: oldLine,
-                        codingType: 'TYPING',
-                    });
-                }
-
-                if (entries.length > 0) {
-                    entries.sort((a, b) => (a.newLineNumber ?? a.oldLineNumber ?? 0) - (b.newLineNumber ?? b.oldLineNumber ?? 0));
-                    entireBlame[repoRel] = entries;
-                }
-            }
-
-            const reportMetrics: ReportYaml.ReportMetrics = {
-                firstStartCodingTimeMs: this.blameMap.firstStartCodingTimeMs,
-                timeWaitingForAiMs: this.blameMap.totalTimeWaitingForAiMs,
-            };
-            const yamlReport = await ReportYaml.generateFromBlameSnapshot(
-                resolvedRoot,
-                entireBlame,
-                this.traceStore,
-                commitSha,
-                vscode.env.appName,
-                reportMetrics
             );
-            const snapshotYaml = ReportYaml.blameSnapshotToYamlForReport(entireBlame);
-            const noteContent = `${yamlReport}\n---\nblames:\n${snapshotYaml}`;
-
-            try {
-                gitNoteWritten = await GitUtils.addGitNote(commitSha, noteContent, resolvedRoot);
-                await GitUtils.pushGitNotes(resolvedRoot);
-                if (gitNoteWritten) {
-                    Logger.info(`Attached and pushed blamely git note for commit ${commitSha}`);
-                }
-            } catch (err) {
-                Logger.error(`Failed to handle git notes for commit ${commitSha}`, err);
-            }
         } catch (err) {
             Logger.error(`Error building report for commit ${commitSha}`, err);
         } finally {
+            let branchForPersistence: string | null | undefined;
+            try {
+                branchForPersistence = await GitUtils.getBranch(resolvedRoot);
+                await BlamelyRepoPaths.archiveBranchTraceToClosed(
+                    resolvedRoot,
+                    branchForPersistence,
+                    commitSha
+                );
+            } catch (archErr) {
+                Logger.warn(`archive branch trace: ${archErr}`);
+            }
             const keysToRemove: string[] = [];
             for (const k of this.blameMap.getTrackedFiles()) {
                 if (blameKeyBelongsToRepo(resolvedRoot, k)) {
@@ -229,8 +357,51 @@ export class CommitListener implements vscode.Disposable {
             for (const folder of workspaceFoldersUnderRepo(resolvedRoot)) {
                 await BlameSerializer.clearCurrentBranchSnapshots(folder.uri.fsPath);
             }
+            /**
+             * Git notes / report.yml only record commit diff hunks, but archived blame under
+             * logs/commits/<sha>/snapshots/ has full per-file line maps. Copy them back to the
+             * branch snapshots dir and reload so gutters still show AI vs human on unchanged lines.
+             */
+            try {
+                if (!branchForPersistence) {
+                    branchForPersistence = await GitUtils.getBranch(resolvedRoot);
+                }
+                const restored = await BlamelyRepoPaths.restoreCommitSnapshotsToBranchDir(
+                    resolvedRoot,
+                    branchForPersistence,
+                    commitSha
+                );
+                if (restored) {
+                    for (const folder of workspaceFoldersUnderRepo(resolvedRoot)) {
+                        const saved = await BlameSerializer.loadAll(folder.uri.fsPath);
+                        for (const [file, entries] of saved) {
+                            const key = normalizeLoadedBlameKey(file, folder);
+                            if (blameKeyBelongsToRepo(resolvedRoot, key) && entries.length > 0) {
+                                this.blameMap.setFileBlame(key, entries);
+                            }
+                        }
+                    }
+                    for (const ed of vscode.window.visibleTextEditors) {
+                        if (ed.document.uri.scheme !== 'file') {
+                            continue;
+                        }
+                        const bk = blameFileKey(ed.document.uri);
+                        if (!blameKeyBelongsToRepo(resolvedRoot, bk)) {
+                            continue;
+                        }
+                        this.blameMap.clipLinesToDocumentLength(bk, ed.document.lineCount);
+                    }
+                    Logger.info(
+                        `Post-commit: restored full-file blame snapshots from commit ${commitSha.slice(0, 8)}`
+                    );
+                }
+            } catch (restoreErr) {
+                Logger.warn(`Post-commit: restore branch blame snapshots: ${restoreErr}`);
+            }
             this.onCommitCompleted();
-            Logger.info(`Post-commit: cleared ${keysToRemove.length} tracked file(s) for repo, UI refreshed`);
+            Logger.info(
+                `Post-commit: repo blame refresh complete (${keysToRemove.length} key(s) reset; snapshots restored when archive existed)`
+            );
             this.onPostCommitUi?.({ repoRoot: resolvedRoot, gitNoteWritten });
         }
     }

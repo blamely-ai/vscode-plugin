@@ -4,6 +4,7 @@ import { BlameMap } from '../blame/BlameMap';
 import { blameFileKey } from '../utils/WorkspacePaths';
 import * as Logger from '../utils/Logger';
 import { chatPanelSignal } from '../utils/chatPanelSignal';
+import { codingTypeForTextInsert, isEmptyLineInsertText } from './editAttributionHeuristics';
 
 const LM_PREVIEW_CHARS = 600;
 
@@ -224,6 +225,10 @@ export class ChatParticipant implements vscode.Disposable {
 
         // Set blame for the generated lines
         if (editor && generatedText.length > 0) {
+            const chatInsertCoding = codingTypeForTextInsert(
+                generatedText,
+                isEmptyLineInsertText(generatedText)
+            );
             this.blameMap.setAttribute(
                 filePath,
                 startLine,
@@ -234,7 +239,9 @@ export class ChatParticipant implements vscode.Disposable {
                 userPrompt,
                 'chat_panel',
                 undefined,
-                generatedText.length
+                generatedText.length,
+                undefined,
+                chatInsertCoding
             );
 
             this.onBlameUpdated();

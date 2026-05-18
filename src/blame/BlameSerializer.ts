@@ -2,12 +2,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LineBlame } from './BlameMap';
 import { encodeFilePath, decodeFilePath } from '../utils/Platform';
+import { currentIdeLabel } from '../utils/ideLabel';
 import * as Logger from '../utils/Logger';
 import { getBranch, getRepoRoot } from '../git/GitUtils';
-import { blameSnapshotsDir, legacyUserBlameSnapshotsDir, sanitizedBranchDirName } from '../store/BlamelyRepoPaths';
+import { blameSnapshotsDir, legacyUserBlameSnapshotsDir, sanitizedBranchDirName, userReposMirrorSnapshotsDir } from '../store/BlamelyRepoPaths';
+import { normalizeBlamePersistenceKey } from '../utils/WorkspacePaths';
+import { interactionTypeForBlameJson } from './blameJsonPersist';
 
 /**
- * Branch-scoped blame snapshots under ~/.blamely/repos/<repoId>/snapshots/<branch>/.
+ * Branch-scoped blame snapshots under `<git-dir>/blamely/snapshots/<sanitized-branch>/` (IntelliJ-compatible).
  */
 export async function getBranchSnapshotDir(workspaceRoot: string, explicitBranch?: string | null): Promise<string | null> {
     const repo = await getRepoRoot(workspaceRoot);
@@ -18,7 +21,7 @@ export async function getBranchSnapshotDir(workspaceRoot: string, explicitBranch
     return blameSnapshotsDir(repo, branch);
 }
 
-/** Read-only: former install location (migration). */
+/** Read-only: old path using workspace-relative `.git` (main clone only — worktrees rely on canonical git-dir snapshots). */
 function legacyGitBlamelySnapshotDir(workspaceRoot: string, branch: string | null | undefined): string {
     return path.join(workspaceRoot, '.git', 'blamely', 'snapshots', sanitizedBranchDirName(branch));
 }
@@ -33,6 +36,85 @@ async function readBlameJsonFile(targetPath: string): Promise<LineBlame[]> {
     return Array.isArray(parsed) ? parsed.map(normalizeLineBlame) : [];
 }
 
+/** Load a single *.blame.json from an absolute path (e.g. archived under logs/commits/<sha>/snapshots/). */
+export async function loadBlameFromSnapshotFile(absPath: string): Promise<LineBlame[]> {
+    try {
+        if (!fs.existsSync(absPath)) {
+            return [];
+        }
+        return readBlameJsonFile(absPath);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Resolve archived snapshot path: encodings may differ between repo-relative and workspace-relative keys.
+ */
+export function resolveArchivedBlameSnapshotPath(
+    closedSnapshotsDir: string,
+    repoRel: string,
+    projectRel: string
+): string | null {
+    if (!closedSnapshotsDir) {
+        return null;
+    }
+    const r = repoRel.replace(/\\/g, '/');
+    const p = projectRel.replace(/\\/g, '/');
+    const candidates = [
+        path.join(closedSnapshotsDir, encodeFilePath(r) + '.blame.json'),
+        path.join(closedSnapshotsDir, encodeFilePath(p) + '.blame.json'),
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) {
+            return c;
+        }
+    }
+    return null;
+}
+
+/**
+ * Canonical disk shape: camelCase; stable key order matches blamely-cli blamejson —
+ * lineNumber, authorType, changeType, model, codingType, interactionType, timestamp, commitSha,
+ * prompt, ide, then optional extras. {@code interactionType} is JSON {@code null} for human rows;
+ * for AI it is one of completion | chat | panel | cli (see {@link interactionTypeForBlameJson}).
+ */
+export function lineBlameToJsonRecord(e: LineBlame, defaultIde?: string | null): Record<string, unknown> {
+    const o: Record<string, unknown> = {
+        lineNumber: e.lineNumber,
+        authorType: e.authorType,
+        changeType: e.changeType ?? 'ADD',
+    };
+    if (e.model != null && e.model !== '') {
+        o.model = e.model;
+    }
+    o.codingType = e.codingType ?? 'TYPING';
+    o.interactionType = interactionTypeForBlameJson(e);
+    if (e.timestamp !== '') {
+        o.timestamp = e.timestamp;
+    }
+    if (e.commitSha != null && e.commitSha !== '') {
+        o.commitSha = e.commitSha;
+    }
+    if (e.prompt != null && e.prompt !== '') {
+        o.prompt = e.prompt;
+    }
+    const ideFin = (e.ide?.trim() || (defaultIde ?? '').trim()) || '';
+    if (ideFin !== '') {
+        o.ide = ideFin;
+    }
+    if (e.aiChars !== 0) {
+        o.aiChars = e.aiChars;
+    }
+    if (e.humanChars !== 0) {
+        o.humanChars = e.humanChars;
+    }
+    if (e.oldLineNumber != null) {
+        o.oldLineNumber = e.oldLineNumber;
+    }
+    return o;
+}
+
 export async function save(
     workspaceRoot: string,
     filePath: string,
@@ -45,10 +127,13 @@ export async function save(
             await fs.promises.mkdir(snapshotsDir, { recursive: true });
         }
 
-        const encodedFile = encodeFilePath(filePath) + '.blame.json';
+        const key = normalizeBlamePersistenceKey(filePath, workspaceRoot);
+        const encodedFile = encodeFilePath(key) + '.blame.json';
         const targetPath = path.join(snapshotsDir, encodedFile);
 
-        await fs.promises.writeFile(targetPath, JSON.stringify(entries, null, 2), 'utf-8');
+        const defIde = currentIdeLabel();
+        const disk = entries.map(e => lineBlameToJsonRecord(e, defIde));
+        await fs.promises.writeFile(targetPath, JSON.stringify(disk, null, 2), 'utf-8');
         Logger.info(`Saved blame state to ${targetPath}`);
     } catch (err) {
         Logger.error(`Failed to save blame state for ${filePath}`, err);
@@ -57,7 +142,8 @@ export async function save(
 
 /** Drop persisted blame snapshot files for a file (Undo/Redo / SCM discard; avoid storing rolled-back attribution). */
 export async function removeSnapshot(workspaceRoot: string, filePath: string): Promise<void> {
-    const encodedBase = encodeFilePath(filePath);
+    const key = normalizeBlamePersistenceKey(filePath, workspaceRoot);
+    const encodedBase = encodeFilePath(key);
     const encodedBlameFile = encodedBase + '.blame.json';
     const encodedPlainJson = encodedBase + '.json';
     const unlinkIfExists = async (fullPath: string): Promise<void> => {
@@ -78,6 +164,9 @@ export async function removeSnapshot(workspaceRoot: string, filePath: string): P
         const branch = await getBranch(workspaceRoot);
         const repo = await getRepoRoot(workspaceRoot);
         if (repo) {
+            const mirrorDir = userReposMirrorSnapshotsDir(repo, branch);
+            await unlinkIfExists(path.join(mirrorDir, encodedBlameFile));
+            await unlinkIfExists(path.join(mirrorDir, encodedPlainJson));
             await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedBlameFile));
             await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedPlainJson));
         }
@@ -94,7 +183,8 @@ export async function load(
     filePath: string
 ): Promise<LineBlame[]> {
     try {
-        const encodedFile = encodeFilePath(filePath) + '.blame.json';
+        const key = normalizeBlamePersistenceKey(filePath, workspaceRoot);
+        const encodedFile = encodeFilePath(key) + '.blame.json';
         const gitDir = await getSnapshotsDir(workspaceRoot);
         if (gitDir) {
             const gitPath = path.join(gitDir, encodedFile);
@@ -105,6 +195,10 @@ export async function load(
         const branch = await getBranch(workspaceRoot);
         const repo = await getRepoRoot(workspaceRoot);
         if (repo) {
+            const mirrorPath = path.join(userReposMirrorSnapshotsDir(repo, branch), encodedFile);
+            if (fs.existsSync(mirrorPath)) {
+                return readBlameJsonFile(mirrorPath);
+            }
             const legacyHome = path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedFile);
             if (fs.existsSync(legacyHome)) {
                 return readBlameJsonFile(legacyHome);
@@ -121,60 +215,81 @@ export async function load(
     }
 }
 
-/** Backward compatibility: reads both old snake_case and new camelCase keys from JSON. */
+/** Backward compatibility: camelCase (canonical) and legacy snake_case keys. */
 function normalizeLineBlame(obj: Record<string, unknown>): LineBlame {
     const authorRaw = obj.authorType ?? obj.author_type;
     const changeRaw = obj.changeType ?? obj.change_type;
     const newLn = obj.newLineNumber ?? obj.new_line_number;
     const oldLn = obj.oldLineNumber ?? obj.old_line_number;
     const codingRaw = obj.codingType ?? obj.coding_type;
+    const authorType = (authorRaw === 'ai' || authorRaw === 'AI') ? 'AI' : 'HUMAN';
+    let aiChars = Number(obj.aiChars ?? obj.ai_chars ?? 0);
+    let humanChars = Number(obj.humanChars ?? obj.human_chars ?? 0);
+    if (aiChars === 0 && humanChars === 0) {
+        if (authorType === 'AI') {
+            aiChars = 1;
+        } else {
+            humanChars = 1;
+        }
+    }
+    const codingNorm =
+        codingRaw === 'bulk_insert' || codingRaw === 'BULK_INSERT' ? 'BULK_INSERT' : 'TYPING';
+    let ide: string | null = null;
+    const ideRaw = obj.ide ?? obj.ide_label;
+    if (ideRaw != null && String(ideRaw).trim() !== '') {
+        ide = String(ideRaw).trim();
+    }
     return {
         lineNumber: Number(obj.lineNumber ?? obj.line_number),
-        authorType: (authorRaw === 'ai' || authorRaw === 'AI') ? 'AI' : 'HUMAN',
-        provider: (obj.provider as string) ?? null,
+        authorType,
+        provider: null,
         timestamp: String(obj.timestamp ?? ''),
         commitSha: (obj.commitSha as string ?? obj.commit_sha as string) ?? null,
         model: (obj.model as string) ?? null,
         prompt: (obj.prompt as string) ?? null,
-        aiChars: Number(obj.aiChars ?? obj.ai_chars ?? 0),
-        humanChars: Number(obj.humanChars ?? obj.human_chars ?? 0),
+        ide,
+        aiChars,
+        humanChars,
         interactionType: (obj.interactionType as string ?? obj.interaction_type as string) ?? null,
-        changeType: changeRaw === 'DELETE' ? 'DELETE' : 'ADD',
+        changeType: changeRaw === 'DELETE' || changeRaw === 'delete' ? 'DELETE' : 'ADD',
         newLineNumber: newLn !== undefined && newLn !== null ? Number(newLn) : null,
         oldLineNumber: oldLn !== undefined && oldLn !== null ? Number(oldLn) : null,
-        codingType: codingRaw === 'bulk_insert' || codingRaw === 'BULK_INSERT' ? 'BULK_INSERT' : 'TYPING',
+        codingType: codingNorm,
     };
 }
 
 export async function loadAll(workspaceRoot: string): Promise<Map<string, LineBlame[]>> {
     const memory = new Map<string, LineBlame[]>();
     try {
-        const gitDir = await getSnapshotsDir(workspaceRoot);
         const branch = await getBranch(workspaceRoot);
         const repo = await getRepoRoot(workspaceRoot);
-        const legacyDir = legacyGitBlamelySnapshotDir(workspaceRoot, branch);
-        const legacyHomeDir = repo ? legacyUserBlameSnapshotsDir(repo, branch) : null;
+        const candidates: string[] = [];
+        if (repo) {
+            candidates.push(userReposMirrorSnapshotsDir(repo, branch));
+            candidates.push(legacyUserBlameSnapshotsDir(repo, branch));
+        }
+        candidates.push(legacyGitBlamelySnapshotDir(workspaceRoot, branch));
 
+        const seen = new Set<string>();
         let dir: string | null = null;
-        if (gitDir && fs.existsSync(gitDir)) {
-            const files = await fs.promises.readdir(gitDir);
-            if (files.some(f => f.endsWith('.blame.json'))) {
-                dir = gitDir;
+        for (const cand of candidates) {
+            if (!cand || seen.has(cand)) {
+                continue;
             }
-        }
-        if (!dir && legacyHomeDir && fs.existsSync(legacyHomeDir)) {
-            const files = await fs.promises.readdir(legacyHomeDir);
-            if (files.some(f => f.endsWith('.blame.json'))) {
-                dir = legacyHomeDir;
+            seen.add(cand);
+            if (!fs.existsSync(cand)) {
+                continue;
             }
-        }
-        if (!dir && fs.existsSync(legacyDir)) {
-            const files = await fs.promises.readdir(legacyDir);
-            if (files.some(f => f.endsWith('.blame.json'))) {
-                dir = legacyDir;
+            const files = await fs.promises.readdir(cand);
+            if (!files.some(f => f.endsWith('.blame.json'))) {
+                continue;
             }
+            dir = cand;
+            break;
         }
-        if (!dir) return memory;
+        if (!dir) {
+            return memory;
+        }
 
         const files = await fs.promises.readdir(dir);
         for (const f of files) {
@@ -193,17 +308,47 @@ export async function loadAll(workspaceRoot: string): Promise<Map<string, LineBl
     return memory;
 }
 
-/** Delete all persisted blame snapshots for the current branch. Call after commit. */
-export async function clearCurrentBranchSnapshots(workspaceRoot: string): Promise<void> {
+/** Delete all *.blame.json in a directory (best-effort). */
+async function unlinkAllBlameJsonInDir(dir: string | null | undefined): Promise<void> {
+    if (!dir || !fs.existsSync(dir)) {
+        return;
+    }
     try {
-        const snapshotsDir = await getSnapshotsDir(workspaceRoot);
-        if (!snapshotsDir || !fs.existsSync(snapshotsDir)) return;
-        const files = await fs.promises.readdir(snapshotsDir);
+        const files = await fs.promises.readdir(dir);
         for (const f of files) {
-            if (f.endsWith('.blame.json')) {
-                await fs.promises.unlink(path.join(snapshotsDir, f));
+            if (!f.endsWith('.blame.json')) {
+                continue;
+            }
+            try {
+                await fs.promises.unlink(path.join(dir, f));
+            } catch {
+                /* race */
             }
         }
+    } catch {
+        /* ignore */
+    }
+}
+
+/** Delete all persisted blame snapshots for the current branch (all known dirs). Call after full discard / commit cleanup. */
+export async function clearCurrentBranchSnapshots(workspaceRoot: string): Promise<void> {
+    try {
+        const repo = await getRepoRoot(workspaceRoot);
+        const branch = await getBranch(workspaceRoot);
+        const dirs = new Set<string>();
+        const primary = await getSnapshotsDir(workspaceRoot);
+        if (primary) {
+            dirs.add(primary);
+        }
+        if (repo) {
+            dirs.add(userReposMirrorSnapshotsDir(repo, branch));
+            dirs.add(legacyUserBlameSnapshotsDir(repo, branch));
+        }
+        dirs.add(legacyGitBlamelySnapshotDir(workspaceRoot, branch));
+        for (const d of dirs) {
+            await unlinkAllBlameJsonInDir(d);
+        }
+        Logger.info(`Cleared branch blame snapshots in ${dirs.size} location(s)`);
     } catch (err) {
         Logger.warn(`Could not clear branch snapshots: ${err}`);
     }
@@ -222,9 +367,12 @@ export async function saveAllToBranch(
             await fs.promises.mkdir(snapshotsDir, { recursive: true });
         }
         for (const [filePath, entries] of data) {
-            const encodedFile = encodeFilePath(filePath) + '.blame.json';
+            const key = normalizeBlamePersistenceKey(filePath, workspaceRoot);
+            const encodedFile = encodeFilePath(key) + '.blame.json';
             const targetPath = path.join(snapshotsDir, encodedFile);
-            await fs.promises.writeFile(targetPath, JSON.stringify(entries, null, 2), 'utf-8');
+            const defIde = currentIdeLabel();
+            const disk = entries.map(e => lineBlameToJsonRecord(e, defIde));
+            await fs.promises.writeFile(targetPath, JSON.stringify(disk, null, 2), 'utf-8');
         }
     } catch (err) {
         Logger.error('Failed to save all blame to branch', err);

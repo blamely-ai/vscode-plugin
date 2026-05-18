@@ -1,7 +1,29 @@
 import type * as vscode from 'vscode';
 
 /** Max LCS table cells — avoids multi‑MB allocations on huge buffers. */
-const MAX_LCS_CELLS = 5_000_000;
+export const MAX_LCS_CELLS = 5_000_000;
+
+/**
+ * Chat / composer applies should attribute using the host-reported change span when the edit is
+ * localized. Whole-document snapshot LCS can align duplicate lines incorrectly, yielding a {@code touched}
+ * set that does not intersect the nominal range — {@link narrowIntervalsByTouch} then falls back to
+ * that set and blame lines appear “swapped” vs the real insert.
+ *
+ * When the nominal span covers (almost) the entire file, keep using snapshot touch to recover the
+ * true edited lines from mis-reported buffer-wide ranges.
+ */
+export function trustChatApplyEditorSpan(attrSpanLineCount: number, docLineCount: number): boolean {
+    if (docLineCount <= 0) {
+        return true;
+    }
+    if (
+        attrSpanLineCount >= docLineCount - 25 ||
+        attrSpanLineCount >= Math.max(15, Math.floor(0.65 * docLineCount))
+    ) {
+        return false;
+    }
+    return true;
+}
 
 /** Ignore trailing whitespace when comparing lines so minor formatter drift does not mark whole files touched. */
 export function normalizeLineForSnapshotCompare(line: string): string {
@@ -29,6 +51,62 @@ export function linesTouchedInAfterDoc(before: string[], after: string[]): Set<n
     if (n * m > MAX_LCS_CELLS) {
         return null;
     }
+
+    return linesTouchedInAfterDocUnchecked(before, after);
+}
+
+/**
+ * When the full-document {@link linesTouchedInAfterDoc} is too large, approximate “touched” lines in
+ * {@code after} for a **single** {@link vscode.TextDocumentContentChangeEvent}: diff only a window
+ * around the replaced range, then map local 1-based line numbers to the full document.
+ *
+ * Used for chat-panel applies on large files so attribution can still narrow to changed lines.
+ */
+export function linesTouchedInAfterDocSingleEditWindow(
+    before: string[],
+    after: string[],
+    rangeStartLine0: number,
+    rangeEndLine0Inclusive: number,
+    insertedLineCount: number,
+    maxCells: number = MAX_LCS_CELLS
+): Set<number> | null {
+    const n = before.length;
+    const m = after.length;
+    const delLines =
+        rangeEndLine0Inclusive >= rangeStartLine0 ? rangeEndLine0Inclusive - rangeStartLine0 + 1 : 0;
+    const pads = [48, 96, 192, 384, 768, 1536];
+    for (const pad of pads) {
+        const b0 = Math.max(0, rangeStartLine0 - pad);
+        const b1 = Math.min(n, rangeEndLine0Inclusive + 1 + pad);
+        const a0 = Math.max(0, rangeStartLine0 - pad);
+        const a1 = Math.min(
+            m,
+            rangeStartLine0 + Math.max(insertedLineCount, delLines, 1) + pad + Math.abs(m - n)
+        );
+        const sb = before.slice(b0, b1);
+        const sa = after.slice(a0, a1);
+        if (sb.length === 0 || sa.length === 0) {
+            continue;
+        }
+        if (sb.length * sa.length > maxCells) {
+            continue;
+        }
+        const local = linesTouchedInAfterDocUnchecked(sb, sa);
+        if (!local || local.size === 0) {
+            continue;
+        }
+        const global = new Set<number>();
+        for (const ln of local) {
+            global.add(a0 + ln);
+        }
+        return global;
+    }
+    return null;
+}
+
+function linesTouchedInAfterDocUnchecked(before: string[], after: string[]): Set<number> {
+    const n = before.length;
+    const m = after.length;
 
     const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
     for (let i = n - 1; i >= 0; i--) {

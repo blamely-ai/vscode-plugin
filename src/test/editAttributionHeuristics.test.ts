@@ -1,8 +1,10 @@
 import { expect } from 'chai';
 import {
+    codingTypeForTextInsert,
     heuristicCandidateFromBatchSignals,
     heuristicChunkIsMultiCharacter,
     isClipboardExactPasteAfterNormalize,
+    isEmptyLineInsertText,
     normalizeInsertPlainText,
 } from '../providers/editAttributionHeuristics';
 
@@ -41,5 +43,37 @@ describe('editAttributionHeuristics', () => {
                 totalInsertLength: 500,
             })
         ).to.equal(false);
+    });
+
+    describe('isEmptyLineInsertText', () => {
+        it('is false for empty string', () => {
+            expect(isEmptyLineInsertText('')).to.equal(false);
+        });
+        it('is true for newline-only runs', () => {
+            expect(isEmptyLineInsertText('\n')).to.equal(true);
+            expect(isEmptyLineInsertText('\n\n')).to.equal(true);
+        });
+        it('is true for blank-line multi-line gap inserts', () => {
+            expect(isEmptyLineInsertText('\n \n')).to.equal(true);
+            expect(isEmptyLineInsertText('\t\n  \n')).to.equal(true);
+        });
+        it('is false when any line has non-whitespace', () => {
+            expect(isEmptyLineInsertText('\na\n')).to.equal(false);
+            expect(isEmptyLineInsertText('x')).to.equal(false);
+        });
+    });
+
+    describe('codingTypeForTextInsert', () => {
+        it('uses BULK_INSERT when insert spans more than one line', () => {
+            expect(codingTypeForTextInsert('a\nb', false)).to.equal('BULK_INSERT');
+            expect(codingTypeForTextInsert('a\r\nb', false)).to.equal('BULK_INSERT');
+        });
+        it('uses TYPING for single-line paste', () => {
+            expect(codingTypeForTextInsert('hello', false)).to.equal('TYPING');
+        });
+        it('keeps TYPING for gap-only blank-line inserts', () => {
+            expect(codingTypeForTextInsert('\n', true)).to.equal('TYPING');
+            expect(codingTypeForTextInsert('\n\n', true)).to.equal('TYPING');
+        });
     });
 });

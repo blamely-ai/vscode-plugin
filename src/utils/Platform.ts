@@ -33,8 +33,8 @@ function shEscapeDoubleQuoted(p: string): string {
 }
 
 /**
- * Pre-commit hook: try primary runner (~/.blamely/repos/…), then `.git/blamely/hookRunner.js`.
- * If neither exists, exit 0 so commits are not blocked (re-run Blamely “Install Git Hook” to restore files).
+ * Pre-commit hook: run hookRunner.js from ~/.blamely/repos/<repoKey>/hookRunner.js only
+ * (no writes under .git/blamely). Duplicate path args keep parity with older two-path installers.
  */
 export function hookScriptContent(hookRunnerPrimaryPath: string, hookRunnerFallbackPath: string): string {
     const pq = shEscapeDoubleQuoted(path.normalize(hookRunnerPrimaryPath));
@@ -96,6 +96,71 @@ export function encodeFilePath(relativePath: string): string {
 
 export function decodeFilePath(encoded: string): string {
     return encoded.replace(/__/g, path.posix.sep);
+}
+
+/** If path is a persisted blame sidecar (.../snapshots/.../*.blame.json), return the source blame key. */
+export function blameKeyFromSnapshotSidecarPath(pathStr: string): string | null {
+    const norm = normalizePath(pathStr.replace(/\\/g, '/'));
+    const parts = norm.split('/').filter(p => p.length > 0);
+    let snapIdx = -1;
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === 'snapshots') {
+            snapIdx = i;
+        }
+    }
+    if (snapIdx === -1 || snapIdx + 1 >= parts.length) {
+        return null;
+    }
+    const before = parts.slice(0, snapIdx);
+    let last = parts[parts.length - 1];
+    let low = last.toLowerCase();
+    const suf = '.blame.json';
+    while (low.endsWith(suf)) {
+        last = last.slice(0, -suf.length);
+        low = last.toLowerCase();
+    }
+    if (!last) {
+        return null;
+    }
+    let decoded = decodeFilePath(last);
+    let out = normalizePath(decoded.replace(/\\/g, '/'));
+    const outLow = out.toLowerCase();
+    if (outLow.includes('/.blamely/') && outLow.includes('/snapshots/')) {
+        out = path.posix.basename(out);
+    }
+    if (before.length === 1 && before[0] !== 'logs') {
+        return normalizePath(`${before[0]}/${out}`);
+    }
+    return out;
+}
+
+/**
+ * Blame persistence key for *.blame.json files — never a snapshot sidecar path or a *.blame.json key
+ * (avoids ...foo.blame.json.blame.json when a snapshot file is open).
+ */
+export function normalizeBlamePersistenceKey(filePath: string, workspaceRoot?: string): string {
+    const snap = blameKeyFromSnapshotSidecarPath(filePath);
+    if (snap) {
+        return snap;
+    }
+    if (workspaceRoot) {
+        try {
+            const rel = path.relative(path.normalize(workspaceRoot), path.normalize(filePath));
+            if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+                const snap2 = blameKeyFromSnapshotSidecarPath(rel);
+                if (snap2) {
+                    return snap2;
+                }
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    let k = normalizePath(filePath.replace(/\\/g, '/'));
+    while (k.toLowerCase().endsWith('.blame.json')) {
+        k = k.slice(0, -'.blame.json'.length);
+    }
+    return k;
 }
 
 /**

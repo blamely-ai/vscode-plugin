@@ -1,7 +1,27 @@
 import { expect } from 'chai';
-import { linesTouchedInAfterDoc, narrowIntervalsByTouch } from '../utils/snapshotLineTouch';
+import {
+    linesTouchedInAfterDoc,
+    linesTouchedInAfterDocSingleEditWindow,
+    narrowIntervalsByTouch,
+    trustChatApplyEditorSpan,
+} from '../utils/snapshotLineTouch';
 
 describe('snapshotLineTouch', () => {
+    describe('trustChatApplyEditorSpan', () => {
+        it('trusts localized span in a large file (skip LCS narrowing for chat mid-file inserts)', () => {
+            expect(trustChatApplyEditorSpan(20, 291)).to.equal(true);
+        });
+
+        it('does not trust when nominal span covers almost the whole document', () => {
+            expect(trustChatApplyEditorSpan(291, 291)).to.equal(false);
+            expect(trustChatApplyEditorSpan(270, 291)).to.equal(false);
+        });
+
+        it('does not trust mid-sized spans that exceed 65% of a modest file', () => {
+            expect(trustChatApplyEditorSpan(190, 291)).to.equal(false);
+        });
+    });
+
     describe('linesTouchedInAfterDoc', () => {
         it('returns empty when documents are identical', () => {
             const a = ['x', 'y', 'z'];
@@ -37,6 +57,27 @@ describe('snapshotLineTouch', () => {
             const after = ['alpha   ', 'beta'];
             const s = linesTouchedInAfterDoc(before, after)!;
             expect(s.size).to.equal(0);
+        });
+    });
+
+    describe('linesTouchedInAfterDocSingleEditWindow', () => {
+        it('approximates touched lines when full-document LCS is too large', () => {
+            const before = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`);
+            const after = before.slice();
+            after[1499] = 'CHANGED';
+            expect(linesTouchedInAfterDoc(before, after)).to.equal(null);
+            const w = linesTouchedInAfterDocSingleEditWindow(before, after, 1499, 1499, 1)!;
+            expect([...w].sort((a, b) => a - b)).to.deep.equal([1500]);
+        });
+    });
+
+    describe('completion / duplicate-line narrowing (regression)', () => {
+        it('intersection of nominal insert span with partial touch drops interior lines', () => {
+            const touched = new Set([2, 4]);
+            expect(narrowIntervalsByTouch(2, 5, touched, 20)).to.deep.equal([
+                { start: 2, end: 2 },
+                { start: 4, end: 4 },
+            ]);
         });
     });
 

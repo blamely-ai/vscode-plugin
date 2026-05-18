@@ -1,11 +1,20 @@
 /**
  * hookRunner.js — Executed by the Git pre-commit hook.
- * Reads `<git-dir>/blamely/blamely-detector.ai` when present (written by the extension).
  *
- * Shows AI vs Human **additions** (green / blue) and **deletions** (red) with a four-segment bar:
- *   AI added | AI deleted | Human added | Human deleted
+ * **Canonical source:** `intellij-plugin/src/main/resources/blamely/hookRunner.js`.
+ * **VS Code** copies this file in `npm run compile` via `scripts/sync-hook-runner.cjs`
+ * so both extensions ship the same script.
  *
- * Legacy files without `# ai_lines_added:` lines fall back to totals-only (deletions shown as 0).
+ * **Data source:** aggregates `~/.blamely/repos/<repoBucket>/snapshots/<sanitized-branch>/*.blame.json`
+ * (same layout as `hookRunner.js` sidecar: `__dirname` is the repo bucket). Legacy `blamely-detector.ai`
+ * is no longer written by the editors; blame snapshots are canonical.
+ *
+ * Output is **AI vs Human share only**: two percentages and a single bar (**green** = AI left,
+ * **blue** = Human right).
+ *
+ * When blamely-cli’s managed **post-commit** block is present, skips printing this bar
+ * (post-commit prints its own); still appends the short commit-message suffix when given a path.
+ *
  * Respects NO_COLOR / dumb TERM (plain ASCII only).
  */
 
@@ -57,9 +66,19 @@ function gitDirAbsolute() {
     return path.isAbsolute(gd) ? path.normalize(gd) : path.resolve(cwd, gd);
 }
 
-function fmtPct(s) {
-    const n = parseFloat(String(s), 10);
-    return Number.isFinite(n) ? n.toFixed(1) : String(s);
+/**
+ * Returns true when blamely-cli's managed post-commit block is present.
+ * In that case hookRunner.js skips printing its own bar (the post-commit hook
+ * will print a single combined bar), but still appends the commit-message suffix.
+ */
+function blamelyCliPostCommitInstalled(absGitDir) {
+    try {
+        const hookPath = path.join(absGitDir, 'hooks', 'post-commit');
+        const content = fs.readFileSync(hookPath, 'utf-8');
+        return content.includes('### blamely-cli hook (managed) begin ###');
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -82,47 +101,105 @@ function allocateSegments(counts, width) {
 }
 
 /**
- * Four-part bar: AI add (green 92), AI del (red 91), Human add (blue 94), Human del (red 91).
+ * Two-part bar: AI share on the **left** (green 92), Human share on the **right** (blue 94).
  */
-function contributionBar(aiAdded, aiDeleted, humanAdded, humanDeleted, width = 40) {
-    const counts = [aiAdded, aiDeleted, humanAdded, humanDeleted];
-    const codes = ['92', '91', '94', '91'];
-    const blocks = allocateSegments(counts, width);
-    let out = '';
-    for (let i = 0; i < 4; i++) {
-        const piece = '█'.repeat(blocks[i]);
-        out += piece.length > 0 ? paint(codes[i], piece) : '';
+function aiHumanShareBar(aiMass, humanMass, width = 40) {
+    const total = aiMass + humanMass;
+    if (total <= 0) {
+        return paint('90', '░'.repeat(width));
     }
-    const joined = out.length > 0 ? out : paint('90', '░'.repeat(width));
-    return joined;
+    const [aiW, humW] = allocateSegments([aiMass, humanMass], width);
+    let out = '';
+    if (aiW > 0) {
+        out += paint('92', '█'.repeat(aiW));
+    }
+    if (humW > 0) {
+        out += paint('94', '█'.repeat(humW));
+    }
+    return out.length > 0 ? out : paint('90', '░'.repeat(width));
 }
 
-function parseDetectorTotals(content) {
-    const ma = /^#\s*ai_lines_added:\s*(\d+)/m.exec(content);
-    const md = /^#\s*ai_lines_deleted:\s*(\d+)/m.exec(content);
-    const mh = /^#\s*human_lines_added:\s*(\d+)/m.exec(content);
-    const mhd = /^#\s*human_lines_deleted:\s*(\d+)/m.exec(content);
-    if (ma && md && mh && mhd) {
-        return {
-            aiAdded: parseInt(ma[1], 10),
-            aiDeleted: parseInt(md[1], 10),
-            humanAdded: parseInt(mh[1], 10),
-            humanDeleted: parseInt(mhd[1], 10),
-        };
+/** Matches VS Code / IntelliJ `sanitizedBranchDirName`. */
+function sanitizedBranchDirName(branch) {
+    let b = String(branch ?? 'HEAD').trim();
+    b = b
+        .replace(/\//g, '-')
+        .replace(/\\/g, '-')
+        .replace(/:/g, '-')
+        .replace(/\*/g, '-')
+        .replace(/\?/g, '-')
+        .replace(/"/g, '-')
+        .replace(/</g, '-')
+        .replace(/>/g, '-')
+        .replace(/\|/g, '-');
+    if (!b || b === '.' || b === '..') {
+        return 'HEAD';
     }
-    const aiMatch = content.match(/# AI-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
-    const humanMatch = content.match(/# Human-authored lines:\s+(\d+)\s+\(([\d.]+)%\)/);
-    if (aiMatch && humanMatch) {
-        const aiLines = parseInt(aiMatch[1], 10);
-        const humanLines = parseInt(humanMatch[1], 10);
-        return {
-            aiAdded: aiLines,
-            aiDeleted: 0,
-            humanAdded: humanLines,
-            humanDeleted: 0,
-            legacyAiPct: fmtPct(aiMatch[2]),
-            legacyHumanPct: fmtPct(humanMatch[2]),
-        };
+    return b;
+}
+
+function isAiAuthor(row) {
+    const raw = row.authorType ?? row.author_type ?? '';
+    return String(raw).toUpperCase() === 'AI';
+}
+
+/**
+ * @returns {{ aiAdded: number, aiDeleted: number, humanAdded: number, humanDeleted: number } | null}
+ */
+function totalsFromBlameSnapshots(repoBucketAbs, sanitizedBranch) {
+    const snapDir = path.join(repoBucketAbs, 'snapshots', sanitizedBranch);
+    if (!fs.existsSync(snapDir) || !fs.statSync(snapDir).isDirectory()) {
+        return null;
+    }
+    let aiAdded = 0;
+    let humanAdded = 0;
+    let aiDeleted = 0;
+    let humanDeleted = 0;
+    const names = fs.readdirSync(snapDir);
+    for (const name of names) {
+        if (!name.endsWith('.blame.json')) {
+            continue;
+        }
+        let rows;
+        try {
+            rows = JSON.parse(fs.readFileSync(path.join(snapDir, name), 'utf8'));
+        } catch {
+            continue;
+        }
+        if (!Array.isArray(rows)) {
+            continue;
+        }
+        for (const row of rows) {
+            const ch = row.changeType ?? row.change_type ?? 'ADD';
+            const del = ch === 'DELETE' || ch === 'delete';
+            const ai = isAiAuthor(row);
+            if (del) {
+                if (ai) {
+                    aiDeleted++;
+                } else {
+                    humanDeleted++;
+                }
+            } else {
+                if (ai) {
+                    aiAdded++;
+                } else {
+                    humanAdded++;
+                }
+            }
+        }
+    }
+    const sum = aiAdded + humanAdded + aiDeleted + humanDeleted;
+    if (sum <= 0) {
+        return null;
+    }
+    return { aiAdded, aiDeleted, humanAdded, humanDeleted: humanDeleted };
+}
+
+/** When hookRunner lives in ~/.blamely/repos/<bucket>/, that dir contains `snapshots/`. */
+function repoBucketDirFromHookLocation() {
+    const snap = path.join(__dirname, 'snapshots');
+    if (fs.existsSync(snap) && fs.statSync(snap).isDirectory()) {
+        return __dirname;
     }
     return null;
 }
@@ -134,70 +211,48 @@ function main() {
         process.exit(0);
     }
 
-    const detectorPath = path.join(absGitDir, 'blamely', 'blamely-detector.ai');
+    const branch = run('git rev-parse --abbrev-ref HEAD') || 'HEAD';
+    const safe = sanitizedBranchDirName(branch);
+    const bucket = repoBucketDirFromHookLocation();
 
-    if (!fs.existsSync(detectorPath)) {
-        console.log('[blamely] No blamely-detector.ai — skipping');
+    let t = null;
+    if (bucket) {
+        t = totalsFromBlameSnapshots(bucket, safe);
+    }
+
+    if (!t) {
+        console.log('[blamely] No blame snapshot totals — skipping (expected ~/.blamely/repos/<repo>/snapshots/<branch>/*.blame.json)');
         process.exit(0);
     }
 
     try {
-        const content = fs.readFileSync(detectorPath, 'utf-8');
-        const t = parseDetectorTotals(content);
-
-        if (!t) {
-            console.log('[blamely] Detector missing AI/Human summary header — regenerate report');
-            process.exit(0);
-        }
-
-        const aiAdded = t.aiAdded;
-        const aiDeleted = t.aiDeleted;
-        const humanAdded = t.humanAdded;
-        const humanDeleted = t.humanDeleted;
-
-        const aiMass = aiAdded + aiDeleted;
-        const humanMass = humanAdded + humanDeleted;
+        const aiMass = t.aiAdded + t.aiDeleted;
+        const humanMass = t.humanAdded + t.humanDeleted;
         const all = aiMass + humanMass;
 
-        const aiPct =
-            t.legacyAiPct !== undefined
-                ? t.legacyAiPct
-                : all > 0
-                  ? ((100 * aiMass) / all).toFixed(1)
-                  : '0.0';
-        const humanPct =
-            t.legacyHumanPct !== undefined
-                ? t.legacyHumanPct
-                : all > 0
-                  ? ((100 * humanMass) / all).toFixed(1)
-                  : '0.0';
+        const aiPct = all > 0 ? ((100 * aiMass) / all).toFixed(1) : '0.0';
+        const humanPct = all > 0 ? ((100 * humanMass) / all).toFixed(1) : '0.0';
 
-        const bar = contributionBar(aiAdded, aiDeleted, humanAdded, humanDeleted, 40);
+        const bar = aiHumanShareBar(aiMass, humanMass, 40);
 
         const aiLabel = paint('92', 'AI');
         const humanLabel = paint('94', 'Human');
-
-        const aiAdds = paint('92', `+${aiAdded}`);
-        const aiDels = aiDeleted > 0 ? ` ${paint('91', `−${aiDeleted}`)}` : '';
-        const humAdds = paint('94', `+${humanAdded}`);
-        const humDels = humanDeleted > 0 ? ` ${paint('91', `−${humanDeleted}`)}` : '';
-
         const aiShare = paint('92', `${aiPct}%`);
         const humanShare = paint('94', `${humanPct}%`);
 
-        console.log(
-            `[blamely] ${aiLabel}  ${aiAdds}${aiDels}  (${aiShare})  ${bar}  (${humanShare})  ${humAdds}${humDels}  ${humanLabel}`
-        );
+        if (!blamelyCliPostCommitInstalled(absGitDir)) {
+            console.log(`[blamely] ${aiLabel} ${aiShare}  ${bar}  ${humanShare} ${humanLabel}`);
+        }
 
         const sha = run('git rev-parse --short=8 HEAD') || '00000000';
         const commitMsgPath = process.argv[2];
         if (commitMsgPath && fs.existsSync(commitMsgPath)) {
             const existingMsg = fs.readFileSync(commitMsgPath, 'utf-8');
-            const suffix = `\n\n[blamely: ${sha} — AI +${aiAdded}/−${aiDeleted} (${aiPct}%), Human +${humanAdded}/−${humanDeleted} (${humanPct}%)]`;
+            const suffix = `\n\n[blamely: ${sha} — AI ${aiPct}%, Human ${humanPct}%]`;
             fs.writeFileSync(commitMsgPath, existingMsg.trimEnd() + suffix + '\n');
         }
     } catch (err) {
-        console.error('[blamely] Error reading detector:', err.message);
+        console.error('[blamely] Error aggregating blame snapshots:', err.message);
         process.exit(0);
     }
 }

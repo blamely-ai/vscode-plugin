@@ -11,6 +11,7 @@ function makeEntry(overrides: Partial<LineBlame> & { lineNumber: number }): Line
         model: null,
         prompt: null,
         interactionType: null,
+        ide: null,
         aiChars: 0,
         humanChars: 0,
         changeType: 'ADD',
@@ -87,6 +88,27 @@ describe('BlameMap', () => {
             const entries = blameMap.getBlame('test.ts');
             expect(entries[0].codingType).to.equal('BULK_INSERT');
         });
+
+        it('sets BULK_INSERT when appending multi-line HUMAN paste onto an existing line', () => {
+            blameMap.setAttribute('paste.ts', 2, 2, 'HUMAN', null, null, null, null, undefined, 3);
+            blameMap.setAttribute(
+                'paste.ts',
+                2,
+                3,
+                'HUMAN',
+                null,
+                null,
+                null,
+                null,
+                undefined,
+                20,
+                undefined,
+                'BULK_INSERT'
+            );
+            const rows = blameMap.getBlame('paste.ts');
+            expect(rows.find(e => e.lineNumber === 2)?.codingType).to.equal('BULK_INSERT');
+            expect(rows.find(e => e.lineNumber === 3)?.codingType).to.equal('BULK_INSERT');
+        });
     });
 
     describe('getBlame', () => {
@@ -97,7 +119,7 @@ describe('BlameMap', () => {
     });
 
     describe('getSummary', () => {
-        it('should only count uncommitted entries', () => {
+        it('counts ADD lines in map, including after setCommitSha and CLI-style commitSha on disk', () => {
             blameMap.setAttribute('a.ts', 1, 10, 'AI', 'copilot');
             blameMap.setAttribute('a.ts', 11, 20, 'HUMAN', null);
             blameMap.setAttribute('b.ts', 1, 5, 'AI', 'cursor');
@@ -111,8 +133,53 @@ describe('BlameMap', () => {
 
             blameMap.setCommitSha('abc12345');
             const after = blameMap.getSummary();
-            expect(after.totalLines).to.equal(0);
-            expect(after.aiLines).to.equal(0);
+            expect(after.totalLines).to.equal(25);
+            expect(after.aiLines).to.equal(15);
+            expect(after.humanLines).to.equal(10);
+        });
+
+        it('includes snapshot rows with commitSha from setFileBlame', () => {
+            const snapshot: LineBlame[] = [
+                {
+                    lineNumber: 1,
+                    authorType: 'AI',
+                    provider: null,
+                    timestamp: '2026-01-01T00:00:00Z',
+                    commitSha: 'deadbeef',
+                    model: 'm',
+                    prompt: null,
+                    ide: null,
+                    aiChars: 1,
+                    humanChars: 0,
+                    interactionType: 'blamely-cli-trace',
+                    changeType: 'ADD',
+                    newLineNumber: null,
+                    oldLineNumber: null,
+                    codingType: 'BULK_INSERT',
+                },
+                {
+                    lineNumber: 2,
+                    authorType: 'HUMAN',
+                    provider: null,
+                    timestamp: '2026-01-01T00:00:00Z',
+                    commitSha: 'deadbeef',
+                    model: null,
+                    prompt: null,
+                    ide: null,
+                    aiChars: 0,
+                    humanChars: 1,
+                    interactionType: null,
+                    changeType: 'ADD',
+                    newLineNumber: null,
+                    oldLineNumber: null,
+                    codingType: 'TYPING',
+                },
+            ];
+            blameMap.setFileBlame('snap.ts', snapshot);
+            const s = blameMap.getSummary();
+            expect(s.totalLines).to.equal(2);
+            expect(s.aiLines).to.equal(1);
+            expect(s.humanLines).to.equal(1);
         });
 
         it('should return zero counts for empty map', () => {
@@ -324,6 +391,34 @@ describe('BlameIndex.reindex', () => {
         expect(result[0].lineNumber).to.equal(1);
         expect(result[1].lineNumber).to.equal(3);  // surviving line
         expect(result[2].lineNumber).to.equal(8);  // was 10, shifted by -2
+    });
+
+    it('in-line Backspace (same-line empty replace) keeps blame row — use reindexInserted=0 reindexDeleted=0', () => {
+        const entries: LineBlame[] = [makeEntry({ lineNumber: 5, humanChars: 5 })];
+        const keepRow = reindex(entries, 5, 0, 0);
+        expect(keepRow).to.have.length(1);
+        expect(keepRow[0].lineNumber).to.equal(5);
+        const dropRow = reindex(entries, 5, 0, 1);
+        expect(dropRow).to.have.length(0);
+    });
+
+    it('should treat empty-delete single-line range as net −1 line (Backspace join), not split length 1', () => {
+        const entries: LineBlame[] = [
+            makeEntry({ lineNumber: 1 }),
+            makeEntry({ lineNumber: 3, authorType: 'AI', provider: 'copilot' }),
+            makeEntry({ lineNumber: 4 }),
+        ];
+        // processChange maps insert "" with start.line===end.line to insertedLineCount=0 (not 1 from ['']).
+        // One document line removed at row 2 — blame on line 3 shifts up and stays AI.
+        const result = reindex(entries, 2, 0, 1);
+        expect(result).to.have.length(3);
+        expect(result[0].lineNumber).to.equal(1);
+        expect(result[1].lineNumber).to.equal(2);
+        expect(result[1].authorType).to.equal('AI');
+        expect(result[2].lineNumber).to.equal(3);
+        const wrong = reindex(entries, 2, 1, 1);
+        expect(wrong.find(e => e.lineNumber === 3)?.authorType).to.equal('AI');
+        expect(wrong).to.have.length(3);
     });
 
     it('should preserve same-line edits (typing on existing line)', () => {

@@ -1,17 +1,21 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { TraceStore } from '../store/TraceStore';
+import { type CliTraceSession } from '../store/CliTraceLoader';
 import { BlameMap } from '../blame/BlameMap';
 import { reindex } from '../blame/BlameIndex';
 import { matchSuggestion } from '../utils/DiffMatcher';
 import { BLAMELY_REPO_DETECTOR_FILENAME, normalizePath } from '../utils/Platform';
-import { blameFileKey, workspaceRootForBlameKey } from '../utils/WorkspacePaths';
+import { blameFileKey, blameKeyBelongsToRepo, workspaceRootForBlameKey } from '../utils/WorkspacePaths';
 import * as AiContextExtractor from '../utils/AiContextExtractor';
 import * as BlameSerializer from '../blame/BlameSerializer';
 import { computeNextStreamingFlushSchedule } from './streamingFlushSchedule';
 import {
+    codingTypeForTextInsert,
     heuristicCandidateFromBatchSignals,
     heuristicChunkIsMultiCharacter,
     isClipboardExactPasteAfterNormalize,
+    isEmptyLineInsertText,
     normalizeInsertPlainText,
 } from './editAttributionHeuristics';
 import { chatPanelSignal } from '../utils/chatPanelSignal';
@@ -26,7 +30,13 @@ import {
     chatStreamBurstQualifiesForPoke,
     type ChatStreamBurstState,
 } from '../utils/chatApplyStreamingBurst';
-import { captureDocLines, linesTouchedInAfterDoc, narrowIntervalsByTouch } from '../utils/snapshotLineTouch';
+import {
+    captureDocLines,
+    linesTouchedInAfterDoc,
+    linesTouchedInAfterDocSingleEditWindow,
+    narrowIntervalsByTouch,
+    trustChatApplyEditorSpan,
+} from '../utils/snapshotLineTouch';
 import { insertAttributedLineRange1Based } from '../utils/insertAttributedLineRange';
 
 export class ChangeTracker implements vscode.Disposable {
@@ -35,6 +45,7 @@ export class ChangeTracker implements vscode.Disposable {
     private blameMap: BlameMap;
     private onBlameUpdated: () => void;
     private aiActiveUntil: number = 0;
+    private cliTraceSessions: CliTraceSession[] = [];
 
     /** Default exclude patterns matching IntelliJ DocumentChangeTracker.EXCLUDE_PATTERNS */
     private static readonly DEFAULT_EXCLUDE_PATTERNS = [
@@ -143,10 +154,19 @@ export class ChangeTracker implements vscode.Disposable {
         formatPreserved?: boolean;
         /** Lines in the post-edit document that differ from the pre-edit snapshot (1-based); optional per txn. */
         snapshotTouchedLines?: Set<number>;
+        /**
+         * When true, {@link snapshotTouchedLines} must not filter or narrow blame — the editor span is
+         * authoritative (LCS touch under-counts duplicate-line completions).
+         */
+        trustEditorAttributedSpan?: boolean;
     }[] = [];
     private debounceTimer: NodeJS.Timeout | null = null;
     /** Coalesced flush after tracked apply/keep (see {@link flushDeferredClassificationAfterApplyCommand}). */
     private applyCommandFlushTimer: NodeJS.Timeout | null = null;
+
+    /** Debounced *.blame.json writes so partial in-line deletes refresh disk without waiting for manual save. */
+    private static readonly BLAME_DISK_DEBOUNCE_MS = 450;
+    private blameDiskFlushTimers = new Map<string, NodeJS.Timeout>();
 
     /** Streaming-aware flush timing implemented in streamingFlushSchedule (unit-tested there). */
     private heuristicFlushLastChunkAt = 0;
@@ -279,12 +299,14 @@ export class ChangeTracker implements vscode.Disposable {
 
     /** Call from command listener when a tracked chat apply / keep-all / multi-diff accept runs. */
     public recordChatApplyCommandObserved(commandId: string): void {
+        // Always stamp: {@link promoteAmbientChatSurfaceToCompletion} and blame attribution rely on this even
+        // when {@link detectInteractionType} heuristics mis-classify a panel apply id as `completion`.
+        this.lastTrackedChatApplyCommandAt = Date.now();
         const t = AiContextExtractor.detectInteractionType(commandId);
+        chatPanelSignal('tracker-record-chat-apply-observed', { commandId, interactionType: t });
         if (t !== 'chat_panel' && t !== 'chat_inline') {
             return;
         }
-        chatPanelSignal('tracker-record-chat-apply-observed', { commandId, interactionType: t });
-        this.lastTrackedChatApplyCommandAt = Date.now();
         const snap = this.lastHeuristicClipboardRetry;
         if (!snap || Date.now() - snap.createdAt > 12_000) {
             this.lastHeuristicClipboardRetry = null;
@@ -339,14 +361,12 @@ export class ChangeTracker implements vscode.Disposable {
     }
 
     /**
-     * Substantial-insert / chat-tab poke opens an intercept window tagged {@code chat_panel}. That tag must
-     * not overwrite {@link lastDetectedInteractionType} when it is already {@code completion} (ghost accept
-     * via {@code onDidExecuteCommand} / Blamely wrappers runs before this edit).
+     * Substantial-insert / stream-burst poke: always tag {@code chat_panel}. This path only runs when a
+     * chat-like tab or AI host is open — not for ghost inline completion alone — so we must not leave a
+     * stale {@code completion} label from an earlier Tab accept.
      */
     public armChatTrafficInterceptWindow(durationMs: number, provider: string | null): void {
-        const interaction =
-            this.lastDetectedInteractionType === 'completion' ? null : 'chat_panel';
-        this.markNextChangeAsAi(durationMs, null, null, provider, interaction);
+        this.markNextChangeAsAi(durationMs, null, null, provider, 'chat_panel');
     }
 
     /**
@@ -439,10 +459,16 @@ export class ChangeTracker implements vscode.Disposable {
         setTimeout(() => this.onBlameUpdated(), 0);
     }
 
-    /** Clear persisted HEAD blame JSON for every given repo root (current branch snapshots dir). */
+    /** Clear persisted HEAD blame JSON and in-memory rows for every given repo root (SCM discard-all). */
     public async clearPersistedSnapshotsForRepoRoots(repoRoots: readonly string[]): Promise<void> {
         for (const root of repoRoots) {
+            const norm = path.normalize(root);
             await BlameSerializer.clearCurrentBranchSnapshots(root);
+            const toClear = this.blameMap.getTrackedFiles().filter(fp => blameKeyBelongsToRepo(norm, fp));
+            for (const fp of toClear) {
+                this.blameMap.removeFile(fp);
+                this.suppressedSnapshotsAfterUndo.add(fp);
+            }
         }
         this.onBlameUpdated();
         setTimeout(() => this.onBlameUpdated(), 0);
@@ -464,6 +490,7 @@ export class ChangeTracker implements vscode.Disposable {
                 console.log(`removePersistedSnapshotsForFileUris: no workspace root for ${uri.fsPath}`);
                 continue;
             }
+            this.blameMap.removeFile(key);
             await BlameSerializer.removeSnapshot(wsRoot, key);
             this.suppressedSnapshotsAfterUndo.add(key);
         }
@@ -494,12 +521,25 @@ export class ChangeTracker implements vscode.Disposable {
         );
     }
 
+    /** True during stash/checkout apply grace — skip SCM discard snapshot removal (stock VS Code has no git command events). */
+    public isGitDiscardSnapshotSkipActive(): boolean {
+        return Date.now() < this.externalVcsApplyUntil;
+    }
+
     /**
      * Open a short grace window during which the "clean document → external VCS" guard
      * in {@link handleChange} is suppressed. Call right after restoring blame on activation.
      */
     public setPostRestoreGrace(durationMs: number): void {
         this.postRestoreGraceUntil = Date.now() + durationMs;
+    }
+
+    public setCliTraces(sessions: CliTraceSession[]): void {
+        this.cliTraceSessions = sessions;
+    }
+
+    public getCliTraceSessions(): CliTraceSession[] {
+        return this.cliTraceSessions;
     }
 
     /** Last ~50 heuristic / AI gate decisions for `blamely.debug.dumpLastClassification`. */
@@ -569,6 +609,50 @@ export class ChangeTracker implements vscode.Disposable {
             this.suppressedSnapshotsAfterUndo.delete(relativePath);
         } else {
             this.suppressedSnapshotsAfterUndo.add(relativePath);
+        }
+
+        const uriStrSnap = event.document.uri.toString();
+        const linesBeforeSnap = this.docLinesSnapshotByUri.get(uriStrSnap);
+        const linesAfterSnap = captureDocLines(event.document);
+
+        if (event.contentChanges.length === 0) {
+            this.docLinesSnapshotByUri.set(uriStrSnap, linesAfterSnap);
+            return;
+        }
+
+        let normalizedLineTouch: Set<number> | null =
+            !isUndoOrRedo && linesBeforeSnap !== undefined
+                ? linesTouchedInAfterDoc(linesBeforeSnap, linesAfterSnap)
+                : null;
+        if (
+            normalizedLineTouch === null &&
+            !isUndoOrRedo &&
+            linesBeforeSnap !== undefined &&
+            event.contentChanges.length === 1
+        ) {
+            const ch = event.contentChanges[0];
+            const ins0 = ch.text.length === 0 ? 0 : ch.text.split('\n').length;
+            normalizedLineTouch = linesTouchedInAfterDocSingleEditWindow(
+                linesBeforeSnap,
+                linesAfterSnap,
+                ch.range.start.line,
+                ch.range.end.line,
+                ins0
+            );
+        }
+
+        // Format-on-open, EOF newline, CRLF, or trailing-space touch-ups often produce real
+        // TextDocumentChangeEvents whose lines match after {@link normalizeLineForSnapshotCompare}.
+        // Running normal attribution creates spurious HUMAN/AI rows and persists *.blame.json for files
+        // the user only opened.
+        if (
+            !isUndoOrRedo &&
+            linesBeforeSnap !== undefined &&
+            normalizedLineTouch !== null &&
+            normalizedLineTouch.size === 0
+        ) {
+            this.docLinesSnapshotByUri.set(uriStrSnap, linesAfterSnap);
+            return;
         }
 
         const insertSummary = summarizeSubstantialInsert(event.contentChanges);
@@ -657,15 +741,9 @@ export class ChangeTracker implements vscode.Disposable {
             }, ChangeTracker.EXTERNAL_VCS_DIRTY_RECHECK_MS);
         }
 
-        const uriStrSnap = event.document.uri.toString();
-        const linesBeforeSnap = this.docLinesSnapshotByUri.get(uriStrSnap);
-        const linesAfterSnap = captureDocLines(event.document);
         let snapshotTouchedLines: Set<number> | undefined;
-        if (!isUndoOrRedo && linesBeforeSnap !== undefined) {
-            const touched = linesTouchedInAfterDoc(linesBeforeSnap, linesAfterSnap);
-            if (touched !== null && touched.size > 0) {
-                snapshotTouchedLines = touched;
-            }
+        if (!isUndoOrRedo && normalizedLineTouch !== null && normalizedLineTouch.size > 0) {
+            snapshotTouchedLines = normalizedLineTouch;
         }
         this.docLinesSnapshotByUri.set(uriStrSnap, linesAfterSnap);
 
@@ -692,6 +770,7 @@ export class ChangeTracker implements vscode.Disposable {
                 rangeLength: change.rangeLength,
                 formatPreserved: result.formatPreserved ?? false,
                 snapshotTouchedLines,
+                trustEditorAttributedSpan: result.trustEditorAttributedSpan ?? false,
             });
         }
 
@@ -702,6 +781,8 @@ export class ChangeTracker implements vscode.Disposable {
             if (ws) {
                 await BlameSerializer.removeSnapshot(ws, relativePath);
             }
+        } else {
+            this.scheduleBlameDiskFlush(relativePath, event.document);
         }
 
         // Immediate UI refresh so each line appears as a continuous stream
@@ -747,7 +828,12 @@ export class ChangeTracker implements vscode.Disposable {
                     continue;
                 }
                 for (const b of q.blameObjects) {
-                    if (q.snapshotTouchedLines && q.snapshotTouchedLines.size > 0 && !q.snapshotTouchedLines.has(b.lineNumber)) {
+                    if (
+                        q.snapshotTouchedLines &&
+                        q.snapshotTouchedLines.size > 0 &&
+                        !q.trustEditorAttributedSpan &&
+                        !q.snapshotTouchedLines.has(b.lineNumber)
+                    ) {
                         continue;
                     }
                     if (b.authorType === 'AI' || (b.aiChars ?? 0) > 0) {
@@ -766,8 +852,67 @@ export class ChangeTracker implements vscode.Disposable {
         }
 
         if (anyMatchedAi) {
+            const batchCombined = batch.map(q => q.combinedInsert).join('');
+            let skipAiPromotionForClipboardPaste = false;
+            try {
+                const clip = await vscode.env.clipboard.readText();
+                if (
+                    isClipboardExactPasteAfterNormalize(
+                        normalizeInsertPlainText(clip),
+                        normalizeInsertPlainText(batchCombined)
+                    )
+                ) {
+                    const recentChatApply =
+                        Date.now() - this.lastTrackedChatApplyCommandAt <
+                        ChangeTracker.CHAT_APPLY_CLIPBOARD_GRACE_MS;
+                    const substantial = normalizeInsertPlainText(batchCombined).length >= 64;
+                    skipAiPromotionForClipboardPaste = !(recentChatApply && substantial);
+                }
+            } catch {
+                /* clipboard unavailable */
+            }
+
+            if (skipAiPromotionForClipboardPaste) {
+                const pasteCoding = codingTypeForTextInsert(
+                    batchCombined,
+                    isEmptyLineInsertText(batchCombined)
+                );
+                for (const q of batch) {
+                    if (!chatApplyBatchFallback && !q.matchedAiSynchronously) {
+                        continue;
+                    }
+                    for (const b of q.blameObjects) {
+                        if (
+                            q.snapshotTouchedLines &&
+                            q.snapshotTouchedLines.size > 0 &&
+                            !q.trustEditorAttributedSpan &&
+                            !q.snapshotTouchedLines.has(b.lineNumber)
+                        ) {
+                            continue;
+                        }
+                        b.humanChars = (b.humanChars || 0) + (b.aiChars || 0);
+                        b.aiChars = 0;
+                        b.authorType = 'HUMAN';
+                        b.provider = null;
+                        b.model = null;
+                        b.prompt = null;
+                        b.interactionType = null;
+                        b.codingType = pasteCoding;
+                    }
+                }
+                this.pushClassificationLine(
+                    `batch: clipboard paste → HUMAN ${pasteCoding} (skipped AI window / fallback promotion)`
+                );
+                this.onBlameUpdated();
+                return;
+            }
+
             this.recordTimeWaitingForAiIfAnchored(nowFlush);
             const fallbackModel = activeModel;
+            const aiBulkCoding = codingTypeForTextInsert(
+                batchCombined,
+                isEmptyLineInsertText(batchCombined)
+            );
             for (const q of batch) {
                 if (!chatApplyBatchFallback && !q.matchedAiSynchronously) {
                     continue;
@@ -782,7 +927,12 @@ export class ChangeTracker implements vscode.Disposable {
                 const resolvedProvider = AiContextExtractor.resolveProviderName(credProvider);
 
                 for (const b of q.blameObjects) {
-                    if (q.snapshotTouchedLines && q.snapshotTouchedLines.size > 0 && !q.snapshotTouchedLines.has(b.lineNumber)) {
+                    if (
+                        q.snapshotTouchedLines &&
+                        q.snapshotTouchedLines.size > 0 &&
+                        !q.trustEditorAttributedSpan &&
+                        !q.snapshotTouchedLines.has(b.lineNumber)
+                    ) {
                         continue;
                     }
                     if (b.authorType !== 'AI') {
@@ -793,6 +943,7 @@ export class ChangeTracker implements vscode.Disposable {
                     b.provider = resolvedProvider;
                     b.model = credModel;
                     b.prompt = credPrompt;
+                    b.codingType = aiBulkCoding;
                 }
             }
             this.pushClassificationLine(
@@ -909,7 +1060,7 @@ export class ChangeTracker implements vscode.Disposable {
                     return [];
                 }
                 const touch = q.snapshotTouchedLines;
-                if (touch && touch.size > 0) {
+                if (touch && touch.size > 0 && !q.trustEditorAttributedSpan) {
                     return q.blameObjects.filter((b) => touch.has(b.lineNumber));
                 }
                 return q.blameObjects;
@@ -999,15 +1150,35 @@ export class ChangeTracker implements vscode.Disposable {
                             createdAt: Date.now(),
                         };
                     }
+                    const pasteCoding = codingTypeForTextInsert(
+                        combinedInsert,
+                        isEmptyLineInsertText(combinedInsert)
+                    );
+                    for (const b of blameObjects) {
+                        b.humanChars = (b.humanChars || 0) + (b.aiChars || 0);
+                        b.aiChars = 0;
+                        b.authorType = 'HUMAN';
+                        b.provider = null;
+                        b.model = null;
+                        b.prompt = null;
+                        b.interactionType = null;
+                        b.codingType = pasteCoding;
+                    }
                     console.log(
                         `Heuristic skipped (${filePath}): exact clipboard paste detected, treated as HUMAN paste`
                     );
-                    this.pushClassificationLine(`heuristic: HUMAN paste (clipboard exact match) ${filePath}`);
+                    this.pushClassificationLine(
+                        `heuristic: HUMAN paste ${pasteCoding} (clipboard exact match) ${filePath}`
+                    );
                     return;
                 }
             }
 
             const mockSessionId = 'heuristic-' + Date.now();
+            const aiBulkCoding = codingTypeForTextInsert(
+                combinedInsert,
+                isEmptyLineInsertText(combinedInsert)
+            );
             let modelName = this.lastDetectedModel ?? await this.getActiveAiModel();
             let providerId = AiContextExtractor.resolveProviderName(this.lastDetectedProvider);
 
@@ -1033,6 +1204,7 @@ export class ChangeTracker implements vscode.Disposable {
                     b.model = modelName;
                     b.prompt = prompt;
                 }
+                b.codingType = aiBulkCoding;
             }
 
             this.recordTimeWaitingForAiIfAnchored(Date.now());
@@ -1061,24 +1233,52 @@ export class ChangeTracker implements vscode.Disposable {
      *  to a short snippet) should still count as formatter so prior attribution is preserved. */
     private static readonly FORMAT_LIKE_CHAR_DELTA_FLOOR = 5;
 
+    /**
+     * Snapshot diff touch is for mis-reported huge ranges (chat apply). For local inserts, LCS can
+     * under-count when new lines duplicate existing file lines — skip touch narrowing so completions
+     * attribute every inserted line.
+     *
+     * Chat/composer localized applies additionally skip touch via {@link trustChatApplyEditorSpan}:
+     * LCS alignment can swap which duplicate lines count as “touched”, producing blame on the wrong rows.
+     */
+    private static trustSnapshotTouchForNominalSpan(
+        isPureInsertion: boolean,
+        attrSpan: { start: number; end: number },
+        insertedLineCount: number,
+        deletedLineCount: number
+    ): boolean {
+        const w = attrSpan.end - attrSpan.start + 1;
+        return (
+            isPureInsertion ||
+            (w <= 96 && insertedLineCount <= 96 && deletedLineCount <= 96)
+        );
+    }
+
     private async processChange(
         document: vscode.TextDocument,
         filePath: string,
         change: vscode.TextDocumentContentChangeEvent,
         isUndoOrRedo: boolean = false,
         snapshotTouchedAfter?: Set<number>
-    ): Promise<{ blameObjects: import('../blame/BlameMap').LineBlame[], matchedAi: boolean, providerId?: string, sessionId?: string, prompt?: string | null, model?: string | null, formatPreserved?: boolean }> {
+    ): Promise<{
+        blameObjects: import('../blame/BlameMap').LineBlame[];
+        matchedAi: boolean;
+        providerId?: string;
+        sessionId?: string;
+        prompt?: string | null;
+        model?: string | null;
+        formatPreserved?: boolean;
+        trustEditorAttributedSpan?: boolean;
+    }> {
         const insertedText = change.text;
         const startLine = change.range.start.line + 1; // 1-indexed
         const deletedLineCount = change.range.end.line - change.range.start.line + 1;
         const insertedLines = insertedText.split('\n');
-        // Empty insert over a multi-line range removes whole lines. `''.split('\n')` is `['']`
-        // (length 1), which would make reindex treat the first deleted line as "surviving" and
-        // keep AI blame — gutter icons stick after undo/rollback of a multi-line block.
-        const insertedLineCount =
-            insertedText.length === 0 && change.range.start.line !== change.range.end.line
-                ? 0
-                : insertedLines.length;
+        // Empty inserts never add document lines. In particular `''.split('\n')` is `['']` (length 1);
+        // using that for reindex makes Backspace (join line) look like insert+delete on one row
+        // (linesInserted=linesDeleted=1 → net 0) so blame below the join is not shifted / removed.
+        // Multi-line empty deletes already need linesInserted=0 — same rule covers them.
+        const insertedLineCount = insertedText.length === 0 ? 0 : insertedLines.length;
         const now = Date.now();
 
         // Capture blame for the replaced range before any mutation so we can preserve ownership on format.
@@ -1152,6 +1352,36 @@ export class ChangeTracker implements vscode.Disposable {
             attrSegs = insertedLines.length > 0 ? insertedLines : Array(Math.max(1, attrN)).fill('');
         }
         const attrChars = attrSegs.map(seg => (seg.trim() === '' ? 1 : seg.length));
+        const recentTrackedChatApplyForTouch =
+            this.lastTrackedChatApplyCommandAt > 0 &&
+            now - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_CLIPBOARD_GRACE_MS;
+        const chatApplyTrustEditorSpanContext =
+            this.lastDetectedInteractionType === 'chat_panel' ||
+            this.lastDetectedInteractionType === 'chat_inline' ||
+            recentTrackedChatApplyForTouch;
+        const trustEditorAttributedSpan =
+            ChangeTracker.trustSnapshotTouchForNominalSpan(
+                isPureInsertion,
+                attrSpan,
+                insertedLineCount,
+                deletedLineCount
+            ) ||
+            (chatApplyTrustEditorSpanContext &&
+                trustChatApplyEditorSpan(attrSpan.end - attrSpan.start + 1, document.lineCount));
+        /** Chat-panel replacements often cover unchanged lines; LCS touch trims AI/HUMAN to real edits. */
+        const preferTouchNarrowForChatReplace =
+            chatApplyTrustEditorSpanContext &&
+            !isPureInsertion &&
+            deletedLineCount > 0 &&
+            snapshotTouchedAfter !== undefined &&
+            snapshotTouchedAfter.size > 0;
+        const lineTouchForNarrow =
+            preferTouchNarrowForChatReplace ||
+            (!trustEditorAttributedSpan &&
+                snapshotTouchedAfter !== undefined &&
+                snapshotTouchedAfter.size > 0)
+                ? snapshotTouchedAfter
+                : undefined;
         let reindexStartLine = startLine;
         let reindexInserted = insertedLineCount;
         let reindexDeleted = deletedLineCount;
@@ -1161,16 +1391,41 @@ export class ChangeTracker implements vscode.Disposable {
             reindexStartLine = change.range.start.character > 0 ? startLine + 1 : startLine;
             reindexInserted = numNewlines;
             reindexDeleted = 0;
+        } else if (
+            change.range.start.line === change.range.end.line &&
+            insertedText.length === 0 &&
+            change.rangeLength > 0
+        ) {
+            // Single-line empty replace = delete characters on that row only. VS Code still uses
+            // deletedLineCount=1 (one line in the range) but no document row is removed — join-line
+            // deletes use a multi-line range. With reindexDeleted=1, blame rows were dropped or
+            // shifted while only decrementCharsForDeletion should adjust char totals.
+            reindexInserted = 0;
+            reindexDeleted = 0;
         }
         const existing = this.blameMap.getBlame(filePath);
         const reindexed = reindex(existing, reindexStartLine, reindexInserted, reindexDeleted);
-        this.blameMap.setFileBlame(filePath, reindexed);
+        if (reindexed.length === 0) {
+            this.blameMap.removeFile(filePath);
+            // No in-memory rows left — drop the sidecar on disk too. Otherwise autosave skips empty maps
+            // (entries.length === 0) and *.blame.json keeps stale rows after the last blamed line is removed.
+            if (!isUndoOrRedo) {
+                const wsRoot =
+                    workspaceRootForBlameKey(filePath) ??
+                    vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+                if (wsRoot && !this.isSnapshotPersistSuppressed(filePath)) {
+                    await BlameSerializer.removeSnapshot(wsRoot, filePath);
+                }
+            }
+        } else {
+            this.blameMap.setFileBlame(filePath, reindexed);
+        }
 
         if (insertedText.length === 0) {
             if (change.rangeLength > 0) {
-                return { blameObjects: [], matchedAi: false };
+                return { blameObjects: [], matchedAi: false, trustEditorAttributedSpan: false };
             }
-            return { blameObjects: [], matchedAi: false };
+            return { blameObjects: [], matchedAi: false, trustEditorAttributedSpan: false };
         }
 
         // Undo/redo or rollback window: only decrement + reindex were applied above; do not attribute restored text
@@ -1178,17 +1433,12 @@ export class ChangeTracker implements vscode.Disposable {
         // External VCS (stash apply, etc.) still needs human attribution — bypass rollback during that grace window.
         const inExternalVcsGrace = now < this.externalVcsApplyUntil;
         if (isUndoOrRedo || (now < this.rollbackActiveUntil && !inExternalVcsGrace)) {
-            return { blameObjects: [], matchedAi: false };
+            return { blameObjects: [], matchedAi: false, trustEditorAttributedSpan: false };
         }
 
-        const lineTouchForNarrow =
-            snapshotTouchedAfter !== undefined && snapshotTouchedAfter.size > 0
-                ? snapshotTouchedAfter
-                : undefined;
-
         // Empty-line detection: newline-only or blank-only inserts are always human (matches IntelliJ)
-        const isNewlineOnly = insertedText.length > 0 && /^\n+$/.test(insertedText);
-        const isEmptyLineInsert = isNewlineOnly || (insertedLines.every(l => l.trim() === '') && insertedText.includes('\n'));
+        const isEmptyLineInsert = isEmptyLineInsertText(insertedText);
+        const insertCodingType = codingTypeForTextInsert(insertedText, isEmptyLineInsert);
 
         // Duplicate event suppression (same file/line/content within 400ms window).
         // Skip for empty-line inserts (newline + optional whitespace) — consecutive Enter
@@ -1198,7 +1448,7 @@ export class ChangeTracker implements vscode.Disposable {
         if (!isEmptyLineInsert) {
             const eventKey = `${filePath}:${startLine}:${insertedText.length}:${insertedText.slice(0, 200)}`;
             if (eventKey === this.lastProcessedEventKey && (now - this.lastProcessedEventTime) < ChangeTracker.DUPLICATE_EVENT_WINDOW_MS) {
-                return { blameObjects: [], matchedAi: false };
+                return { blameObjects: [], matchedAi: false, trustEditorAttributedSpan: false };
             }
             this.lastProcessedEventKey = eventKey;
             this.lastProcessedEventTime = now;
@@ -1235,7 +1485,8 @@ export class ChangeTracker implements vscode.Disposable {
                 interactionType,
                 gapChars,
                 lineTouchForNarrow,
-                document.lineCount
+                document.lineCount,
+                insertCodingType
             );
             return {
                 blameObjects: affected,
@@ -1244,6 +1495,7 @@ export class ChangeTracker implements vscode.Disposable {
                 sessionId: 'gap-' + Date.now(),
                 prompt,
                 model: modelName,
+                trustEditorAttributedSpan,
             };
         }
 
@@ -1255,9 +1507,10 @@ export class ChangeTracker implements vscode.Disposable {
                 attrSpan.end,
                 attrChars,
                 lineTouchForNarrow,
-                document.lineCount
+                document.lineCount,
+                insertCodingType
             );
-            return { blameObjects: affected, matchedAi: false };
+            return { blameObjects: affected, matchedAi: false, trustEditorAttributedSpan };
         }
 
         if (isEmptyLineInsert && inAiWindow && !chatApplyNewlineChunk) {
@@ -1268,10 +1521,11 @@ export class ChangeTracker implements vscode.Disposable {
                 attrSpan.end,
                 attrChars,
                 lineTouchForNarrow,
-                document.lineCount
+                document.lineCount,
+                insertCodingType
             );
             this.endAiInterceptWindowOnly();
-            return { blameObjects: affected, matchedAi: false };
+            return { blameObjects: affected, matchedAi: false, trustEditorAttributedSpan };
         }
 
         // Stash apply / merge can deliver editor edits before Git's worktree listener runs, so
@@ -1291,10 +1545,11 @@ export class ChangeTracker implements vscode.Disposable {
                 null,
                 undefined,
                 totalCharsGrace,
-                attrChars
+                attrChars,
+                insertCodingType
             );
             this.clearStaleDetectedMetadata();
-            return { blameObjects: affected, matchedAi: false };
+            return { blameObjects: affected, matchedAi: false, trustEditorAttributedSpan };
         }
 
         // Expire abandoned chat-send markers (no reply applied within 2× the normal wait window).
@@ -1397,7 +1652,14 @@ export class ChangeTracker implements vscode.Disposable {
                 this.markNextChangeAsAi(3000);
             }
 
-            const interactionType = this.lastDetectedInteractionType ?? 'completion';
+            let interactionType = this.lastDetectedInteractionType ?? 'completion';
+            if (
+                interactionType === 'completion' &&
+                this.lastTrackedChatApplyCommandAt > 0 &&
+                now - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_HEURISTIC_BIAS_MS
+            ) {
+                interactionType = 'chat_panel';
+            }
 
             this.traceStore.addSuggestion(
                 filePath,
@@ -1423,13 +1685,22 @@ export class ChangeTracker implements vscode.Disposable {
                 interactionType,
                 attrChars,
                 lineTouchForNarrow,
-                document.lineCount
+                document.lineCount,
+                insertCodingType
             );
             console.log(
                 `AI detected (window): ${filePath}:${attrSpan.start}-${attrSpan.end} entries=${affected.length} ` +
                     `provider=${providerId} model=${modelName} type=${interactionType}`
             );
-            return { blameObjects: affected, matchedAi: true, providerId, sessionId: mockSessionId, prompt, model: modelName };
+            return {
+                blameObjects: affected,
+                matchedAi: true,
+                providerId,
+                sessionId: mockSessionId,
+                prompt,
+                model: modelName,
+                trustEditorAttributedSpan,
+            };
 
         } else if (effectiveSuggestionMatch) {
             this.promoteAmbientChatSurfaceToCompletion(now);
@@ -1446,7 +1717,8 @@ export class ChangeTracker implements vscode.Disposable {
                 null,
                 attrChars,
                 lineTouchForNarrow,
-                document.lineCount
+                document.lineCount,
+                insertCodingType
             );
 
             console.log(
@@ -1460,7 +1732,8 @@ export class ChangeTracker implements vscode.Disposable {
                 providerId: effectiveSuggestionMatch.suggestion.provider_id,
                 sessionId: effectiveSuggestionMatch.suggestion.suggestion_id,
                 prompt: effectiveSuggestionMatch.suggestion.prompt,
-                model: effectiveSuggestionMatch.suggestion.model_name
+                model: effectiveSuggestionMatch.suggestion.model_name,
+                trustEditorAttributedSpan,
             };
         } else {
             let affected: import('../blame/BlameMap').LineBlame[];
@@ -1474,7 +1747,8 @@ export class ChangeTracker implements vscode.Disposable {
                     attrSpan.end,
                     attrChars,
                     lineTouchForNarrow,
-                    document.lineCount
+                    document.lineCount,
+                    insertCodingType
                 );
             }
 
@@ -1504,7 +1778,8 @@ export class ChangeTracker implements vscode.Disposable {
             return {
                 blameObjects: affected,
                 matchedAi: false,
-                formatPreserved: preservedBlame.length > 0
+                formatPreserved: preservedBlame.length > 0,
+                trustEditorAttributedSpan,
             };
         }
     }
@@ -1515,7 +1790,8 @@ export class ChangeTracker implements vscode.Disposable {
         endLine: number,
         charsPerLine: number[],
         touched: Set<number> | undefined,
-        docLineCount: number
+        docLineCount: number,
+        codingType: 'TYPING' | 'BULK_INSERT' = 'TYPING'
     ): import('../blame/BlameMap').LineBlame[] {
         const ranges = narrowIntervalsByTouch(startLine, endLine, touched, docLineCount);
         const merged: import('../blame/BlameMap').LineBlame[] = [];
@@ -1536,7 +1812,8 @@ export class ChangeTracker implements vscode.Disposable {
                     null,
                     undefined,
                     tot,
-                    sub
+                    sub,
+                    codingType
                 )
             );
         }
@@ -1553,7 +1830,8 @@ export class ChangeTracker implements vscode.Disposable {
         interactionType: string | null,
         charsPerLine: number[],
         touched: Set<number> | undefined,
-        docLineCount: number
+        docLineCount: number,
+        codingType: 'TYPING' | 'BULK_INSERT' = 'TYPING'
     ): import('../blame/BlameMap').LineBlame[] {
         const ranges = narrowIntervalsByTouch(startLine, endLine, touched, docLineCount);
         const merged: import('../blame/BlameMap').LineBlame[] = [];
@@ -1574,11 +1852,46 @@ export class ChangeTracker implements vscode.Disposable {
                     interactionType,
                     undefined,
                     tot,
-                    sub
+                    sub,
+                    codingType
                 )
             );
         }
         return merged;
+    }
+
+    private scheduleBlameDiskFlush(blameKey: string, document: vscode.TextDocument): void {
+        const prev = this.blameDiskFlushTimers.get(blameKey);
+        if (prev !== undefined) {
+            clearTimeout(prev);
+        }
+        const timer = setTimeout(() => {
+            this.blameDiskFlushTimers.delete(blameKey);
+            void this.flushBlameSnapshotToDisk(blameKey, document);
+        }, ChangeTracker.BLAME_DISK_DEBOUNCE_MS);
+        this.blameDiskFlushTimers.set(blameKey, timer);
+    }
+
+    private async flushBlameSnapshotToDisk(blameKey: string, document: vscode.TextDocument): Promise<void> {
+        if (this.isSnapshotPersistSuppressed(blameKey)) {
+            return;
+        }
+        const wsRoot =
+            workspaceRootForBlameKey(blameKey) ??
+            vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+        if (!wsRoot) {
+            return;
+        }
+        const entries = this.blameMap.getBlame(blameKey);
+        try {
+            if (entries.length === 0) {
+                await BlameSerializer.removeSnapshot(wsRoot, blameKey);
+            } else {
+                await BlameSerializer.save(wsRoot, blameKey, entries);
+            }
+        } catch {
+            /* non-critical */
+        }
     }
 
     dispose(): void {
@@ -1590,6 +1903,10 @@ export class ChangeTracker implements vscode.Disposable {
             clearTimeout(this.applyCommandFlushTimer);
             this.applyCommandFlushTimer = null;
         }
+        for (const t of this.blameDiskFlushTimers.values()) {
+            clearTimeout(t);
+        }
+        this.blameDiskFlushTimers.clear();
         this.chatStreamBurstByUri.clear();
         this.docLinesSnapshotByUri.clear();
         for (const d of this.disposables) {

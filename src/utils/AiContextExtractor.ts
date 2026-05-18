@@ -108,9 +108,14 @@ export async function detectModel(): Promise<string | null> {
         return cachedModel;
     }
 
-    const model =
-        (await tryLanguageModelApi()) ??
-        tryExtensionSettings() ??
+    // Prefer IDE-reported picker / settings (reflects Sonnet vs Opus vs Haiku). `selectChatModels()`
+    // without a selector often returns many models — taking the first "known" substring match is wrong.
+    const workspaceHints = readWorkspaceModelHints();
+    const fromSettings = firstUsableConfiguredModel(workspaceHints);
+
+    let model =
+        fromSettings ??
+        (await tryLanguageModelApi(workspaceHints)) ??
         tryAppNameHeuristic();
 
     if (model) {
@@ -266,6 +271,17 @@ export function detectInteractionType(commandId?: string): string | null {
     if (!commandId) return null;
     const id = commandId.toLowerCase();
 
+    /** Exact ids from tracked lists — avoids classifying chat applies as `completion` when the id also contains `suggest`/`tab`. */
+    if (AI_COMMAND_PATTERNS.chatPanel.some(p => p.toLowerCase() === id)) {
+        return 'chat_panel';
+    }
+    if (AI_COMMAND_PATTERNS.chatInline.some(p => p.toLowerCase() === id)) {
+        return 'chat_inline';
+    }
+    if (AI_COMMAND_PATTERNS.completion.some(p => p.toLowerCase() === id)) {
+        return 'completion';
+    }
+
     // Agent / Composer apply: use chat_panel duration (15s) when command IDs change per release.
     if (
         (id.includes('agent') || id.includes('composer')) &&
@@ -306,7 +322,16 @@ export function detectInteractionType(commandId?: string): string | null {
     }
     if (id.includes('inline') && (id.includes('chat') || id.includes('edit'))) return 'chat_inline';
     if (id.includes('chat') || id.includes('panel')) return 'chat_panel';
-    if (id.includes('completion') || id.includes('inlay') || id.includes('suggest') || id.includes('tab')) return 'completion';
+    const tabLikeCompletion =
+        id.includes('tab') &&
+        (id.includes('inline') ||
+            id.includes('suggest') ||
+            id.includes('completion') ||
+            id.includes('accept') ||
+            id.includes('copilot') ||
+            id.includes('ghost'));
+    if (id.includes('completion') || id.includes('inlay') || id.includes('suggest') || tabLikeCompletion)
+        return 'completion';
     if (id.includes('apply') || id.includes('accept') || id.includes('insert') || id.includes('keep')) {
         if (id.includes('chat') || id.includes('copilot') || id.includes('ai') || id.includes('cursor')) {
             return 'chat_panel';
@@ -371,20 +396,160 @@ export function looksLikeModelName(s: string): boolean {
 
 // --- Private detection strategies ---
 
-async function tryLanguageModelApi(): Promise<string | null> {
+function readWorkspaceModelHints(): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const add = (raw: string | null | undefined) => {
+        const t = raw?.trim();
+        if (!t || t.length < 2) {
+            return;
+        }
+        const k = t.toLowerCase();
+        if (seen.has(k)) {
+            return;
+        }
+        seen.add(k);
+        out.push(t);
+    };
+
+    const flatKeys: [string, string][] = [
+        ['github.copilot', 'chat.model'],
+        ['github.copilot', 'selectedModel'],
+        ['github.copilot', 'model'],
+        ['github.copilot-chat', 'chat.model'],
+        ['github.copilot-chat', 'selectedModel'],
+        ['cursor', 'model'],
+        ['cursor', 'aiModel'],
+        ['cursor', 'general.model'],
+        ['cursor.composer', 'model'],
+        ['cursor.composer', 'defaultModel'],
+        ['anthropic.claude-code', 'model'],
+        ['anthropic.claude-code', 'defaultModel'],
+        ['anthropic.claude', 'model'],
+        ['cline', 'model'],
+    ];
+    for (const [section, key] of flatKeys) {
+        try {
+            const v = vscode.workspace.getConfiguration(section).get<string>(key);
+            add(v);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    try {
+        const copilot = vscode.workspace.getConfiguration('github.copilot');
+        const adv = copilot.get<unknown>('advanced');
+        if (adv && typeof adv === 'object') {
+            for (const v of Object.values(adv as Record<string, unknown>)) {
+                if (typeof v === 'string') {
+                    add(v);
+                } else if (v && typeof v === 'object') {
+                    for (const inner of Object.values(v as Record<string, unknown>)) {
+                        if (typeof inner === 'string') {
+                            add(inner);
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+
+    try {
+        const copilotChat = vscode.workspace.getConfiguration('github.copilot.chat');
+        for (const key of ['model', 'defaultModel', 'selectedModel']) {
+            add(copilotChat.get<string>(key));
+        }
+    } catch {
+        /* ignore */
+    }
+
+    return out;
+}
+
+/** First workspace hint that survives sanitization and looks like an explicit model selection. */
+function firstUsableConfiguredModel(hints: string[]): string | null {
+    for (const h of hints) {
+        const s = sanitizeModelForReport(h);
+        if (!s) {
+            continue;
+        }
+        if (looksLikeModelName(s)) {
+            return s;
+        }
+        if (s.length >= 10 || /[/]/.test(s) || /\d+\.\d+/.test(s)) {
+            return s;
+        }
+    }
+    return null;
+}
+
+function scoreHintsAgainstBuiltName(fullNameLower: string, idLower: string, hintsLower: string[]): number {
+    let score = 0;
+    for (const h of hintsLower) {
+        if (!h) {
+            continue;
+        }
+        if (fullNameLower === h || idLower === h) {
+            score += 120;
+            continue;
+        }
+        if (fullNameLower.includes(h) || idLower.includes(h)) {
+            score += 60;
+            continue;
+        }
+        if (h.includes(fullNameLower) && fullNameLower.length >= 6) {
+            score += 30;
+        }
+    }
+    return score;
+}
+
+async function tryLanguageModelApi(workspaceHints: string[]): Promise<string | null> {
     try {
         if (typeof vscode.lm === 'undefined' || typeof vscode.lm.selectChatModels !== 'function') {
             return null;
         }
         const models = await vscode.lm.selectChatModels();
-        if (!models || models.length === 0) return null;
+        if (!models || models.length === 0) {
+            return null;
+        }
 
-        // Prefer models from known AI providers
+        const hintsLower = workspaceHints.map(h => h.toLowerCase());
+
+        if (hintsLower.length > 0) {
+            let best: (typeof models)[0] | null = null;
+            let bestScore = -1;
+            for (const m of models) {
+                const full = buildModelName(m);
+                const fullLower = full.toLowerCase();
+                const idLower = m.id.toLowerCase();
+                const sc = scoreHintsAgainstBuiltName(fullLower, idLower, hintsLower);
+                if (sc <= 0) {
+                    continue;
+                }
+                if (
+                    sc > bestScore ||
+                    (sc === bestScore && best !== null && full.length > buildModelName(best).length)
+                ) {
+                    bestScore = sc;
+                    best = m;
+                }
+            }
+            if (best !== null && bestScore > 0) {
+                return buildModelName(best);
+            }
+        }
+
+        // No settings to disambiguate — keep preference for "known" model names.
         for (const m of models) {
             const fullName = buildModelName(m);
-            if (looksLikeModelName(fullName)) return fullName;
+            if (looksLikeModelName(fullName)) {
+                return fullName;
+            }
         }
-        // Fall back to first model
         return buildModelName(models[0]);
     } catch (err) {
         Logger.warn(`Could not query language model API: ${err}`);
@@ -400,22 +565,6 @@ function buildModelName(m: { id: string; vendor?: string; family?: string; versi
     if (parts.length > 0) return parts.join('/');
     if (m.name) return m.name;
     return m.id;
-}
-
-function tryExtensionSettings(): string | null {
-    try {
-        const copilotConfig = vscode.workspace.getConfiguration('github.copilot');
-        const chatModel = copilotConfig.get<string>('chat.model') ?? copilotConfig.get<string>('selectedModel');
-        if (chatModel && chatModel.trim().length > 2) return chatModel.trim();
-    } catch { /* ignore */ }
-
-    try {
-        const cursorConfig = vscode.workspace.getConfiguration('cursor');
-        const model = cursorConfig.get<string>('model') ?? cursorConfig.get<string>('aiModel');
-        if (model && model.trim().length > 2) return model.trim();
-    } catch { /* ignore */ }
-
-    return null;
 }
 
 function tryAppNameHeuristic(): string | null {

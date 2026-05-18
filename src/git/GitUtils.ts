@@ -4,22 +4,28 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as Logger from '../utils/Logger';
-import { BLAMELY_REPO_DETECTOR_FILENAME, isWindows } from '../utils/Platform';
+import { isWindows } from '../utils/Platform';
 
 /**
- * Layout root for Blamely user data (~/.blamely by default; see BLAMELY_DATA_HOME / BLAMELY_SESSION_HOME).
- * Holds `repos/<id>/`, `sessions/<id>/`, and legacy `session/` when applicable.
+ * Blamely user data root (~/.blamely).
+ * Precedence matches blamely-cli `blamelydir.UserBase` exactly: BLAMELY_HOME, BLAMELY_DATA_HOME, else ~/.blamely.
+ * (`BLAMELY_SESSION_HOME` is used only for legacy paths in `BlamelyRepoPaths.getLegacySessionStoreRoot`.)
  */
-export function blamelyUserLayoutRoot(): string {
+export function blamelyDataRoot(): string {
+    const homeOverride = process.env.BLAMELY_HOME?.trim();
+    if (homeOverride) {
+        return path.normalize(homeOverride);
+    }
     const dataHome = process.env.BLAMELY_DATA_HOME?.trim();
     if (dataHome) {
         return path.normalize(dataHome);
     }
-    const sessionHome = process.env.BLAMELY_SESSION_HOME?.trim();
-    if (sessionHome) {
-        return path.dirname(path.normalize(sessionHome));
-    }
     return path.join(os.homedir(), '.blamely');
+}
+
+/** @deprecated Prefer {@link blamelyDataRoot}; kept for calls that predate naming alignment. */
+export function blamelyUserLayoutRoot(): string {
+    return blamelyDataRoot();
 }
 
 /** Normalize + resolve symlinks so the same repo does not fork storage (macOS `/var` vs `/private/var`, junctions). */
@@ -34,7 +40,7 @@ export function canonicalRepoDiskPath(repoRoot: string): string {
 
 /** Per-repo workspace under the layout root (snapshots, branch sessions, hookRunner.js, …). */
 export function userBlamelyReposRoot(): string {
-    return path.join(blamelyUserLayoutRoot(), 'repos');
+    return path.join(blamelyDataRoot(), 'repos');
 }
 
 /** Stable short id for `repoRoot` (same hashing as persisted session manifests). */
@@ -42,67 +48,67 @@ export function blamelyRepoStableId(repoRoot: string): string {
     return crypto.createHash('sha256').update(canonicalRepoDiskPath(repoRoot)).digest('hex').slice(0, 8);
 }
 
-/** True if `.git/blamely` looks like pre-~/.blamely layout (snapshots/session), not only hook-sidecar files. */
-async function legacyBlamelyDirLooksMigratable(oldDir: string): Promise<boolean> {
-    try {
-        const names = await fs.promises.readdir(oldDir);
-        if (names.includes('snapshots')) {
-            return true;
-        }
-        if (names.includes('session.json')) {
-            return true;
-        }
-        return names.some((n) => n.endsWith('.blame.json'));
-    } catch {
-        return false;
+const RESERVED_REPO_BUCKET_NAMES = new Set([
+    'cli-traces',
+    'snapshots',
+    'branches',
+    'sessions',
+    'logs',
+    'hookRunner.js',
+    'hookRunner-pre-push.sh',
+    'blamely-detector.ai',
+]);
+
+function sanitizedBasenameForRepoBucket(name: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) {
+        return 'HEAD';
     }
+    const s = trimmed
+        .replace(/\//g, '-')
+        .replace(/\\/g, '-')
+        .replace(/:/g, '-')
+        .replace(/\*/g, '-')
+        .replace(/\?/g, '-')
+        .replace(/"/g, '-')
+        .replace(/</g, '-')
+        .replace(/>/g, '-')
+        .replace(/\|/g, '-');
+    return s || 'HEAD';
 }
 
-async function migrateLegacyGitBlamelyIfNeeded(repoRoot: string, newDataDir: string): Promise<void> {
-    try {
-        const gitDirRaw = await getGitDir(repoRoot);
-        if (!gitDirRaw) {
-            return;
-        }
-        const absGitDir = path.isAbsolute(gitDirRaw) ? gitDirRaw : path.resolve(repoRoot, gitDirRaw);
-        const oldDir = path.join(absGitDir, 'blamely');
-        if (!fs.existsSync(oldDir)) {
-            return;
-        }
-        if (!(await legacyBlamelyDirLooksMigratable(oldDir))) {
-            return;
-        }
-        await fs.promises.mkdir(userBlamelyReposRoot(), { recursive: true });
-
-        let newHasData = false;
-        if (fs.existsSync(newDataDir)) {
-            const ents = await fs.promises.readdir(newDataDir);
-            newHasData = ents.some(n => !n.startsWith('.'));
-        }
-        if (newHasData) {
-            if (fs.existsSync(oldDir)) {
-                Logger.warn(
-                    `Blamely: repo data exists at ${newDataDir} and legacy .git/blamely still present — delete the latter if unused`
-                );
-            }
-            return;
-        }
-
-        if (fs.existsSync(newDataDir)) {
-            await fs.promises.rm(newDataDir, { recursive: true, force: true });
-        }
-
-        try {
-            await fs.promises.rename(oldDir, newDataDir);
-            Logger.info(`Blamely: migrated repo data from .git/blamely to ${newDataDir}`);
-        } catch {
-            await fs.promises.cp(oldDir, newDataDir, { recursive: true });
-            await fs.promises.rm(oldDir, { recursive: true, force: true });
-            Logger.info(`Blamely: copied repo data from .git/blamely to ${newDataDir} (cross-volume)`);
-        }
-    } catch (err) {
-        Logger.warn(`Blamely: legacy .git/blamely migration skipped: ${err}`);
+/**
+ * Human-readable ~/.blamely/repos/<segment>/ name: sanitized basename of the git root
+ * (matches blamely-cli `RepoBucketName` / IntelliJ `repoBucketName`).
+ */
+export function repoBucketDirName(repoRoot: string): string {
+    const canon = canonicalRepoDiskPath(repoRoot);
+    const base = path.basename(canon);
+    if (!base || base === '.' || base === '..' || base === '/' || base === '\\') {
+        return 'repo-' + blamelyRepoStableId(canon);
     }
+    const s = sanitizedBasenameForRepoBucket(base);
+    if (!s || s === 'HEAD' || s === '.' || s === '..') {
+        return 'repo-' + blamelyRepoStableId(canon);
+    }
+    if (RESERVED_REPO_BUCKET_NAMES.has(s)) {
+        return 'repo-' + s;
+    }
+    return s;
+}
+
+/** Full 64-char SHA-256 key matching blamely-cli's blamelydir.repoKey (no truncation). */
+export function cliTraceRepoKey(repoRoot: string): string {
+    let normalized = canonicalRepoDiskPath(repoRoot).replace(/\\/g, '/');
+    if (normalized.length >= 2 && normalized[1] === ':') {
+        normalized = normalized[0].toLowerCase() + normalized.slice(1);
+    }
+    return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+/** Legacy: ~/.blamely/repos/<cliRepoKey>/cli-traces/ (pre–branch-trace layout). */
+export function cliTraceParentDir(repoRoot: string): string {
+    return path.join(blamelyDataRoot(), 'repos', cliTraceRepoKey(repoRoot), 'cli-traces');
 }
 
 function run(cmd: string, cwd: string): Promise<string> {
@@ -318,28 +324,54 @@ export async function getGitDir(cwd: string): Promise<string | null> {
     }
 }
 
-/**
- * Path to `<git-dir>/blamely/blamely-detector.ai` (inside Git metadata, not the working tree).
- */
-export async function blamelyDetectorAiPath(repoRoot: string): Promise<string | null> {
-    const gitDirRaw = await getGitDir(repoRoot);
-    if (!gitDirRaw) {
-        return null;
+async function copyRepoTreeMergeIfMissing(destRoot: string, srcRoot: string): Promise<void> {
+    try {
+        if (!fs.existsSync(srcRoot) || !fs.statSync(srcRoot).isDirectory()) {
+            return;
+        }
+        await fs.promises.mkdir(destRoot, { recursive: true });
+        const entries = await fs.promises.readdir(srcRoot, { withFileTypes: true });
+        for (const ent of entries) {
+            const sp = path.join(srcRoot, ent.name);
+            const dp = path.join(destRoot, ent.name);
+            try {
+                if (ent.isDirectory()) {
+                    await copyRepoTreeMergeIfMissing(dp, sp);
+                } else if (ent.isFile() && !fs.existsSync(dp)) {
+                    await fs.promises.copyFile(sp, dp);
+                }
+            } catch {
+                /* best-effort migration */
+            }
+        }
+    } catch {
+        /* best-effort migration */
     }
-    const absGitDir = path.isAbsolute(gitDirRaw) ? path.normalize(gitDirRaw) : path.resolve(repoRoot, gitDirRaw);
-    return path.join(absGitDir, 'blamely', BLAMELY_REPO_DETECTOR_FILENAME);
 }
 
-/** Resolved per-repo Blamely data dir under the user layout root (formerly `.git/blamely`). */
+/**
+ * Ensure ~/.blamely/repos/<repo-name>/ exists, copying from the legacy 64-hex bucket once if needed.
+ */
+export async function ensureUserRepoBucketLayout(repoRoot: string): Promise<void> {
+    const canon = canonicalRepoDiskPath(path.normalize(repoRoot.trim()));
+    await fs.promises.mkdir(userBlamelyReposRoot(), { recursive: true });
+    const namedDir = path.join(userBlamelyReposRoot(), repoBucketDirName(canon));
+    const hashDir = path.join(userBlamelyReposRoot(), cliTraceRepoKey(canon));
+    if (!fs.existsSync(namedDir) && fs.existsSync(hashDir)) {
+        await copyRepoTreeMergeIfMissing(namedDir, hashDir);
+    }
+    await fs.promises.mkdir(namedDir, { recursive: true });
+}
+
+/** Per-repo dir under ~/.blamely/repos/<repo-name>/ (hookRunner.js, branches, snapshots). Legacy cli-traces remain under {@link cliTraceParentDir}. */
 export async function getBlamelyDataDir(cwd: string): Promise<string | null> {
     const repoRoot = await getRepoRoot(cwd);
     if (!repoRoot) {
         return null;
     }
     const canonRepo = canonicalRepoDiskPath(repoRoot);
-    const newDir = path.join(userBlamelyReposRoot(), blamelyRepoStableId(canonRepo));
-    await migrateLegacyGitBlamelyIfNeeded(canonRepo, newDir);
-    return newDir;
+    await ensureUserRepoBucketLayout(canonRepo);
+    return path.join(userBlamelyReposRoot(), repoBucketDirName(canonRepo));
 }
 
 /**

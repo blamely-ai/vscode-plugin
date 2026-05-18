@@ -1,7 +1,14 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as GitUtils from '../git/GitUtils';
-import { normalizePath, workspacePathFromGitExtensionUriQuery } from './Platform';
+import {
+    blameKeyFromSnapshotSidecarPath,
+    normalizeBlamePersistenceKey,
+    normalizePath,
+    workspacePathFromGitExtensionUriQuery,
+} from './Platform';
+
+export { blameKeyFromSnapshotSidecarPath, normalizeBlamePersistenceKey };
 
 /** True when `folderFsPath` is the repo root or a folder inside it (workspace folder under a git repo). */
 export function workspaceFolderInRepo(repoRoot: string, folderFsPath: string): boolean {
@@ -32,11 +39,20 @@ export function blameFileKey(uri: vscode.Uri): string {
     }
     const folder = vscode.workspace.getWorkspaceFolder(uri);
     if (!folder) {
+        const fromAbs = blameKeyFromSnapshotSidecarPath(uri.fsPath);
+        if (fromAbs !== null) {
+            return fromAbs;
+        }
         return normalizePath(uri.fsPath);
     }
-    const relativeWithinFolder = normalizePath(
-        path.relative(folder.uri.fsPath, uri.fsPath)
-    );
+    const relativeWithinFolder = normalizePath(path.relative(folder.uri.fsPath, uri.fsPath));
+    const fromSnap = blameKeyFromSnapshotSidecarPath(relativeWithinFolder);
+    if (fromSnap !== null) {
+        if (!isMultiRootWorkspace()) {
+            return fromSnap;
+        }
+        return normalizePath(`${folder.name}/${fromSnap}`);
+    }
     if (!isMultiRootWorkspace()) {
         return relativeWithinFolder;
     }
