@@ -5,6 +5,7 @@ import {
     heuristicChunkIsMultiCharacter,
     isClipboardExactPasteAfterNormalize,
     isEmptyLineInsertText,
+    looksLikeManualHumanTypingAfterAi,
     normalizeInsertPlainText,
 } from '../providers/editAttributionHeuristics';
 
@@ -74,6 +75,56 @@ describe('editAttributionHeuristics', () => {
         it('keeps TYPING for gap-only blank-line inserts', () => {
             expect(codingTypeForTextInsert('\n', true)).to.equal('TYPING');
             expect(codingTypeForTextInsert('\n\n', true)).to.equal('TYPING');
+        });
+    });
+
+    describe('looksLikeManualHumanTypingAfterAi', () => {
+        it('treats single-line cursor inserts as human after AI', () => {
+            expect(
+                looksLikeManualHumanTypingAfterAi({
+                    insertedText: 'hello',
+                    rangeLength: 0,
+                    isEmptyLineInsert: false,
+                    insertCodingType: 'TYPING',
+                    hasSuggestionMatch: false,
+                })
+            ).to.equal(true);
+        });
+
+        it('treats Enter/newline-only as human after AI', () => {
+            expect(
+                looksLikeManualHumanTypingAfterAi({
+                    insertedText: '\n',
+                    rangeLength: 0,
+                    isEmptyLineInsert: true,
+                    insertCodingType: 'TYPING',
+                    hasSuggestionMatch: false,
+                })
+            ).to.equal(true);
+        });
+
+        it('does not treat multi-line bulk inserts as manual human typing', () => {
+            expect(
+                looksLikeManualHumanTypingAfterAi({
+                    insertedText: 'line1\nline2',
+                    rangeLength: 0,
+                    isEmptyLineInsert: false,
+                    insertCodingType: 'BULK_INSERT',
+                    hasSuggestionMatch: false,
+                })
+            ).to.equal(false);
+        });
+
+        it('does not override when a pending suggestion matched', () => {
+            expect(
+                looksLikeManualHumanTypingAfterAi({
+                    insertedText: 'x',
+                    rangeLength: 0,
+                    isEmptyLineInsert: false,
+                    insertCodingType: 'TYPING',
+                    hasSuggestionMatch: true,
+                })
+            ).to.equal(false);
         });
     });
 });

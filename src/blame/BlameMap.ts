@@ -138,13 +138,18 @@ export class BlameMap {
             const total = aiChars + humanChars;
             if (total <= 0) continue;
             const toRemove = Math.min(lineChars, total);
-            const humanReduce = Math.min(
-                Math.floor((toRemove * humanChars) / total),
-                humanChars
-            );
+            // Backspace/delete removes the most recent edit first — prefer human chars so undoing
+            // manual typing on an AI line restores the AI gutter instead of eating AI mass first.
+            const humanReduce = Math.min(toRemove, humanChars);
             const aiReduce = Math.min(toRemove - humanReduce, aiChars);
             entry.humanChars = Math.max(0, humanChars - humanReduce);
             entry.aiChars = Math.max(0, aiChars - aiReduce);
+            entry.authorType = authorTypeFromCharTotals(
+                entry.aiChars,
+                entry.humanChars,
+                entry.interactionType,
+                entry.codingType
+            );
             if (entry.aiChars === 0 && entry.humanChars === 0) {
                 const idx = list.indexOf(entry);
                 if (idx >= 0) toRemoveFromList.push(idx);

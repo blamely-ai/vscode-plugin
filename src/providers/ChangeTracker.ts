@@ -8,10 +8,12 @@ import { matchSuggestion } from '../utils/DiffMatcher';
 import { BLAMELY_REPO_DETECTOR_FILENAME, normalizePath } from '../utils/Platform';
 import { blameFileKey, blameKeyBelongsToRepo, workspaceRootForBlameKey } from '../utils/WorkspacePaths';
 import * as AiContextExtractor from '../utils/AiContextExtractor';
+import * as Logger from '../utils/Logger';
 import * as BlameSerializer from '../blame/BlameSerializer';
 import { computeNextStreamingFlushSchedule } from './streamingFlushSchedule';
 import {
     codingTypeForTextInsert,
+    looksLikeManualHumanTypingAfterAi,
     heuristicCandidateFromBatchSignals,
     heuristicChunkIsMultiCharacter,
     isClipboardExactPasteAfterNormalize,
@@ -135,6 +137,11 @@ export class ChangeTracker implements vscode.Disposable {
      * heuristic batch step is skipped.
      */
     private externalVcsApplyUntil: number = 0;
+
+    /** Copilot CLI writes via bash/edit tools — suppress external-VCS demotion while active. */
+    private copilotCliActiveUntil: number = 0;
+    private lastCopilotCliToolAt: number = 0;
+    private static readonly COPILOT_CLI_DISK_SYNC_GRACE_MS = 45_000;
 
     /** After Undo/Redo, omit snapshot writes until a normal edit on that file; disk snapshot is removed. */
     private suppressedSnapshotsAfterUndo = new Set<string>();
@@ -357,6 +364,7 @@ export class ChangeTracker implements vscode.Disposable {
     private endAiInterceptWindowOnly(): void {
         this.aiActiveUntil = 0;
         this.lastAiActionStartedAt = 0;
+        this.copilotCliActiveUntil = 0;
         this.clearStaleDetectedMetadata();
     }
 
@@ -367,6 +375,75 @@ export class ChangeTracker implements vscode.Disposable {
      */
     public armChatTrafficInterceptWindow(durationMs: number, provider: string | null): void {
         this.markNextChangeAsAi(durationMs, null, null, provider, 'chat_panel');
+    }
+
+    /**
+     * Copilot CLI agent wrote/edited files via SDK tools (not VS Code Apply). Opens a chat_panel AI window
+     * and keeps external disk-refresh edits from being demoted to Human.
+     */
+    public recordCopilotCliToolActivity(model: string | null, durationMs: number = 45_000): void {
+        const now = Date.now();
+        this.lastCopilotCliToolAt = now;
+        this.copilotCliActiveUntil = now + durationMs;
+        if (model) {
+            this.lastDetectedModel = model;
+        }
+        this.lastDetectedProvider = 'github-copilot';
+        this.lastDetectedInteractionType = 'chat_panel';
+        // Do not set lastTrackedChatApplyCommandAt — CLI is not a chat Apply/Keep.
+        this.markNextChangeAsAi(durationMs, null, model, 'github-copilot', 'chat_panel');
+    }
+
+    public isCopilotCliDiskSyncActive(nowMs: number = Date.now()): boolean {
+        return (
+            nowMs < this.copilotCliActiveUntil ||
+            (this.lastCopilotCliToolAt > 0 &&
+                nowMs - this.lastCopilotCliToolAt < ChangeTracker.COPILOT_CLI_DISK_SYNC_GRACE_MS)
+        );
+    }
+
+    /**
+     * Attribute a file Copilot CLI wrote on disk (bash/edit) when the editor did not stream edits.
+     */
+    public async attributeCopilotCliFileFromDisk(absPath: string, model: string | null): Promise<void> {
+        const now = Date.now();
+        if (!this.isCopilotCliDiskSyncActive(now)) {
+            return;
+        }
+        const uri = vscode.Uri.file(absPath);
+        const folder = vscode.workspace.getWorkspaceFolder(uri);
+        if (!folder) {
+            return;
+        }
+        let doc: vscode.TextDocument;
+        try {
+            doc = await vscode.workspace.openTextDocument(uri);
+        } catch {
+            return;
+        }
+        const fileKey = blameFileKey(uri);
+        const providerId = 'github-copilot';
+        const modelName = model ?? this.lastDetectedModel ?? (await this.getActiveAiModel());
+        const lines = doc.getText().split('\n');
+        const lineCount = Math.max(lines.length, 1);
+        const charsPerLine = lines.map(l => (l.trim() === '' ? 1 : l.length));
+        this.blameMap.recordFirstStartCodingTimeIfNeeded();
+        this.attributeIntervalsAi(
+            fileKey,
+            1,
+            lineCount,
+            providerId,
+            modelName,
+            null,
+            'chat_panel',
+            charsPerLine,
+            undefined,
+            doc.lineCount,
+            'BULK_INSERT'
+        );
+        this.onBlameUpdated();
+        await this.flushBlameSnapshotToDisk(fileKey, doc);
+        Logger.info(`Copilot CLI disk attribution: ${fileKey} lines=${lineCount} model=${modelName ?? 'unknown'}`);
     }
 
     /**
@@ -439,6 +516,9 @@ export class ChangeTracker implements vscode.Disposable {
             this.lastSubstantialChatTabPokeAt > 0 &&
             nowMs - this.lastSubstantialChatTabPokeAt < ChangeTracker.POST_SUBSTANTIAL_CHAT_POKE_CLEAN_DOC_SUPPRESS_MS
         ) {
+            return true;
+        }
+        if (nowMs < this.copilotCliActiveUntil) {
             return true;
         }
         return false;
@@ -822,7 +902,7 @@ export class ChangeTracker implements vscode.Disposable {
         let activePrompt: string | null = this.lastDetectedPrompt;
         let activeModel = this.lastDetectedModel ?? await this.getActiveAiModel();
 
-        if (anyMatchedAi && Date.now() < this.externalVcsApplyUntil) {
+        if (anyMatchedAi && Date.now() < this.externalVcsApplyUntil && Date.now() >= this.copilotCliActiveUntil) {
             for (const q of batch) {
                 if (!chatApplyBatchFallback && !q.matchedAiSynchronously) {
                     continue;
@@ -1368,13 +1448,16 @@ export class ChangeTracker implements vscode.Disposable {
             ) ||
             (chatApplyTrustEditorSpanContext &&
                 trustChatApplyEditorSpan(attrSpan.end - attrSpan.start + 1, document.lineCount));
-        /** Chat-panel replacements often cover unchanged lines; LCS touch trims AI/HUMAN to real edits. */
+        /** Chat-panel replacements often cover unchanged lines; LCS touch trims AI/HUMAN to real edits.
+         *  Skip when the editor span is already trustworthy — whole-doc LCS can align duplicate lines
+         *  to the wrong rows and blame appears swapped vs the actual replace. */
         const preferTouchNarrowForChatReplace =
             chatApplyTrustEditorSpanContext &&
             !isPureInsertion &&
             deletedLineCount > 0 &&
             snapshotTouchedAfter !== undefined &&
-            snapshotTouchedAfter.size > 0;
+            snapshotTouchedAfter.size > 0 &&
+            !trustEditorAttributedSpan;
         const lineTouchForNarrow =
             preferTouchNarrowForChatReplace ||
             (!trustEditorAttributedSpan &&
@@ -1458,12 +1541,14 @@ export class ChangeTracker implements vscode.Disposable {
         // inside an AI-apply window from chat or a recent tracked Apply — those often arrive as \n chunks.
         // After inline completion, a manual Enter must not inherit AI (clears the window).
         const inAiWindow = now < this.aiActiveUntil;
+        const inCopilotCliBurst = now < this.copilotCliActiveUntil;
         const recentTrackedChatApply =
             this.lastTrackedChatApplyCommandAt > 0 &&
             now - this.lastTrackedChatApplyCommandAt < ChangeTracker.CHAT_APPLY_CLIPBOARD_GRACE_MS;
         const chatApplyNewlineChunk =
             inAiWindow &&
             !inExternalVcsGrace &&
+            !inCopilotCliBurst &&
             (this.lastDetectedInteractionType === 'chat_panel' ||
                 this.lastDetectedInteractionType === 'chat_inline' ||
                 recentTrackedChatApply);
@@ -1531,7 +1616,7 @@ export class ChangeTracker implements vscode.Disposable {
         // Stash apply / merge can deliver editor edits before Git's worktree listener runs, so
         // notifyExternalVcsApply may not have opened the grace window yet — but when it has,
         // treat all inserts as human and skip AI intercept, suggestion match, and later heuristic.
-        if (inExternalVcsGrace) {
+        if (inExternalVcsGrace && !this.isCopilotCliDiskSyncActive(now)) {
             this.blameMap.recordFirstStartCodingTimeIfNeeded();
             const totalCharsGrace = attrChars.reduce((a, b) => a + b, 0);
             const affected = this.blameMap.setAttribute(
@@ -1632,6 +1717,76 @@ export class ChangeTracker implements vscode.Disposable {
             !clipboardPasteOverridesAiAttribution;
 
         const effectiveSuggestionMatch = clipboardPasteOverridesAiAttribution ? null : match;
+
+        const recentCopilotCliDisk = this.isCopilotCliDiskSyncActive(now);
+        const copilotCliBulkApply =
+            recentCopilotCliDisk &&
+            !effectiveSuggestionMatch &&
+            !recentTrackedChatApply &&
+            (insertCodingType === 'BULK_INSERT' || insertedText.length >= 24);
+
+        if (copilotCliBulkApply) {
+            this.blameMap.recordFirstStartCodingTimeIfNeeded();
+            const providerId = AiContextExtractor.resolveProviderName(this.lastDetectedProvider ?? 'github-copilot');
+            const modelName = this.lastDetectedModel ?? (await this.getActiveAiModel());
+            this.recordTimeWaitingForAiIfAnchored(now);
+            const affected = this.attributeIntervalsAi(
+                filePath,
+                attrSpan.start,
+                attrSpan.end,
+                providerId,
+                modelName,
+                this.lastDetectedPrompt,
+                'chat_panel',
+                attrChars,
+                lineTouchForNarrow,
+                document.lineCount,
+                insertCodingType
+            );
+            this.pushClassificationLine(`sync: Copilot CLI disk/bulk apply ${filePath}`);
+            return {
+                blameObjects: affected,
+                matchedAi: true,
+                providerId,
+                sessionId: 'copilot-cli-' + Date.now(),
+                prompt: this.lastDetectedPrompt,
+                model: modelName,
+                trustEditorAttributedSpan,
+            };
+        }
+
+        const manualHumanAfterAi =
+            hadAiInterceptBeforeClipboardCheck &&
+            !inExternalVcsGrace &&
+            !inCopilotCliBurst &&
+            !recentTrackedChatApply &&
+            looksLikeManualHumanTypingAfterAi({
+                insertedText,
+                rangeLength: change.rangeLength,
+                isEmptyLineInsert,
+                insertCodingType,
+                hasSuggestionMatch: !!effectiveSuggestionMatch,
+            });
+
+        if (manualHumanAfterAi) {
+            this.blameMap.recordFirstStartCodingTimeIfNeeded();
+            const affected = this.attributeIntervalsHuman(
+                filePath,
+                attrSpan.start,
+                attrSpan.end,
+                attrChars,
+                lineTouchForNarrow,
+                document.lineCount,
+                insertCodingType
+            );
+            this.endAiInterceptWindowOnly();
+            this.pushClassificationLine(`sync: manual human typing after AI intercept ${filePath}`);
+            return {
+                blameObjects: affected,
+                matchedAi: false,
+                trustEditorAttributedSpan,
+            };
+        }
 
         if (isInterceptedAi) {
             this.blameMap.recordFirstStartCodingTimeIfNeeded();

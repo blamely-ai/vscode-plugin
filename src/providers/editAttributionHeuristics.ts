@@ -44,6 +44,36 @@ export function codingTypeForTextInsert(
     return norm.includes('\n') ? 'BULK_INSERT' : 'TYPING';
 }
 
+/**
+ * True when an edit in an open AI intercept window is manual human input, not a streamed apply chunk.
+ * Used after Copilot CLI / chat apply bursts so the next user keystroke closes AI attribution.
+ */
+export function looksLikeManualHumanTypingAfterAi(args: {
+    insertedText: string;
+    rangeLength: number;
+    isEmptyLineInsert: boolean;
+    insertCodingType: 'TYPING' | 'BULK_INSERT';
+    hasSuggestionMatch: boolean;
+}): boolean {
+    if (args.hasSuggestionMatch) {
+        return false;
+    }
+    if (args.isEmptyLineInsert) {
+        return true;
+    }
+    if (args.insertCodingType !== 'TYPING') {
+        return false;
+    }
+    const norm = args.insertedText.replace(/\r\n/g, '\n');
+    if (norm.includes('\n')) {
+        return false;
+    }
+    if (args.rangeLength === 0) {
+        return true;
+    }
+    return norm.length <= 3;
+}
+
 export function heuristicCandidateFromBatchSignals(args: {
     hasFormatPreserved: boolean;
     hasMultiCharChunks: boolean;

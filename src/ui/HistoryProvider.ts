@@ -172,6 +172,13 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
     }
 
     private parseReport(note: string, author: string, authorDate: string): CommitReport | null {
+        note = note.split('\n---\nblames:')[0].split('\nblames:')[0].trim();
+        if (note.startsWith('{')) {
+            const sep = note.indexOf('\n---\n');
+            if (sep >= 0) {
+                note = note.slice(sep + 5).trim();
+            }
+        }
         const lines = note.split('\n');
         const yamlVal = (key: string): string | null => {
             for (const line of lines) {

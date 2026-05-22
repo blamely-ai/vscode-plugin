@@ -78,8 +78,22 @@ export function legacyClosedCommitSnapshotsDir(
 
 /**
  * After commit: copy `snapshots/<branch>/*.blame.json` → `logs/commits/<headSha>/snapshots/`
- * and remove the originals (blamely-cli parity). Opt out: BLAMELY_ARCHIVE_TRACE_ON_COMMIT=0.
+ * from both `~/.blamely/repos/.../snapshots/<branch>/` and `<git-dir>/blamely/snapshots/<branch>/`,
+ * then remove the originals. Opt out: BLAMELY_ARCHIVE_TRACE_ON_COMMIT=0.
  */
+/** `<git-dir>/blamely/snapshots/<branch>/` (legacy / migration); same basename rules as home mirror. */
+export async function gitBlamelyBranchSnapshotsDir(
+    repoRoot: string,
+    branch: string | null | undefined
+): Promise<string | null> {
+    const gitDirRaw = await GitUtils.getGitDir(repoRoot);
+    if (!gitDirRaw) {
+        return null;
+    }
+    const absGit = path.isAbsolute(gitDirRaw) ? path.normalize(gitDirRaw) : path.resolve(repoRoot, gitDirRaw);
+    return path.join(absGit, 'blamely', 'snapshots', sanitizedBranchDirName(branch));
+}
+
 export async function archiveBranchBlameSnapshotsToClosed(
     repoRoot: string,
     branch: string | null | undefined,
@@ -93,43 +107,52 @@ export async function archiveBranchBlameSnapshotsToClosed(
         return;
     }
     const resolved = GitUtils.canonicalRepoDiskPath(path.normalize(repoRoot.trim()));
-    const src = userReposMirrorSnapshotsDir(resolved, branch);
-    let names: string[];
-    try {
-        names = (await fs.promises.readdir(src)).filter(
-            n => n.endsWith('.blame.json') && !n.startsWith('.')
-        );
-    } catch {
-        return;
-    }
-    if (names.length === 0) {
-        return;
-    }
     const destDir = closedCommitSnapshotsDir(resolved, branch, sha);
+    const mirror = userReposMirrorSnapshotsDir(resolved, branch);
+    const gitDirSnaps = await gitBlamelyBranchSnapshotsDir(resolved, branch);
+    const uniq = new Set<string>();
+    uniq.add(mirror);
+    if (gitDirSnaps) {
+        uniq.add(gitDirSnaps);
+    }
     await fs.promises.mkdir(destDir, { recursive: true });
-    for (const name of names) {
-        const from = path.join(src, name);
-        const to = path.join(destDir, name);
+    for (const src of uniq) {
+        let names: string[];
         try {
-            const st = await fs.promises.stat(from);
-            if (!st.isFile()) {
-                continue;
-            }
-            if (fs.existsSync(to)) {
-                continue;
-            }
-            await fs.promises.copyFile(from, to);
-            await fs.promises.unlink(from);
+            names = (await fs.promises.readdir(src)).filter(
+                n => n.endsWith('.blame.json') && !n.startsWith('.')
+            );
         } catch {
-            /* best-effort per file */
+            continue;
+        }
+        if (names.length === 0) {
+            continue;
+        }
+        for (const name of names) {
+            const from = path.join(src, name);
+            const to = path.join(destDir, name);
+            try {
+                const st = await fs.promises.stat(from);
+                if (!st.isFile()) {
+                    continue;
+                }
+                if (fs.existsSync(to)) {
+                    // Already under logs/commits/<sha>/snapshots/; drop working copy under snapshots/<branch>/.
+                    await fs.promises.unlink(from);
+                    continue;
+                }
+                await fs.promises.copyFile(from, to);
+                await fs.promises.unlink(from);
+            } catch {
+                /* best-effort per file */
+            }
         }
     }
 }
 
 /**
- * After post-commit cleanup: copy `logs/commits/<sha>/snapshots/*.blame.json` back to
- * `snapshots/<branch>/` so the working branch retains full-file line attribution (not just the
- * commit diff). Archive step must have run first.
+ * @deprecated Working snapshots are not restored into snapshots/&lt;branch&gt; after commit.
+ * Archived blame lives under logs/commits/&lt;sha&gt;/snapshots/ only.
  */
 export async function restoreCommitSnapshotsToBranchDir(
     repoRoot: string,

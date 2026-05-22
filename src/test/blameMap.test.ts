@@ -290,6 +290,34 @@ describe('BlameMap', () => {
                 expect(entry2.aiChars + entry2.humanChars).to.be.lessThanOrEqual(10);
             }
         });
+
+        it('backspace after human typing on AI line removes human chars first and restores AI gutter', () => {
+            blameMap.setAttribute('f.ts', 5, 5, 'AI', 'copilot', null, null, 'completion', undefined, 20);
+            blameMap.setAttribute('f.ts', 5, 5, 'HUMAN', null, null, null, null, undefined, 3, [3]);
+            let entry = blameMap.getBlame('f.ts').find(e => e.lineNumber === 5)!;
+            expect(entry.authorType).to.equal('AI');
+            expect(entry.aiChars).to.equal(20);
+            expect(entry.humanChars).to.equal(3);
+
+            blameMap.decrementCharsForDeletion('f.ts', 5, 'xxx');
+            entry = blameMap.getBlame('f.ts').find(e => e.lineNumber === 5)!;
+            expect(entry.aiChars).to.equal(20);
+            expect(entry.humanChars).to.equal(0);
+            expect(entry.authorType).to.equal('AI');
+        });
+
+        it('partial backspace on human suffix keeps AI majority and refreshes authorType', () => {
+            blameMap.setAttribute('f.ts', 2, 2, 'AI', 'copilot', null, null, 'completion', undefined, 10);
+            blameMap.setAttribute('f.ts', 2, 2, 'HUMAN', null, null, null, null, undefined, 12, [12]);
+            let entry = blameMap.getBlame('f.ts').find(e => e.lineNumber === 2)!;
+            expect(entry.authorType).to.equal('HUMAN');
+
+            blameMap.decrementCharsForDeletion('f.ts', 2, 'xx');
+            entry = blameMap.getBlame('f.ts').find(e => e.lineNumber === 2)!;
+            expect(entry.humanChars).to.equal(10);
+            expect(entry.aiChars).to.equal(10);
+            expect(entry.authorType).to.equal('AI');
+        });
     });
 
     describe('session metrics', () => {

@@ -112,5 +112,13 @@ describe('snapshotLineTouch', () => {
                 { start: 50, end: 59 },
             ]);
         });
+
+        it('keeps editor span when LCS touch is wholly outside nominal chat replace (duplicate-line swap)', () => {
+            const misaligned = new Set<number>();
+            for (let i = 120; i <= 139; i++) {
+                misaligned.add(i);
+            }
+            expect(narrowIntervalsByTouch(45, 80, misaligned, 291)).to.deep.equal([{ start: 45, end: 80 }]);
+        });
     });
 });

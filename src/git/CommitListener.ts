@@ -17,10 +17,24 @@ import { countAiHumanLineDeltas, formatPostCommitAttributionBar } from '../utils
 import {
     blameFileKey,
     blameKeyBelongsToRepo,
-    normalizeLoadedBlameKey,
     workspaceFoldersUnderRepo,
 } from '../utils/WorkspacePaths';
 import * as BlamelyRepoPaths from '../store/BlamelyRepoPaths';
+
+async function flushBlameSnapshotsForRepo(repoRoot: string, blameMap: BlameMap): Promise<void> {
+    for (const folder of workspaceFoldersUnderRepo(repoRoot)) {
+        const wsRoot = folder.uri.fsPath;
+        for (const filePath of blameMap.getTrackedFiles()) {
+            if (!blameKeyBelongsToRepo(repoRoot, filePath)) {
+                continue;
+            }
+            const entries = blameMap.getBlame(filePath);
+            if (entries.length > 0) {
+                await BlameSerializer.save(wsRoot, filePath, entries);
+            }
+        }
+    }
+}
 
 /** Optional UI hook after post-commit cleanup (e.g. suppress History webview, clear trace files when a git note was saved). */
 export type PostCommitUiCallback = (opts: { repoRoot: string; gitNoteWritten: boolean }) => void;
@@ -133,6 +147,8 @@ export class CommitListener implements vscode.Disposable {
                 },
                 async progress => {
                     const br = await GitUtils.getBranch(resolvedRoot);
+                    progress.report({ message: 'Post-commit: saving blame snapshots…' });
+                    await flushBlameSnapshotsForRepo(resolvedRoot, this.blameMap);
                     progress.report({ message: 'Post-commit: archiving blame snapshots…' });
                     await BlamelyRepoPaths.archiveBranchBlameSnapshotsToClosed(resolvedRoot, br, commitSha);
                     const archivedSnapshotsDir = BlamelyRepoPaths.closedCommitSnapshotsDir(
@@ -298,8 +314,7 @@ export class CommitListener implements vscode.Disposable {
                     } catch (err) {
                         Logger.warn(`Blamely: commit log report.yml: ${err}`);
                     }
-                    const snapshotYaml = ReportYaml.blameSnapshotToYamlForReport(entireBlame);
-                    const noteContent = `${noteYamlPrefix}\n---\nblames:\n${snapshotYaml}`;
+                    const noteContent = noteYamlPrefix;
 
                     try {
                         gitNoteWritten = await GitUtils.addGitNote(
@@ -357,50 +372,9 @@ export class CommitListener implements vscode.Disposable {
             for (const folder of workspaceFoldersUnderRepo(resolvedRoot)) {
                 await BlameSerializer.clearCurrentBranchSnapshots(folder.uri.fsPath);
             }
-            /**
-             * Git notes / report.yml only record commit diff hunks, but archived blame under
-             * logs/commits/<sha>/snapshots/ has full per-file line maps. Copy them back to the
-             * branch snapshots dir and reload so gutters still show AI vs human on unchanged lines.
-             */
-            try {
-                if (!branchForPersistence) {
-                    branchForPersistence = await GitUtils.getBranch(resolvedRoot);
-                }
-                const restored = await BlamelyRepoPaths.restoreCommitSnapshotsToBranchDir(
-                    resolvedRoot,
-                    branchForPersistence,
-                    commitSha
-                );
-                if (restored) {
-                    for (const folder of workspaceFoldersUnderRepo(resolvedRoot)) {
-                        const saved = await BlameSerializer.loadAll(folder.uri.fsPath);
-                        for (const [file, entries] of saved) {
-                            const key = normalizeLoadedBlameKey(file, folder);
-                            if (blameKeyBelongsToRepo(resolvedRoot, key) && entries.length > 0) {
-                                this.blameMap.setFileBlame(key, entries);
-                            }
-                        }
-                    }
-                    for (const ed of vscode.window.visibleTextEditors) {
-                        if (ed.document.uri.scheme !== 'file') {
-                            continue;
-                        }
-                        const bk = blameFileKey(ed.document.uri);
-                        if (!blameKeyBelongsToRepo(resolvedRoot, bk)) {
-                            continue;
-                        }
-                        this.blameMap.clipLinesToDocumentLength(bk, ed.document.lineCount);
-                    }
-                    Logger.info(
-                        `Post-commit: restored full-file blame snapshots from commit ${commitSha.slice(0, 8)}`
-                    );
-                }
-            } catch (restoreErr) {
-                Logger.warn(`Post-commit: restore branch blame snapshots: ${restoreErr}`);
-            }
             this.onCommitCompleted();
             Logger.info(
-                `Post-commit: repo blame refresh complete (${keysToRemove.length} key(s) reset; snapshots restored when archive existed)`
+                `Post-commit: repo blame cleared (${keysToRemove.length} key(s) reset); mirror snapshots not reloaded into session`
             );
             this.onPostCommitUi?.({ repoRoot: resolvedRoot, gitNoteWritten });
         }

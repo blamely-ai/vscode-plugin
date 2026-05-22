@@ -53,6 +53,12 @@ export const AI_COMMAND_PATTERNS = {
         'claude.chat.insert',
         'anthropic.chat.apply',
         'anthropic.chat.insert',
+        'claude-code.apply',
+        'claude-code.accept',
+        'claude-code.acceptAll',
+        'claude-code.insert',
+        'anthropic.claude-code.apply',
+        'anthropic.claude-code.accept',
     ],
     chatSend: [
         'workbench.action.chat.submit',
@@ -123,7 +129,6 @@ export function matchesTrackedAiApplyCommand(commandId: string): boolean {
         return true;
     }
 
-    /** Cursor: agent (local / cloud / background) and Composer — built-in IDs change between releases. */
     if (id.startsWith('cursor.')) {
         const applyLike =
             id.includes('apply') ||
@@ -146,6 +151,20 @@ export function matchesTrackedAiApplyCommand(commandId: string): boolean {
             id.includes('nextedit') ||
             id.includes('next-edit');
         if (applyLike && agentSurface) {
+            return true;
+        }
+    }
+
+    /** Claude Code panel (Anthropic.claude-code) — command IDs vary by release. */
+    if (id.startsWith('claude-code.') || id.startsWith('anthropic.claude-code.')) {
+        if (
+            id.includes('apply') ||
+            id.includes('accept') ||
+            id.includes('keep') ||
+            id.includes('insert') ||
+            id.includes('approve') ||
+            id.includes('diff')
+        ) {
             return true;
         }
     }

@@ -190,6 +190,17 @@ export function narrowIntervalsByTouch(
         return contiguousRangesFromSortedLineNums(hits);
     }
     const nominalSpan = endLine - startLine + 1;
+    // LCS misaligned duplicate lines — touched set wholly outside the editor span.
+    if ([...touched].every(ln => ln < startLine || ln > endLine)) {
+        const doc = docLineCount ?? 0;
+        if (
+            nominalSpan < touched.size &&
+            (doc === 0 || touched.size < Math.floor(0.55 * doc))
+        ) {
+            return contiguousRangesFromSortedLineNums([...touched].sort((a, b) => a - b));
+        }
+        return [{ start: startLine, end: endLine }];
+    }
     if (
         docLineCount !== undefined &&
         docLineCount > 0 &&

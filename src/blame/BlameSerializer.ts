@@ -5,12 +5,14 @@ import { encodeFilePath, decodeFilePath } from '../utils/Platform';
 import { currentIdeLabel } from '../utils/ideLabel';
 import * as Logger from '../utils/Logger';
 import { getBranch, getRepoRoot } from '../git/GitUtils';
-import { blameSnapshotsDir, legacyUserBlameSnapshotsDir, sanitizedBranchDirName, userReposMirrorSnapshotsDir } from '../store/BlamelyRepoPaths';
+import { blameSnapshotsDir, userReposMirrorSnapshotsDir, gitBlamelyBranchSnapshotsDir } from '../store/BlamelyRepoPaths';
 import { normalizeBlamePersistenceKey } from '../utils/WorkspacePaths';
 import { interactionTypeForBlameJson } from './blameJsonPersist';
 
 /**
- * Branch-scoped blame snapshots under `<git-dir>/blamely/snapshots/<sanitized-branch>/` (IntelliJ-compatible).
+ * Branch-scoped working-tree blame sidecars under `~/.blamely/repos/<repo>/snapshots/<branch>/`.
+ * These are ephemeral: they reflect the current uncommitted session only, not committed file history.
+ * Cleared after commit, rollback, discard, or when the working tree is clean at IDE startup.
  */
 export async function getBranchSnapshotDir(workspaceRoot: string, explicitBranch?: string | null): Promise<string | null> {
     const repo = await getRepoRoot(workspaceRoot);
@@ -19,11 +21,6 @@ export async function getBranchSnapshotDir(workspaceRoot: string, explicitBranch
     }
     const branch = explicitBranch !== undefined ? explicitBranch : await getBranch(workspaceRoot);
     return blameSnapshotsDir(repo, branch);
-}
-
-/** Read-only: old path using workspace-relative `.git` (main clone only — worktrees rely on canonical git-dir snapshots). */
-function legacyGitBlamelySnapshotDir(workspaceRoot: string, branch: string | null | undefined): string {
-    return path.join(workspaceRoot, '.git', 'blamely', 'snapshots', sanitizedBranchDirName(branch));
 }
 
 async function getSnapshotsDir(workspaceRoot: string, explicitBranch?: string | null): Promise<string | null> {
@@ -161,17 +158,6 @@ export async function removeSnapshot(workspaceRoot: string, filePath: string): P
             await unlinkIfExists(path.join(snapshotsDir, encodedBlameFile));
             await unlinkIfExists(path.join(snapshotsDir, encodedPlainJson));
         }
-        const branch = await getBranch(workspaceRoot);
-        const repo = await getRepoRoot(workspaceRoot);
-        if (repo) {
-            const mirrorDir = userReposMirrorSnapshotsDir(repo, branch);
-            await unlinkIfExists(path.join(mirrorDir, encodedBlameFile));
-            await unlinkIfExists(path.join(mirrorDir, encodedPlainJson));
-            await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedBlameFile));
-            await unlinkIfExists(path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedPlainJson));
-        }
-        await unlinkIfExists(path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedBlameFile));
-        await unlinkIfExists(path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedPlainJson));
         Logger.info(`Removed persisted blame snapshot(s) for ${filePath}`);
     } catch (err) {
         Logger.warn(`Could not remove blame snapshot for ${filePath}: ${err}`);
@@ -185,28 +171,13 @@ export async function load(
     try {
         const key = normalizeBlamePersistenceKey(filePath, workspaceRoot);
         const encodedFile = encodeFilePath(key) + '.blame.json';
-        const gitDir = await getSnapshotsDir(workspaceRoot);
-        if (gitDir) {
-            const gitPath = path.join(gitDir, encodedFile);
-            if (fs.existsSync(gitPath)) {
-                return readBlameJsonFile(gitPath);
-            }
+        const snapshotsDir = await getSnapshotsDir(workspaceRoot);
+        if (!snapshotsDir) {
+            return [];
         }
-        const branch = await getBranch(workspaceRoot);
-        const repo = await getRepoRoot(workspaceRoot);
-        if (repo) {
-            const mirrorPath = path.join(userReposMirrorSnapshotsDir(repo, branch), encodedFile);
-            if (fs.existsSync(mirrorPath)) {
-                return readBlameJsonFile(mirrorPath);
-            }
-            const legacyHome = path.join(legacyUserBlameSnapshotsDir(repo, branch), encodedFile);
-            if (fs.existsSync(legacyHome)) {
-                return readBlameJsonFile(legacyHome);
-            }
-        }
-        const legacyPath = path.join(legacyGitBlamelySnapshotDir(workspaceRoot, branch), encodedFile);
-        if (fs.existsSync(legacyPath)) {
-            return readBlameJsonFile(legacyPath);
+        const p = path.join(snapshotsDir, encodedFile);
+        if (fs.existsSync(p)) {
+            return readBlameJsonFile(p);
         }
         return [];
     } catch (err) {
@@ -263,31 +234,11 @@ export async function loadAll(workspaceRoot: string): Promise<Map<string, LineBl
     try {
         const branch = await getBranch(workspaceRoot);
         const repo = await getRepoRoot(workspaceRoot);
-        const candidates: string[] = [];
-        if (repo) {
-            candidates.push(userReposMirrorSnapshotsDir(repo, branch));
-            candidates.push(legacyUserBlameSnapshotsDir(repo, branch));
+        if (!repo) {
+            return memory;
         }
-        candidates.push(legacyGitBlamelySnapshotDir(workspaceRoot, branch));
-
-        const seen = new Set<string>();
-        let dir: string | null = null;
-        for (const cand of candidates) {
-            if (!cand || seen.has(cand)) {
-                continue;
-            }
-            seen.add(cand);
-            if (!fs.existsSync(cand)) {
-                continue;
-            }
-            const files = await fs.promises.readdir(cand);
-            if (!files.some(f => f.endsWith('.blame.json'))) {
-                continue;
-            }
-            dir = cand;
-            break;
-        }
-        if (!dir) {
+        const dir = userReposMirrorSnapshotsDir(repo, branch);
+        if (!fs.existsSync(dir)) {
             return memory;
         }
 
@@ -330,25 +281,35 @@ async function unlinkAllBlameJsonInDir(dir: string | null | undefined): Promise<
     }
 }
 
-/** Delete all persisted blame snapshots for the current branch (all known dirs). Call after full discard / commit cleanup. */
+/** Delete all *.blame.json under ~/.blamely/repos/<repo>/snapshots/<branch>/ and git-dir mirror. */
+export async function clearBranchSnapshots(
+    workspaceRoot: string,
+    branch: string | null | undefined
+): Promise<void> {
+    try {
+        const repo = await getRepoRoot(workspaceRoot);
+        if (!repo) {
+            return;
+        }
+        const dir = userReposMirrorSnapshotsDir(repo, branch);
+        await unlinkAllBlameJsonInDir(dir);
+        const gitDir = await gitBlamelyBranchSnapshotsDir(repo, branch);
+        await unlinkAllBlameJsonInDir(gitDir);
+    } catch (err) {
+        Logger.warn(`Could not clear branch snapshots for ${branch ?? '?'}: ${err}`);
+    }
+}
+
+/** Delete all *.blame.json under ~/.blamely/repos/<repo>/snapshots/<branch>/ and `<git-dir>/blamely/snapshots/<branch>/`. */
 export async function clearCurrentBranchSnapshots(workspaceRoot: string): Promise<void> {
     try {
         const repo = await getRepoRoot(workspaceRoot);
         const branch = await getBranch(workspaceRoot);
-        const dirs = new Set<string>();
-        const primary = await getSnapshotsDir(workspaceRoot);
-        if (primary) {
-            dirs.add(primary);
+        if (!repo) {
+            return;
         }
-        if (repo) {
-            dirs.add(userReposMirrorSnapshotsDir(repo, branch));
-            dirs.add(legacyUserBlameSnapshotsDir(repo, branch));
-        }
-        dirs.add(legacyGitBlamelySnapshotDir(workspaceRoot, branch));
-        for (const d of dirs) {
-            await unlinkAllBlameJsonInDir(d);
-        }
-        Logger.info(`Cleared branch blame snapshots in ${dirs.size} location(s)`);
+        await clearBranchSnapshots(workspaceRoot, branch);
+        Logger.info(`Cleared working branch blame snapshots: ${userReposMirrorSnapshotsDir(repo, branch)}`);
     } catch (err) {
         Logger.warn(`Could not clear branch snapshots: ${err}`);
     }

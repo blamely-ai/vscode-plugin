@@ -509,6 +509,12 @@ export async function getWorkingTreeChangedFiles(cwd: string): Promise<Set<strin
     return result;
 }
 
+/** True when the working tree differs from HEAD (modified, staged, or untracked). */
+export async function hasUncommittedChanges(cwd: string): Promise<boolean> {
+    const files = await getWorkingTreeChangedFiles(cwd);
+    return files.size > 0;
+}
+
 export async function pushGitNotes(cwd: string): Promise<void> {
     try {
         const remotes = await run('git remote', cwd);

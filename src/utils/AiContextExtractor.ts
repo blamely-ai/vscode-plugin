@@ -3,6 +3,7 @@ import * as Logger from './Logger';
 import { sanitizeModelForReport } from './modelSanitize';
 import { AI_COMMAND_PATTERNS } from './trackedAiApplyCommands';
 import { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
+import { discoverCopilotModelFromDisk, discoverAgentModelFromDiskAsync } from './copilotModelDiscovery';
 
 export { AI_COMMAND_PATTERNS, matchesTrackedAiApplyCommand, isInlineGhostSuggestionCommand } from './trackedAiApplyCommands';
 export { extensionIdLooksAiCodingAssistant } from './aiAssistantExtensionHint';
@@ -112,10 +113,13 @@ export async function detectModel(): Promise<string | null> {
     // without a selector often returns many models — taking the first "known" substring match is wrong.
     const workspaceHints = readWorkspaceModelHints();
     const fromSettings = firstUsableConfiguredModel(workspaceHints);
+    const fromCopilotSession = await discoverCopilotModelFromDisk();
 
     let model =
+        fromCopilotSession ??
         fromSettings ??
         (await tryLanguageModelApi(workspaceHints)) ??
+        (await discoverAgentModelFromDiskAsync()) ??
         tryAppNameHeuristic();
 
     if (model) {
@@ -558,20 +562,38 @@ async function tryLanguageModelApi(workspaceHints: string[]): Promise<string | n
 }
 
 function buildModelName(m: { id: string; vendor?: string; family?: string; version?: string; name?: string }): string {
+    const id = m.id?.trim() ?? '';
+    const name = m.name?.trim() ?? '';
+    if (name && (looksLikeModelName(name) || name.includes('/'))) {
+        return name;
+    }
+    if (id && (looksLikeModelName(id) || id.includes('/'))) {
+        return id;
+    }
     const parts: string[] = [];
-    if (m.vendor) parts.push(m.vendor);
-    if (m.family) parts.push(m.family);
-    if (m.version) parts.push(m.version);
-    if (parts.length > 0) return parts.join('/');
-    if (m.name) return m.name;
-    return m.id;
+    if (m.vendor) {
+        parts.push(m.vendor);
+    }
+    if (m.family) {
+        parts.push(m.family);
+    }
+    if (m.version) {
+        parts.push(m.version);
+    }
+    if (parts.length > 0) {
+        return parts.join('/');
+    }
+    if (name) {
+        return name;
+    }
+    return id;
 }
 
 function tryAppNameHeuristic(): string | null {
     const appName = vscode.env.appName.toLowerCase();
-    if (appName.includes('cursor')) return 'cursor-ai';
-    const copilot = vscode.extensions.getExtension('github.copilot');
-    if (copilot) return 'github-copilot';
+    if (appName.includes('cursor')) {
+        return null;
+    }
     return null;
 }
 

@@ -19,8 +19,10 @@ import { ChatParticipant } from './providers/ChatParticipant';
 import { HistoryProvider } from './ui/HistoryProvider';
 import * as Logger from './utils/Logger';
 import * as AiContextExtractor from './utils/AiContextExtractor';
+import { startCopilotCliSessionWatcher } from './utils/copilotCliSessionWatcher';
 import {
     blameFileKey,
+    blameKeyBelongsToRepo,
     collectFileUrisFromGitCommandArgs,
     normalizeLoadedBlameKey,
     workspaceFolderInRepo,
@@ -330,17 +332,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         traceStore = new TraceStore();
         blameMap = new BlameMap();
 
-        // Load persisted state for the current branch.
-        // Do not filter by "currently dirty files": users expect tracked attribution to survive
-        // IDE restart and branch switches.
         const workspaceRoots = getWorkspaceFolderRoots();
         if (workspaceRoots.length === 1) {
             await traceStore.load(workspaceRoots[0]);
         } else {
             await traceStore.mergeLoadFromWorkspaceRoots(workspaceRoots);
         }
+
+        // Load persisted working-tree attribution only when Git still has local changes vs HEAD.
         let loadedBlameFiles = 0;
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            const repoRoot = await GitUtils.getRepoRoot(folder.uri.fsPath);
+            if (!repoRoot) {
+                continue;
+            }
+            if (!(await GitUtils.hasUncommittedChanges(repoRoot))) {
+                await BlameSerializer.clearCurrentBranchSnapshots(folder.uri.fsPath);
+                continue;
+            }
             const savedBlame = await BlameSerializer.loadAll(folder.uri.fsPath);
             for (const [file, entries] of savedBlame) {
                 const key = normalizeLoadedBlameKey(file, folder);
@@ -349,7 +358,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }
         if (loadedBlameFiles > 0) {
-            Logger.info(`Loaded persisted blame for ${loadedBlameFiles} file snapshot(s)`);
+            Logger.info(`Loaded working-tree blame for ${loadedBlameFiles} file snapshot(s)`);
         }
 
         // Snapshots may be longer than buffers after stash/checkout/restart — trim to open editors.
@@ -410,6 +419,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Initialize providers
         completionInterceptor = new CompletionInterceptor(traceStore);
         changeTracker = new ChangeTracker(traceStore, blameMap, onBlameUpdated);
+        startCopilotCliSessionWatcher(changeTracker, context);
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.uri.scheme === 'file') {
                 changeTracker.seedDocSnapshot(doc);
@@ -673,31 +683,63 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                                             if (!workspaceFolderInRepo(repoRoot, folder.uri.fsPath)) {
                                                 continue;
                                             }
-                                            const subset = filterBlameMapForFolder(blameMap, folder);
                                             try {
-                                                await BlameSerializer.saveAllToBranch(
+                                                await BlameSerializer.clearBranchSnapshots(
                                                     folder.uri.fsPath,
-                                                    oldBranch,
-                                                    subset
+                                                    oldBranch
+                                                );
+                                                await BlameSerializer.clearBranchSnapshots(
+                                                    folder.uri.fsPath,
+                                                    newBranch
                                                 );
                                             } catch (err) {
                                                 Logger.warn(
-                                                    `Failed to persist branch snapshot for ${oldBranch}: ${err}`
+                                                    `Failed to clear branch snapshots on switch: ${err}`
                                                 );
                                             }
                                         }
+                                        const keysToRemove = [...blameMap.getTrackedFiles()].filter(k =>
+                                            blameKeyBelongsToRepo(repoRoot, k)
+                                        );
+                                        for (const k of keysToRemove) {
+                                            blameMap.removeFile(k);
+                                        }
+                                        changeTracker.notifyRollback();
                                         try {
                                             await traceStore.onGitBranchSwitch(repoRoot, oldBranch, newBranch);
                                         } catch (err) {
                                             Logger.warn(`Trace session branch switch failed: ${err}`);
                                         }
-                                        try {
-                                            await reloadBlameMapsForRepoAfterBranchSwitch(repoRoot);
-                                            Logger.info(`Reloaded Blamely snapshots for branch ${newBranch}`);
-                                        } catch (err) {
-                                            Logger.warn(`Failed to reload blame after branch switch: ${err}`);
+                                        onBlameUpdated();
+                                        Logger.info(
+                                            `Branch switch: cleared working snapshots for ${oldBranch} and ${newBranch}`
+                                        );
+                                    })();
+                                } else if (
+                                    lastHeadSha !== '' &&
+                                    newHeadSha !== lastHeadSha &&
+                                    initialized
+                                ) {
+                                    Logger.info(
+                                        `HEAD changed in ${repoRoot} (${lastHeadSha.slice(0, 8)} -> ${newHeadSha.slice(0, 8)}); clearing working snapshots`
+                                    );
+                                    void (async () => {
+                                        for (const folder of vscode.workspace.workspaceFolders ?? []) {
+                                            if (!workspaceFolderInRepo(repoRoot, folder.uri.fsPath)) {
+                                                continue;
+                                            }
+                                            await BlameSerializer.clearCurrentBranchSnapshots(
+                                                folder.uri.fsPath
+                                            );
+                                        }
+                                        const keysToRemove = [...blameMap.getTrackedFiles()].filter(k =>
+                                            blameKeyBelongsToRepo(repoRoot, k)
+                                        );
+                                        for (const k of keysToRemove) {
+                                            blameMap.removeFile(k);
                                         }
                                         changeTracker.notifyRollback();
+                                        onBlameUpdated();
                                     })();
                                 } else if (
                                     lastWorktreeFp !== '' &&
@@ -1003,11 +1045,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         ) {
                             chatPanelSignal('executeCommand-chat-apply-untracked-id', {
                                 command: e.command,
-                                hint: 'Consider adding to trackedAiApplyCommands',
+                                hint: 'Broad chat apply match — attributing as AI',
                             });
-                            Logger.chatDebug(
-                                `NOT in tracked apply list (edits may count as Human): ${e.command}. ` +
-                                    `Report this id to Blamely or add under trackedAiApplyCommands / AiContextExtractor.`
+                            changeTracker.recordChatApplyCommandObserved(e.command);
+                            const interactionType = AiContextExtractor.detectInteractionType(e.command);
+                            const provider = AiContextExtractor.detectProvider();
+                            const duration = AiContextExtractor.getAiWindowDuration(interactionType);
+                            changeTracker.markNextChangeAsAi(duration, null, null, provider, interactionType);
+                            changeTracker.flushDeferredClassificationAfterApplyCommand();
+                            Logger.info(
+                                `Untracked chat apply observed as AI: ${e.command} (type=${interactionType})`
                             );
                         }
                         return;
@@ -1383,8 +1430,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             return;
                         }
 
-                        const parts = stdout.trim().split('\n---\nblame_snapshot:\n');
-                        const yamlContent = parts[0];
+                        let yamlContent = stdout.trim();
+                        if (yamlContent.startsWith('{')) {
+                            const sep = yamlContent.indexOf('\n---\n');
+                            if (sep >= 0) {
+                                yamlContent = yamlContent.slice(sep + 5).trim();
+                            }
+                        }
+                        yamlContent = yamlContent.split('\n---\nblames:')[0].split('\nblames:')[0].trim();
 
                         const doc = await vscode.workspace.openTextDocument({
                             content: yamlContent,
@@ -1463,8 +1516,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 /**
- * Build git note content for a commit (diff + current blame state). Matches IntelliJ AttachGitNoteAction.
- * Does not clear blameMap; used for "Attach Git Note for Current Commit" and "Attach Git Note for Commit SHA...".
+ * Build git note content for a commit (report.yml summary from diff + attribution). Does not clear blameMap.
  */
 async function buildNoteContentForCommit(workspaceRoot: string, commitSha: string): Promise<string> {
     const repoRoot = await GitUtils.getRepoRoot(workspaceRoot);
@@ -1553,8 +1605,7 @@ async function buildNoteContentForCommit(workspaceRoot: string, commitSha: strin
         vscode.env.appName,
         reportMetrics
     );
-    const snapshotYaml = ReportYaml.blameSnapshotToYamlForReport(entireBlame);
-    return `${yamlReport}\n---\nblames:\n${snapshotYaml}`;
+    return yamlReport;
 }
 
 async function generateReports(): Promise<void> {
@@ -1706,38 +1757,6 @@ function gitWorktreeFingerprint(repo: { state: any }): string {
     }
     paths.sort();
     return `${head}\n${paths.join('\n')}`;
-}
-
-/** Replace in-memory blame with persisted snapshots for the current branch (after checkout). */
-async function reloadBlameMapsForRepoAfterBranchSwitch(repoRoot: string): Promise<void> {
-    for (const folder of workspaceFoldersUnderRepo(repoRoot)) {
-        const keysToRemove = [...filterBlameMapForFolder(blameMap, folder).keys()];
-        for (const k of keysToRemove) {
-            blameMap.removeFile(k);
-        }
-        const saved = await BlameSerializer.loadAll(folder.uri.fsPath);
-        for (const [file, entries] of saved) {
-            const key = normalizeLoadedBlameKey(file, folder);
-            blameMap.setFileBlame(key, entries);
-        }
-    }
-    // After loading the new branch's blame snapshots, also load and attribute CLI traces
-    // for the new branch (CLI sessions are branch-tagged so this is idempotent).
-    try {
-        const workspaceRoot = getWorkspaceRoot();
-        if (workspaceRoot) {
-            const cliSessions = await loadCliTraceSessions(workspaceRoot);
-            if (cliSessions.length > 0) {
-                changeTracker.setCliTraces(cliSessions);
-                await populateBlameFromCliSessions(cliSessions, blameMap, workspaceRoot);
-                lastCliTraceSessionsFingerprint = cliSessionsFingerprint(cliSessions);
-            } else {
-                lastCliTraceSessionsFingerprint = '';
-            }
-        }
-    } catch (err) {
-        Logger.warn(`CLI trace reload after branch switch failed: ${err}`);
-    }
 }
 
 function clipVisibleEditorsUnderRepo(repoRoot: string): void {

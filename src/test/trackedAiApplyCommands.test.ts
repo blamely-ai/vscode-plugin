@@ -28,6 +28,12 @@ describe('trackedAiApplyCommands', () => {
         }
     });
 
+    it('matches Claude Code panel apply command IDs', () => {
+        expect(matchesTrackedAiApplyCommand('claude-code.apply')).to.equal(true);
+        expect(matchesTrackedAiApplyCommand('anthropic.claude-code.accept')).to.equal(true);
+        expect(matchesTrackedAiApplyCommand('claude-code.acceptAll')).to.equal(true);
+    });
+
     it('treats keep like apply/accept for chat and composer commands', () => {
         expect(matchesTrackedAiApplyCommand('workbench.action.chat.keep')).to.equal(true);
         expect(matchesTrackedAiApplyCommand('inlineChat.keep')).to.equal(true);
