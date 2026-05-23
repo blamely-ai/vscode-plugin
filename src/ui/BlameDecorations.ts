@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
+import { CliDataService } from '../cli/CliDataService';
 import { blameFileKey } from '../utils/WorkspacePaths';
 
 /** Small brain SVG for AI gutter icon (matches IntelliJ GutterBrain). */
@@ -26,7 +27,7 @@ export class BlameDecorations implements vscode.Disposable {
     private aiDecorationType: vscode.TextEditorDecorationType;
     private humanDecorationType: vscode.TextEditorDecorationType;
 
-    constructor(blameMap: BlameMap) {
+    constructor(blameMap: BlameMap, cliData?: CliDataService) {
         this.blameMap = blameMap;
 
         this.aiDecorationType = vscode.window.createTextEditorDecorationType({
@@ -62,6 +63,10 @@ export class BlameDecorations implements vscode.Disposable {
             }
         });
         this.disposables.push(cfgChange);
+
+        if (cliData) {
+            this.disposables.push(cliData.onRefresh(() => this.updateDecorations()));
+        }
 
         this.updateDecorations();
     }

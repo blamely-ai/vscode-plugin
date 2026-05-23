@@ -1,8 +1,8 @@
 {
   "name": "blamely",
   "displayName": "Blamely",
-  "description": "Attribute AI vs human edits, generate Git-aware reports, and optional commit hooks. https://blamely.ai",
-  "version": "1.1.0",
+  "description": "Display AI vs human attribution from oobeya-cli runtime data and git note reports. https://blamely.ai",
+  "version": "1.2.0",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -22,8 +22,7 @@
     "git",
     "blame",
     "attribution",
-    "copilot",
-    "inline completion"
+    "blamely"
   ],
   "categories": [
     "SCM Providers"
@@ -34,10 +33,9 @@
   "main": "./out/extension.js",
   "scripts": {
     "clean:out": "node -e \"require('fs').rmSync('out',{recursive:true,force:true});\"",
-    "sync-hook-runner": "node scripts/sync-hook-runner.cjs",
     "vscode:prepublish": "npm run clean:out && npm run compile:release && npm run obfuscate",
-    "compile": "npm run sync-hook-runner && tsc -p ./ && cp src/hookRunner.js out/hookRunner.js",
-    "compile:release": "npm run sync-hook-runner && tsc -p ./tsconfig.release.json && cp src/hookRunner.js out/hookRunner.js",
+    "compile": "tsc -p ./",
+    "compile:release": "tsc -p ./tsconfig.release.json",
     "obfuscate": "node scripts/obfuscate-out.cjs",
     "vsix": "npm run vscode:prepublish && npx @vscode/vsce package --no-dependencies",
     "watch": "tsc -watch -p ./",
@@ -48,176 +46,28 @@
   "contributes": {
     "commands": [
       {
-        "command": "blamely.generateReport",
-        "title": "Blamely: Generate Report Now",
+        "command": "blamely.refresh",
+        "title": "Blamely: Refresh Runtime Data",
         "category": "Blamely"
       },
       {
         "command": "blamely.showBlame",
         "title": "Blamely: Show Blame for Current File",
         "category": "Blamely"
-      },
-      {
-        "command": "blamely.installHook",
-        "title": "Blamely: Install Git Commit Hook",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.restoreHook",
-        "title": "Blamely: Restore/Remove Git Hook",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.showCommitReport",
-        "title": "Blamely: Show Report for Latest Commit (Git Note)",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.attachGitNote",
-        "title": "Blamely: Attach Git Note for Current Commit",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.attachGitNoteForSha",
-        "title": "Blamely: Attach Git Note for Commit SHA...",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.acceptInlineSuggestion",
-        "title": "Blamely: Accept Inline Suggestion",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.acceptNextWord",
-        "title": "Blamely: Accept Next Word",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.acceptNextLine",
-        "title": "Blamely: Accept Next Line",
-        "category": "Blamely"
-      },
-      {
-        "command": "blamely.debug.dumpLastClassification",
-        "title": "Blamely (Debug): Dump Last Classification Log",
-        "category": "Blamely"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "blamely.acceptInlineSuggestion",
-        "key": "tab",
-        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused && !editorTabMovesFocus"
-      },
-      {
-        "command": "blamely.acceptNextWord",
-        "key": "ctrl+right",
-        "mac": "cmd+right",
-        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused"
-      },
-      {
-        "command": "blamely.acceptNextLine",
-        "key": "ctrl+down",
-        "mac": "cmd+down",
-        "when": "inlineSuggestionHasProvider && inlineSuggestionVisible && !editorHoverFocused"
-      },
-      {
-        "command": "blamely.intercept.github.copilot.chat.apply",
-        "key": "ctrl+shift+enter",
-        "mac": "cmd+shift+enter",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "blamely.intercept.workbench.action.chat.apply",
-        "key": "alt+enter",
-        "when": "editorTextFocus"
       }
     ],
     "configuration": {
       "title": "Blamely",
       "properties": {
-        "blamely.suggestionTimeout": {
-          "type": "number",
-          "default": 30000,
-          "description": "Timeout in ms before a pending suggestion is marked as rejected"
-        },
-        "blamely.autoInstallHook": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically install Git pre-commit hook on activation"
-        },
-        "blamely.excludePatterns": {
-          "type": "array",
-          "default": [
-            "node_modules",
-            ".git",
-            "dist",
-            "build",
-            "out",
-            "target",
-            "blamely-detector.ai",
-            "blamely-report.md",
-            "blamely-report.md",
-            ".log",
-            "/log/",
-            "/logs/",
-            ".tmp",
-            ".temp",
-            ".cache",
-            ".min.js",
-            ".min.css",
-            ".lock",
-            ".lockb",
-            ".idea/",
-            ".vscode/"
-          ],
-          "description": "File patterns to exclude from tracking (matches IntelliJ Blamely). Overrides the built-in defaults entirely when set."
-        },
-        "blamely.additionalExcludePatterns": {
-          "type": "array",
-          "default": [],
-          "items": { "type": "string" },
-          "description": "Extra file patterns to exclude in addition to the built-in defaults (e.g. \"my-generated/\", \".snap\")."
-        },
-        "blamely.reportOnSave": {
-          "type": "boolean",
-          "default": true,
-          "description": "Regenerate shared `report.yml` under ~/.blamely/repos/.../branches/<branch>/ on every file save"
-        },
-        "blamely.reportOnBlameChange": {
-          "type": "boolean",
-          "default": true,
-          "description": "Regenerate `report.yml` after attribution updates (AI/human detection, CLI trace merge). Debounced ~1.2s."
-        },
-        "blamely.showPostCommitAttributionInOutput": {
-          "type": "boolean",
-          "default": true,
-          "description": "After a commit, show a text AI vs Human attribution bar in the Blamely output channel (same idea as blamely-cli’s post-commit progress bar). Useful when you commit from SCM or Claude/Copilot chat and Git hook output is not visible."
-        },
         "blamely.showGutterDecorations": {
           "type": "boolean",
           "default": true,
-          "description": "Show attribution gutter icons and hovers in the editor"
+          "description": "Show attribution gutter icons and hovers in the editor (from oobeya-cli runtime data)"
         },
-        "blamely.attributeInlineGhostCompletion": {
+        "blamely.detectInlineCompletion": {
           "type": "boolean",
           "default": true,
-          "description": "When true (default), accepting inline ghost completions (grey suggestion text — Copilot, Cursor Tab, etc.) is attributed as AI and shows AI gutter icons. Set false to treat those accepts like normal typing (chat / composer applies still count as AI)."
-        },
-        "blamely.debugChatAttribution": {
-          "type": "boolean",
-          "default": false,
-          "description": "Log chat panel / apply flow, per-change format-like preservation lines, and why edits are AI vs Human (Output: Blamely + Debug Console, prefix [CHAT-DEBUG]). Enable when troubleshooting mis-attribution."
-        },
-        "blamely.logChatPanelMessages": {
-          "type": "boolean",
-          "default": true,
-          "description": "When true, logs full prompt from command args (only if the host exposes them), Apply/Keep args, and full @blamely reply text ([chat-send] / [chat-apply] / [chat-response]). Truncated traffic always logs under [Blamely][chat-traffic]. **Stock VS Code (including Copilot Chat) does not expose chat Apply/Send via vscode.commands** — use **@Blamely** in Chat for logged LM traffic."
-        },
-        "blamely.debugInlineCompletion": {
-          "type": "boolean",
-          "default": false,
-          "description": "Log inline completion registration and provider callbacks (Output: Blamely + Extension Host Debug Console, prefix [INLINE-DEBUG]). Enable when troubleshooting suggestion tracing under F5."
+          "description": "Detect inline AI completion accepts (Cursor Tab, Copilot Tab) by observing document changes and post them to the blamely daemon as gen_type=completion events."
         }
       }
     },
@@ -234,22 +84,12 @@
           "type": "webview"
         }
       ]
-    },
-    "chatParticipants": [
-      {
-        "id": "blamely.ai",
-        "name": "Blamely",
-        "fullName": "Blamely",
-        "description": "Use Blamely in chat for attribution-friendly workflows. https://blamely.ai",
-        "isSticky": true
-      }
-    ]
+    }
   },
   "devDependencies": {
     "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.0",
-    "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.109.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",

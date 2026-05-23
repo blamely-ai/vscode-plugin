@@ -1,13 +1,8 @@
 #!/usr/bin/env node
-/**
- * Obfuscates compiled JS under out/ for VSIX packaging.
- * Skips hookRunner.js (hook helper copied to user repos; keep readable).
- */
+/** Obfuscates compiled JS under out/ for VSIX packaging. */
 const fs = require('fs');
 const path = require('path');
 const JavaScriptObfuscator = require('javascript-obfuscator');
-
-const SKIP = new Set(['hookRunner.js']);
 
 const obfuscatorOptions = {
     compact: true,
@@ -49,10 +44,6 @@ function walk(dir) {
         if (!ent.name.endsWith('.js')) {
             continue;
         }
-        if (SKIP.has(ent.name)) {
-            continue;
-        }
-
         const code = fs.readFileSync(full, 'utf8');
         const result = JavaScriptObfuscator.obfuscate(code, obfuscatorOptions);
         fs.writeFileSync(full, result.getObfuscatedCode(), 'utf8');

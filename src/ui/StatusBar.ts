@@ -1,35 +1,29 @@
 import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
+import { CliDataService } from '../cli/CliDataService';
 import { getWorkingTreeDirtyBlameKeys } from '../utils/WorkspacePaths';
+import * as GitUtils from '../git/GitUtils';
 
 /**
- * Status bar widget showing AI & Human by characters, lines, and percentage.
- * Matches IntelliJ BlamelyStatusBarWidget: ⓒ = chars, ≡ = lines.
- * Format: 🤖 AI: 20 ⓒ 1 ≡ 20% | 👤 Human: 35 ⓒ 2 ≡ 80%
- * Only counts uncommitted entries (commit_sha === null) on files Git still reports as dirty when in a repo,
- * so counts stay aligned with the sidebar Changes list after discard/commit.
- * Refreshes every 2 seconds (matching IntelliJ statusBarAlarm) and on every onBlameUpdated call.
+ * Status bar — reads runtime attribution from oobeya-cli SQLite via CliDataService.
  */
 export class StatusBar implements vscode.Disposable {
     private item: vscode.StatusBarItem;
     private blameMap: BlameMap;
-    private refreshInterval: NodeJS.Timeout;
+    private cliData: CliDataService;
+    private disposables: vscode.Disposable[] = [];
 
     private static readonly ICON_CHARS = 'ⓒ';
     private static readonly ICON_LINES = '≡';
 
-    constructor(blameMap: BlameMap) {
+    constructor(blameMap: BlameMap, cliData: CliDataService) {
         this.blameMap = blameMap;
-        this.item = vscode.window.createStatusBarItem(
-            vscode.StatusBarAlignment.Right,
-            100
-        );
+        this.cliData = cliData;
+        this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         this.item.command = 'blamelySidebar.focus';
-        this.item.tooltip = 'Blamely — ⓒ chars, ≡ lines. Click to view details. blamely.ai';
         void this.update();
         this.item.show();
-
-        this.refreshInterval = setInterval(() => void this.update(), 2000);
+        this.disposables.push(cliData.onRefresh(() => void this.update()));
     }
 
     async update(): Promise<void> {
@@ -38,11 +32,17 @@ export class StatusBar implements vscode.Disposable {
             dirtyKeys === null
                 ? this.blameMap.getSummary()
                 : this.blameMap.getSummary(dirtyKeys);
+
         const totalChars = summary.aiChars + summary.humanChars;
         const totalLines = summary.totalLines;
+        const daemon = this.cliData.getDaemonStatus();
+        const daemonHint = daemon.running
+            ? `blamely daemon :${daemon.port}`
+            : 'blamely daemon offline';
 
         if (totalChars === 0 && totalLines === 0) {
             this.item.text = `🤖 AI: 0 ${StatusBar.ICON_CHARS} 0 ${StatusBar.ICON_LINES} 0% | 👤 Human: 0 ${StatusBar.ICON_CHARS} 0 ${StatusBar.ICON_LINES} 0%`;
+            this.item.tooltip = `Blamely — ${daemonHint}. Run blamely install && blamely daemon.`;
             return;
         }
 
@@ -52,10 +52,11 @@ export class StatusBar implements vscode.Disposable {
         this.item.text =
             `🤖 AI: ${summary.aiChars} ${StatusBar.ICON_CHARS} ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
             `👤 Human: ${summary.humanChars} ${StatusBar.ICON_CHARS} ${summary.humanLines} ${StatusBar.ICON_LINES} ${humanPercent}%`;
+        this.item.tooltip = `Blamely runtime (${daemonHint}) — ⓒ chars, ≡ lines. Click for Changes.`;
     }
 
     dispose(): void {
-        clearInterval(this.refreshInterval);
+        for (const d of this.disposables) d.dispose();
         this.item.dispose();
     }
 }

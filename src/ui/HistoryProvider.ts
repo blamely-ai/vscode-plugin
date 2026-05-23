@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as GitUtils from '../git/GitUtils';
+import { parseCliNote, genTypesFromNote, modelsFromNote } from '../cli/NoteParser';
+import { CliNote } from '../cli/types';
 import * as Logger from '../utils/Logger';
 
 interface CommitReport {
@@ -52,24 +54,8 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private workspaceRoot: string;
 
-    /** After commit: do not run git log / note fetch until the user clicks Refresh. */
-    private historySuppressedUntilManualRefresh = false;
-
     constructor(workspaceRoot: string) {
         this.workspaceRoot = workspaceRoot;
-    }
-
-    /**
-     * Call after a workspace commit. Stops automatic history loading; clears the History webview.
-     * When a Blamely git note was saved, the message explains that persisted trace history was cleared.
-     */
-    notifyPostCommit(options: { gitNoteWritten: boolean }): void {
-        this.historySuppressedUntilManualRefresh = true;
-        if (!this.view) return;
-        const msg = options.gitNoteWritten
-            ? 'History was cleared after this commit (Blamely git note saved). Local trace session files were removed. Click Refresh to load commit reports from git notes again.'
-            : 'History was cleared after this commit. Click Refresh to load commit reports from git notes.';
-        this.view.webview.html = this.buildEmptyHtml(msg);
     }
 
     resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -77,7 +63,6 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         webviewView.webview.options = { enableScripts: true };
         webviewView.webview.onDidReceiveMessage(msg => {
             if (msg.command === 'refresh') {
-                this.historySuppressedUntilManualRefresh = false;
                 void this.refresh();
             }
         });
@@ -86,12 +71,6 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
 
     async refresh(): Promise<void> {
         if (!this.view) return;
-        if (this.historySuppressedUntilManualRefresh) {
-            this.view.webview.html = this.buildEmptyHtml(
-                'History loading is paused after your last commit. Click Refresh above to load reports from git notes.'
-            );
-            return;
-        }
         try {
             const data = await this.loadOverallData();
             this.view.webview.html = this.buildHtml(data);
@@ -131,7 +110,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         for (const info of gitInfos) {
             const note = await GitUtils.getNoteContent(cwd, info.sha);
             if (!note) continue;
-            const report = this.parseReport(note, info.author, info.date);
+            const report = this.parseReport(note, info.author, info.date, info.sha);
             if (!report) continue;
 
             commits.push(report);
@@ -171,59 +150,42 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         };
     }
 
-    private parseReport(note: string, author: string, authorDate: string): CommitReport | null {
-        const lines = note.split('\n');
-        const yamlVal = (key: string): string | null => {
-            for (const line of lines) {
-                const t = line.trim();
-                if (t.startsWith(`${key}:`)) return t.slice(key.length + 1).trim().replace(/^"|"$/g, '');
-            }
-            return null;
-        };
-
-        const commitHash = yamlVal('commit_hash');
-        if (!commitHash) return null;
-        const commitMessage = yamlVal('commit_message') ?? '';
-        const branch = yamlVal('branch') ?? '';
-        const generatedAt = yamlVal('commitDate') ?? yamlVal('generated_at') ?? '';
-        const totalFilesChanged = parseInt(yamlVal('total_files_changed') ?? '0') || 0;
-        const totalLinesAdded = parseInt(yamlVal('total_lines_added') ?? '0') || 0;
-        const totalLinesDeleted = parseInt(yamlVal('total_lines_deleted') ?? '0') || 0;
-        const totalChanges = parseInt(yamlVal('total_changes') ?? '0') || (totalLinesAdded + totalLinesDeleted);
-        const aiLinesAdded = parseInt(yamlVal('ai_lines_added') ?? '0') || 0;
-        const humanLinesAdded = parseInt(yamlVal('human_lines_added') ?? '0') || 0;
-        const aiPercentage = yamlVal('ai_percentage') ?? '0%';
-        const timeWaitingForAiMs = parseInt(yamlVal('time_waiting_for_ai_ms') ?? '0') || 0;
-        const firstStartCodingTime = yamlVal('first_start_coding_time') ?? '';
-        const modelCount = parseInt(yamlVal('model_count') ?? '0') || 0;
-
-        let codingTimeMs = 0;
-        if (firstStartCodingTime && firstStartCodingTime !== 'null' && generatedAt) {
-            try {
-                const start = new Date(firstStartCodingTime).getTime();
-                const end = new Date(generatedAt).getTime();
-                codingTimeMs = Math.max(0, end - start);
-            } catch { /* ignore */ }
+    private parseReport(note: string, author: string, authorDate: string, sha: string): CommitReport | null {
+        const cli = parseCliNote(note);
+        if (cli) {
+            return this.parseCliReport(cli, author, authorDate);
         }
+        return null;
+    }
 
-        const models: string[] = [];
-        const interactionTypes: string[] = [];
-        let inModels = false, inInteraction = false;
-        for (const line of lines) {
-            const t = line.trim();
-            if (t === 'models:') { inModels = true; inInteraction = false; continue; }
-            if (t === 'interaction_types:') { inInteraction = true; inModels = false; continue; }
-            if (t.endsWith(':') && !t.startsWith('-')) { inModels = false; inInteraction = false; }
-            if (inModels && t.startsWith('- ')) models.push(t.slice(2).replace(/^"|"$/g, '').trim());
-            if (inInteraction && t.startsWith('- ')) interactionTypes.push(t.slice(2).replace(/^"|"$/g, '').trim());
-        }
-
+    private parseCliReport(note: CliNote, author: string, authorDate: string): CommitReport {
+        const ai = note.totals.ai_lines;
+        const human = note.totals.human_lines;
+        const total = ai + human;
+        const aiPct = total > 0 ? `${Math.round((ai / total) * 100)}%` : '0%';
+        const models = modelsFromNote(note);
+        const interactionTypes = genTypesFromNote(note);
+        const totalAdded = ai + human;
         return {
-            commitHash, commitMessage, branch, generatedAt, author, authorDate,
-            totalFilesChanged, totalLinesAdded, totalLinesDeleted, totalChanges,
-            aiLinesAdded, humanLinesAdded, aiPercentage,
-            models, interactionTypes, timeWaitingForAiMs, firstStartCodingTime, codingTimeMs,
-            modelCount,
+            commitHash: note.commit,
+            commitMessage: '',
+            branch: '',
+            generatedAt: authorDate,
+            author,
+            authorDate,
+            totalFilesChanged: note.totals.files,
+            totalLinesAdded: totalAdded,
+            totalLinesDeleted: note.totals.deleted_lines,
+            totalChanges: totalAdded + note.totals.deleted_lines,
+            aiLinesAdded: ai,
+            humanLinesAdded: human,
+            aiPercentage: aiPct,
+            models,
+            interactionTypes,
+            timeWaitingForAiMs: 0,
+            firstStartCodingTime: '',
+            codingTimeMs: 0,
+            modelCount: models.length,
         };
     }
 
