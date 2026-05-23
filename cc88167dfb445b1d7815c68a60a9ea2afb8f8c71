@@ -1,0 +1,6556 @@
+{
+  "schema": 1,
+  "commit": "cc88167dfb445b1d7815c68a60a9ea2afb8f8c71",
+  "branch": "main",
+  "message": "add DocSupportedTools component to main pages and update dependencies for improved functionality",
+  "coding_time_nanos": 2790861996000,
+  "totals": {
+    "ai_lines": 880,
+    "human_lines": 0,
+    "deleted_lines": 0,
+    "files": 10,
+    "tokens": {
+      "input": 2,
+      "output": 779,
+      "cache_read": 278102,
+      "cache_write": 2258
+    },
+    "models": {
+      "claude-opus-4-7": 256
+    }
+  },
+  "by_tool": {
+    "claude": {
+      "lines": 256,
+      "suggested_lines": 280,
+      "accepted_lines": 256,
+      "model": "claude-opus-4-7",
+      "tokens": {
+        "input": 2,
+        "output": 779,
+        "cache_read": 278102,
+        "cache_write": 2258
+      }
+    },
+    "copilot": {
+      "lines": 624,
+      "accepted_lines": 624
+    }
+  },
+  "by_gen_type": {
+    "chat": 256,
+    "cli": 0,
+    "completion": 624
+  },
+  "files": [
+    {
+      "path": "src/cli/CliDataService.ts",
+      "type": "ADDED",
+      "added": 163,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 68,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 70,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 73,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 74,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 75,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 76,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 78,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 79,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 80,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 81,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 82,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 83,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 84,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 85,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 86,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 87,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 88,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 90,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 92,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 93,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 94,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 95,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 96,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 97,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 98,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 99,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 100,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 101,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 102,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 103,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 105,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 106,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 107,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 109,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 110,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 111,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 112,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 113,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 114,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 115,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 117,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 118,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 119,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 121,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 122,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 123,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 124,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 126,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 127,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 128,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 129,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 130,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 131,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 132,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 133,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 134,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 135,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 136,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 137,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 138,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 139,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 140,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 141,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 142,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 143,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 144,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 145,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 146,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 147,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 149,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 151,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 152,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 153,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 154,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 155,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 156,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 157,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 158,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 159,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 160,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 161,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 163,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 164,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 165,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 166,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 168,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 169,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 170,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 171,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 172,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 174,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 175,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 176,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 177,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 178,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 179,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 180,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 181,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/CliHealth.ts",
+      "type": "ADDED",
+      "added": 135,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 60,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 68,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 70,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 73,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 75,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 76,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 77,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 78,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 79,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 80,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 81,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 82,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 83,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 85,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 86,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 87,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 88,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 89,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 90,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 91,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 93,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 94,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 95,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 97,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 98,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 99,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 100,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 101,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 102,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 103,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 104,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 105,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 106,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 107,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 108,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 110,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 111,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 112,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 113,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 114,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 115,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 116,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 117,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 118,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 119,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 120,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 121,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 122,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 123,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 124,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 126,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 127,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 128,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 129,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 130,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 131,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 132,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 133,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 134,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 135,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 136,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 137,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 138,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 139,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 140,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 142,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 143,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 144,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 145,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 146,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 147,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 148,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 149,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/CliHealthNotifier.ts",
+      "type": "ADDED",
+      "added": 94,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 70,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 73,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 74,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 75,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 76,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 77,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 78,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 79,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 80,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 81,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 82,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 83,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 84,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 85,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 86,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 87,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 88,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 89,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 90,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 91,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 92,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 93,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 94,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 95,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 96,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 97,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 98,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 99,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 100,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 101,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 102,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 103,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/NoteParser.ts",
+      "type": "ADDED",
+      "added": 35,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/SqliteReader.ts",
+      "type": "ADDED",
+      "added": 62,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 60,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/paths.ts",
+      "type": "ADDED",
+      "added": 43,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/repoId.ts",
+      "type": "ADDED",
+      "added": 22,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/types.ts",
+      "type": "ADDED",
+      "added": 70,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 60,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 68,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 73,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        },
+        {
+          "line": 74,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "copilot",
+          "gen_type": "completion"
+        }
+      ]
+    },
+    {
+      "path": "src/completion/CompletionDetector.ts",
+      "type": "ADDED",
+      "added": 168,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat",
+          "tokens": {
+            "input": 1,
+            "output": 461,
+            "cache_read": 139715,
+            "cache_write": 1270
+          }
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 4,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 10,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 22,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 30,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 48,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 55,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 60,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 68,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 70,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 74,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 75,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 76,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 77,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 78,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 79,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 81,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 82,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 83,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 85,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 86,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 87,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 88,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 89,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 90,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 91,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 93,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 94,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 95,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 96,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 97,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 98,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 99,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 100,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 101,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 102,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 103,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 104,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 105,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 106,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 107,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 108,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 109,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 110,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 111,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 112,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 113,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 114,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 116,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 117,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 118,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 119,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 120,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 121,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 122,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 123,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 124,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 126,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 127,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 128,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 129,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 130,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 131,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 132,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 133,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 134,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 135,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 136,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 138,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 139,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 140,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 141,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 142,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 143,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 144,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 145,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 146,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 147,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 148,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 149,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 150,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 152,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 153,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 154,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 155,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 156,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 157,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 158,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 160,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 161,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 162,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 163,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 164,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 165,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 166,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 168,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 169,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 170,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 171,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 172,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 173,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 174,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 175,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 176,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 177,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 178,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 179,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 180,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 181,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 182,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 183,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 184,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 185,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        }
+      ]
+    },
+    {
+      "path": "src/completion/DaemonClient.ts",
+      "type": "ADDED",
+      "added": 88,
+      "deleted": 0,
+      "lines": [
+        {
+          "line": 1,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat",
+          "tokens": {
+            "input": 1,
+            "output": 318,
+            "cache_read": 138387,
+            "cache_write": 988
+          }
+        },
+        {
+          "line": 2,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 3,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 5,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 6,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 7,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 8,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 9,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 11,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 12,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 13,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 14,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 15,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 16,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 17,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 18,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 19,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 20,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 21,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 23,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 24,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 25,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 26,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 27,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 28,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 29,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 31,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 32,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 33,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 34,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 35,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 36,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 37,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 38,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 39,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 40,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 41,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 42,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 43,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 44,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 45,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 46,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 47,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 49,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 50,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 51,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 52,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 53,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 54,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 56,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 57,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 58,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 59,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 60,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 61,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 62,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 63,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 64,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 65,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 66,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 67,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 68,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 69,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 70,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 71,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 72,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 73,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 74,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 75,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 76,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 77,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 78,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 79,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 80,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 81,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 82,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 83,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 84,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 85,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 87,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 88,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 89,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 90,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 91,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 92,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 93,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 94,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        },
+        {
+          "line": 95,
+          "type": "add",
+          "author_type": "AI",
+          "tool": "claude",
+          "model": "claude-opus-4-7",
+          "gen_type": "chat"
+        }
+      ]
+    }
+  ],
+  "generated_by": "blamely 0.1.0"
+}
