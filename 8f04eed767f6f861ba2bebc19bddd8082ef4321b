@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "commit": "8f04eed767f6f861ba2bebc19bddd8082ef4321b",
+  "branch": "main",
+  "message": "Merge remote-tracking branch 'origin/main'\n\n# Conflicts:\n#\tsrc/blame/BlameMap.ts\n#\tsrc/blame/BlameSerializer.ts\n#\tsrc/extension.ts\n#\tsrc/git/CommitListener.ts\n#\tsrc/git/GitUtils.ts\n#\tsrc/providers/ChangeTracker.ts\n#\tsrc/providers/editAttributionHeuristics.ts\n#\tsrc/store/BlamelyRepoPaths.ts\n#\tsrc/test/blameMap.test.ts\n#\tsrc/test/editAttributionHeuristics.test.ts\n#\tsrc/test/snapshotLineTouch.test.ts\n#\tsrc/test/trackedAiApplyCommands.test.ts\n#\tsrc/ui/HistoryProvider.ts\n#\tsrc/utils/AiContextExtractor.ts\n#\tsrc/utils/snapshotLineTouch.ts\n#\tsrc/utils/trackedAiApplyCommands.ts",
+  "coding_time_nanos": 2813861996000,
+  "totals": {
+    "ai_lines": 0,
+    "human_lines": 0,
+    "deleted_lines": 0,
+    "files": 0
+  },
+  "by_tool": {},
+  "by_gen_type": {
+    "chat": 0,
+    "cli": 0,
+    "completion": 0
+  },
+  "files": null,
+  "generated_by": "blamely 0.1.0"
+}
