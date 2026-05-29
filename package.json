@@ -68,6 +68,12 @@
           "type": "boolean",
           "default": true,
           "description": "Detect inline AI completion accepts (Cursor Tab, Copilot Tab) by observing document changes and post them to the blamely daemon as gen_type=completion events."
+        },
+        "blamely.aiTool": {
+          "type": "string",
+          "enum": ["auto", "copilot", "cursor"],
+          "default": "auto",
+          "markdownDescription": "Which AI tool to credit for edits this extension detects. `auto` infers from the host editor (VS Code with the GitHub Copilot extension → Copilot; Cursor → Cursor). Set this explicitly when you run **GitHub Copilot inside Cursor** (or Cursor Tab inside VS Code) so chat applies and inline completions are attributed to the right tool. Copilot and Cursor are tracked as fully independent tools."
         }
       }
     },

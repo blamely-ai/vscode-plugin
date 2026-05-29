@@ -1,20 +1,19 @@
 import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
-import { getWorkingTreeDirtyBlameKeys, uriFromBlameFileKey } from '../utils/WorkspacePaths';
+import { uriFromBlameFileKey } from '../utils/WorkspacePaths';
 import * as Logger from '../utils/Logger';
+
 
 interface FileStats {
     filePath: string;
     fileName: string;
     ext: string;
-    aiChars: number;
-    humanChars: number;
     aiLines: number;
     humanLines: number;
     aiPct: number;
     humanPct: number;
-    totalChars: number;
+    totalLines: number;
 }
 
 /** Changes panel — runtime edits from oobeya-cli SQLite. */
@@ -79,36 +78,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
         });
     }
 
-    private async getFileStatsList(dirtyBlameKeys: Set<string> | null): Promise<FileStats[]> {
-        const files = this.blameMap.getTrackedFiles();
+    private getFileStatsList(): FileStats[] {
         const result: FileStats[] = [];
 
-        for (const filePath of files) {
-            if (dirtyBlameKeys !== null && !dirtyBlameKeys.has(filePath)) {
-                continue;
-            }
-            const allEntries = this.blameMap.getBlame(filePath);
-            if (allEntries.length === 0) continue;
-
+        for (const filePath of this.blameMap.getTrackedFiles()) {
             const byLine = new Map<number, LineBlame>();
-            for (const e of allEntries) {
+            for (const e of this.blameMap.getBlame(filePath)) {
                 const existing = byLine.get(e.lineNumber);
-                const eTotal = (e.aiChars ?? 0) + (e.humanChars ?? 0);
-                const curTotal = existing ? (existing.aiChars ?? 0) + (existing.humanChars ?? 0) : 0;
-                if (eTotal >= curTotal) byLine.set(e.lineNumber, e);
+                if (!existing || (e.aiChars + e.humanChars) >= (existing.aiChars + existing.humanChars)) {
+                    byLine.set(e.lineNumber, e);
+                }
             }
 
-            let aiChars = 0, humanChars = 0, aiLines = 0, humanLines = 0;
+            let aiLines = 0, humanLines = 0;
             for (const e of byLine.values()) {
-                aiChars += e.aiChars ?? 0;
-                humanChars += e.humanChars ?? 0;
                 if (e.authorType === 'AI') aiLines++;
                 else humanLines++;
             }
 
-            const totalChars = aiChars + humanChars;
-            const aiPct = totalChars > 0 ? Math.round((aiChars / totalChars) * 100) : 0;
-            const humanPct = totalChars > 0 ? 100 - aiPct : 0;
+            if (aiLines === 0 && humanLines === 0) continue;
+
+            const totalLines = aiLines + humanLines;
+            const aiPct = Math.round((aiLines / totalLines) * 100);
+            const humanPct = 100 - aiPct;
 
             const parts = filePath.split('/');
             const fullName = parts[parts.length - 1] || filePath;
@@ -116,10 +108,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider, vscode.Dispo
             const name = dotIdx > 0 ? fullName.slice(0, dotIdx) : fullName;
             const ext = dotIdx > 0 ? fullName.slice(dotIdx) : '';
 
-            result.push({ filePath, fileName: name, ext, aiChars, humanChars, aiLines, humanLines, aiPct, humanPct, totalChars });
+            result.push({ filePath, fileName: name, ext, aiLines, humanLines, aiPct, humanPct, totalLines });
         }
 
-        return result.sort((a, b) => b.totalChars - a.totalChars);
+        return result.sort((a, b) => b.totalLines - a.totalLines);
     }
 
     private esc(s: string): string {
@@ -166,21 +158,19 @@ body { font-family: var(--vscode-font-family); font-size: 12px; color: var(--tex
 `;
 
     private async buildHtml(): Promise<string> {
-        const dirtyKeys = await getWorkingTreeDirtyBlameKeys();
-        const files = await this.getFileStatsList(dirtyKeys);
+        const files = this.getFileStatsList();
         const daemon = this.cliData.getDaemonStatus();
-        let totalAi = 0, totalHuman = 0, totalAiLines = 0, totalHumanLines = 0;
+        let totalAiLines = 0, totalHumanLines = 0;
         for (const f of files) {
-            totalAi += f.aiChars;
-            totalHuman += f.humanChars;
             totalAiLines += f.aiLines;
             totalHumanLines += f.humanLines;
         }
-        const total = totalAi + totalHuman;
-        const aiPct = total > 0 ? Math.round((totalAi / total) * 100) : 0;
+        const total = totalAiLines + totalHumanLines;
+        const aiPct = total > 0 ? Math.round((totalAiLines / total) * 100) : 0;
+        const humanPct = 100 - aiPct;
 
         const fileRows = files.map(f => {
-            const aiW = f.totalChars > 0 ? f.aiPct : 0;
+            const aiW = f.totalLines > 0 ? f.aiPct : 0;
             const humanW = 100 - aiW;
             return `<div class="file-row" onclick="openFile('${this.esc(f.filePath)}')">
                 <span class="file-name">${this.esc(f.fileName)}<span style="opacity:0.6">${this.esc(f.ext)}</span></span>
@@ -199,8 +189,8 @@ body { font-family: var(--vscode-font-family); font-size: 12px; color: var(--tex
   <button class="btn" onclick="refresh()">Refresh</button>
 </div>
 <div class="summary">
-  <div class="stat stat-ai"><span class="stat-label">AI</span><span class="stat-value">${this.fmtNum(totalAi)} ⓒ · ${totalAiLines} ≡ · ${aiPct}%</span></div>
-  <div class="stat stat-human"><span class="stat-label">Human</span><span class="stat-value">${this.fmtNum(totalHuman)} ⓒ · ${totalHumanLines} ≡</span></div>
+  <div class="stat stat-ai"><span class="stat-label">AI</span><span class="stat-value">${totalAiLines} ≡ · ${aiPct}%</span></div>
+  <div class="stat stat-human"><span class="stat-label">Human</span><span class="stat-value">${totalHumanLines} ≡ · ${humanPct}%</span></div>
 </div>
 ${files.length === 0 ? `<div class="empty">${emptyMsg}</div>` : `<div class="file-list">${fileRows}</div>`}
 <script>

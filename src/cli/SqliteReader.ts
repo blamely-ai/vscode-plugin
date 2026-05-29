@@ -33,8 +33,8 @@ async function runSqliteJson(db: string, sql: string): Promise<unknown[]> {
     return [];
 }
 
-/** All edit line ranges for a repo, newest edit first. */
-export async function loadEditsForRepo(repoId: string): Promise<CliEditRow[]> {
+/** All edit line ranges for a repo since a given nanosecond timestamp, newest edit first. */
+export async function loadEditsForRepo(repoId: string, sinceNanos = 0): Promise<CliEditRow[]> {
     const db = dbPath();
     if (!fs.existsSync(db)) {
         return [];
@@ -46,7 +46,7 @@ export async function loadEditsForRepo(repoId: string): Promise<CliEditRow[]> {
                el.start_line AS start_line, el.end_line AS end_line
         FROM edits e
         JOIN edit_lines el ON el.edit_id = e.id
-        WHERE e.repo_path = '${escaped}'
+        WHERE e.repo_path = '${escaped}' AND e.ts >= ${sinceNanos}
         ORDER BY e.ts DESC, e.id DESC
     `;
     const rows = await runSqliteJson(db, sql);
