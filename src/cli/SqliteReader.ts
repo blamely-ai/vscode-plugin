@@ -43,7 +43,7 @@ export async function loadEditsForRepo(repoId: string, sinceNanos = 0): Promise<
     const sql = `
         SELECT e.id AS id, e.ts AS ts, e.file_path AS file_path, e.tool AS tool,
                e.model AS model, e.gen_type AS gen_type,
-               el.start_line AS start_line, el.end_line AS end_line
+               el.start_line AS start_line, el.end_line AS end_line, el.content_sha AS content_sha
         FROM edits e
         JOIN edit_lines el ON el.edit_id = e.id
         WHERE e.repo_path = '${escaped}' AND e.ts >= ${sinceNanos}
@@ -61,6 +61,7 @@ export async function loadEditsForRepo(repoId: string, sinceNanos = 0): Promise<
             gen_type: String(row.gen_type ?? 'unknown'),
             start_line: Number(row.start_line),
             end_line: Number(row.end_line),
+            content_sha: row.content_sha != null && String(row.content_sha) !== '' ? String(row.content_sha) : null,
         };
     }).filter(r => r.file_path && r.start_line > 0 && r.end_line >= r.start_line);
 }

@@ -30,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar = new StatusBar(blameMap, cliData);
     disposables.push(statusBar);
 
+
     sidebarProvider = new SidebarProvider(blameMap, cliData);
     disposables.push(
         vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebarProvider)
@@ -97,6 +98,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         completionDetector.register();
         disposables.push(completionDetector);
     }
+
+    // blamely.signalInlineAccept is called by the Tab keybinding in package.json
+    // (when inlineSuggestionVisible) BEFORE editor.action.inlineSuggest.commit
+    // runs. This gives us the exact accept signal without relying on
+    // onDidExecuteCommand, which does not fire for keyboard-shortcut commands.
+    disposables.push(
+        vscode.commands.registerCommand('blamely.signalInlineAccept', () => {
+            completionDetector?.signalInlineAccept();
+        }),
+    );
 
     await cliData.start();
     void historyProvider.refresh();

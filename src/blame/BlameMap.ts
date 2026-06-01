@@ -2,19 +2,20 @@
 export interface LineBlame {
     lineNumber: number;
     authorType: 'HUMAN' | 'AI';
-    provider: string | null;
     timestamp: string;
-    commitSha: string | null;
-    model: string | null;
-    prompt: string | null;
-    interactionType: string | null;
-    ide: string | null;
     aiChars: number;
     humanChars: number;
     changeType: 'ADD' | 'DELETE';
-    newLineNumber: number | null;
-    oldLineNumber: number | null;
     codingType: 'TYPING' | 'BULK_INSERT';
+    // AI-specific (absent / null on human entries)
+    provider?: string | null;
+    model?: string | null;
+    interactionType?: string | null;
+    prompt?: string | null;
+    ide?: string | null;
+    commitSha?: string | null;
+    newLineNumber?: number | null;
+    oldLineNumber?: number | null;
 }
 
 export class BlameMap {

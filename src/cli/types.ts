@@ -66,6 +66,10 @@ export interface CliEditRow {
     gen_type: string;
     start_line: number;
     end_line: number;
+    // Per-line content hash when the edit recorded line content (chat applies).
+    // Used to attribute a line to AI only when its current content still
+    // matches what the AI applied. Empty/null for range-only edits.
+    content_sha: string | null;
 }
 
 export interface DaemonStatus {

@@ -22,14 +22,14 @@ export interface EditPayload {
 
 // DaemonClient posts attribution events to the blamely daemon's /edit HTTP
 // endpoint. The daemon listens on a random localhost port written to
-// ~/.blamely/daemon.port; we re-read that file on every failure so a
-// daemon restart (which picks a new port) heals automatically.
+// ~/.blamely/daemon.port; we re-read that file on every send so a daemon
+// restart (which picks a new port) is picked up immediately without any
+// stale-cache failure. readFileSync is ~0.1ms — no caching needed.
 export class DaemonClient {
-    private cachedPort: number | null = null;
     private lastWarnAt = 0;
 
     async send(payload: EditPayload): Promise<boolean> {
-        const port = this.resolvePort();
+        const port = readDaemonPort();
         if (port == null) {
             this.maybeWarn('daemon port file missing (blamely daemon not running?)');
             return false;
@@ -38,19 +38,9 @@ export class DaemonClient {
             await this.post(port, payload);
             return true;
         } catch (err) {
-            // Invalidate cache so the next call re-reads the port file —
-            // covers the daemon-restart-with-new-port case.
-            this.cachedPort = null;
             this.maybeWarn(`POST /edit failed: ${(err as Error).message}`);
             return false;
         }
-    }
-
-    private resolvePort(): number | null {
-        if (this.cachedPort != null) return this.cachedPort;
-        const p = readDaemonPort();
-        if (p != null) this.cachedPort = p;
-        return p;
     }
 
     private post(port: number, payload: EditPayload): Promise<void> {

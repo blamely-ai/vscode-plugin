@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -43,18 +44,10 @@ function buildHumanLineBlame(lineNumber: number): LineBlame {
     return {
         lineNumber,
         authorType: 'HUMAN',
-        provider: null,
         timestamp: new Date().toISOString(),
-        commitSha: null,
-        model: null,
-        prompt: null,
-        interactionType: null,
-        ide: null,
         aiChars: 0,
-        humanChars: 1,
+        humanChars: 0,
         changeType: 'ADD',
-        newLineNumber: lineNumber,
-        oldLineNumber: null,
         codingType: 'TYPING',
     };
 }
@@ -106,17 +99,31 @@ function buildLineBlame(
     };
 }
 
-/** Newest edit wins per file line (matches oobeya-cli attribution join). */
+function lineSha(s: string): string {
+    return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+/**
+ * Build per-file AI line attribution from edit rows.
+ *
+ * Two kinds of edit lines:
+ *  - CONTENT lines (chat applies): carry a per-line content_sha. A current file
+ *    line is attributed to that edit only if its content still hashes to the
+ *    same value — so lines the human later types inside an AI-applied region are
+ *    NOT mis-credited to AI, and attribution survives line-number shifts.
+ *  - RANGE lines (inline completions etc.): no content_sha; attributed by line
+ *    number as before.
+ * Newest edit wins per line (rows arrive newest-first).
+ */
 function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, LineBlame[]> {
-    const assigned = new Map<string, Map<number, CliEditRow>>();
+    const assigned = new Map<string, Map<number, CliEditRow>>();          // range-based: file → line → edit
+    const contentEdits = new Map<string, Map<string, CliEditRow>>();      // content-based: file → sha → edit
     const fileLineCounts = new Map<string, number | null>();
     const MAX_LINES_PER_EDIT = 10000; // guard against huge ranges
 
     function fileLineCount(repoRoot: string, filePath: string): number | null {
         try {
-            const abs = path.join(repoRoot, filePath);
-            const content = fs.readFileSync(abs, 'utf8');
-            return content.split(/\r?\n/).length;
+            return fs.readFileSync(path.join(repoRoot, filePath), 'utf8').split(/\r?\n/).length;
         } catch {
             return null;
         }
@@ -124,42 +131,64 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
 
     for (const row of edits) {
         const file = row.file_path.replace(/\\/g, '/');
+
+        if (row.content_sha) {
+            let m = contentEdits.get(file);
+            if (!m) { m = new Map(); contentEdits.set(file, m); }
+            if (!m.has(row.content_sha)) m.set(row.content_sha, row); // newest-first → first wins
+            continue;
+        }
+
         let byLine = assigned.get(file);
         if (!byLine) {
             byLine = new Map();
             assigned.set(file, byLine);
         }
-
         let fileLines = fileLineCounts.get(file);
         if (fileLines === undefined) {
             fileLines = fileLineCount(repoRoot, file);
             fileLineCounts.set(file, fileLines);
         }
-
         const start = Math.max(1, row.start_line ?? 1);
         let end = row.end_line ?? start;
-
-        if (fileLines !== null) {
-            end = Math.min(end, fileLines);
-        }
-
-        if (end - start + 1 > MAX_LINES_PER_EDIT) {
-            end = start + MAX_LINES_PER_EDIT - 1;
-        }
-
+        if (fileLines !== null) end = Math.min(end, fileLines);
+        if (end - start + 1 > MAX_LINES_PER_EDIT) end = start + MAX_LINES_PER_EDIT - 1;
         for (let ln = start; ln <= end; ln++) {
-            if (!byLine.has(ln)) {
-                byLine.set(ln, row);
-            }
+            if (!byLine.has(ln)) byLine.set(ln, row);
         }
     }
 
     const result = new Map<string, LineBlame[]>();
+
+    // Range-based files.
     for (const [file, byLine] of assigned) {
         const entries: LineBlame[] = [];
-        for (const [ln, row] of byLine) {
-            entries.push(buildLineBlame(repoRoot, file, ln, row));
+        for (const [ln, row] of byLine) entries.push(buildLineBlame(repoRoot, file, ln, row));
+        result.set(file, entries);
+    }
+
+    // Content-based files: hash each current line and attribute when it matches.
+    for (const [file, shaMap] of contentEdits) {
+        let lines: string[];
+        try {
+            lines = fs.readFileSync(path.join(repoRoot, file), 'utf8').split(/\r?\n/);
+        } catch {
+            continue;
         }
+        const existing = result.get(file) ?? [];
+        const claimed = new Set(existing.map(e => e.lineNumber));
+        const entries: LineBlame[] = [...existing];
+        for (let i = 0; i < lines.length; i++) {
+            const ln = i + 1;
+            const text = lines[i];
+            if (text.trim().length === 0 || claimed.has(ln)) continue; // skip blanks / already-claimed
+            const row = shaMap.get(lineSha(text.replace(/\r$/, '')));
+            if (row) entries.push(buildLineBlame(repoRoot, file, ln, row));
+        }
+        if (entries.length > 0) result.set(file, entries);
+    }
+
+    for (const [file, entries] of result) {
         entries.sort((a, b) => a.lineNumber - b.lineNumber);
         result.set(file, entries);
     }
@@ -252,13 +281,41 @@ export class CliDataService implements vscode.Disposable {
             }
             const byFile = editsToBlameMap(repoRoot, edits);
 
-            // Add human LineBlame entries for working-tree lines not attributed to AI.
-            // Parsed from git diff --unified=0 HEAD — empty after commit → reset to 0.
+            // Lines that actually differ from HEAD in the working tree (the '+'
+            // side of `git diff --unified=0 HEAD`). Empty after commit.
             const diffOut = await GitUtils.runGitCommand(repoRoot, 'diff', '--unified=0', 'HEAD');
-            const humanLinesByFile = parseHumanLines(diffOut ?? '');
-            for (const [filePath, lineNums] of humanLinesByFile) {
+            const changedByFile = parseHumanLines(diffOut ?? '');
+            const changedSets = new Map<string, Set<number>>();
+            for (const [f, lns] of changedByFile) changedSets.set(f, new Set(lns));
+
+            // Untracked (new) files aren't in `git diff HEAD`; every line is a change.
+            const untrackedFiles = new Set<string>();
+            const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
+            if (untrackedOut) {
+                for (const line of untrackedOut.split('\n')) {
+                    const f = line.trim().replace(/\\/g, '/');
+                    if (f) untrackedFiles.add(f);
+                }
+            }
+
+            // CONSTRAIN AI attribution to lines that truly changed vs HEAD. A chat
+            // "apply" that rewrites a whole file stores a whole-file range, but only
+            // the lines that actually differ should show as AI — unchanged lines
+            // match the committed content and must NOT be painted. If a file has no
+            // working-tree change at all, none of its (stale) AI edits are shown.
+            for (const [file, entries] of byFile) {
+                if (untrackedFiles.has(file)) continue; // whole new file is AI-eligible
+                const changed = changedSets.get(file);
+                const filtered = entries.filter(
+                    e => e.authorType !== 'AI' || (changed?.has(e.lineNumber) ?? false)
+                );
+                byFile.set(file, filtered);
+            }
+
+            // Add human LineBlame entries for changed lines not attributed to AI.
+            for (const [filePath, lineNums] of changedByFile) {
                 const existing = byFile.get(filePath) ?? [];
-                const aiLineSet = new Set(existing.map(e => e.lineNumber));
+                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
                 const humanEntries = lineNums
                     .filter(ln => !aiLineSet.has(ln))
                     .map(ln => buildHumanLineBlame(ln));
@@ -267,30 +324,22 @@ export class CliDataService implements vscode.Disposable {
                 }
             }
 
-            // git diff HEAD does not include untracked (new) files. When AI generates
-            // a new file via a chat panel and the user then adds more lines, those
-            // human-typed lines are invisible to the diff. For each untracked file
-            // that has AI attribution in byFile, add human entries for all non-AI lines.
-            const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
-            if (untrackedOut) {
-                for (const line of untrackedOut.split('\n')) {
-                    const filePath = line.trim().replace(/\\/g, '/');
-                    if (!filePath || !byFile.has(filePath)) continue;
-                    const existing = byFile.get(filePath)!;
-                    const aiLineSet = new Set(existing.map(e => e.lineNumber));
-                    try {
-                        const absPath = path.join(repoRoot, filePath);
-                        const content = fs.readFileSync(absPath, 'utf8');
-                        const lineCount = content.split(/\r?\n/).length;
-                        const humanEntries: LineBlame[] = [];
-                        for (let ln = 1; ln <= lineCount; ln++) {
-                            if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
-                        }
-                        if (humanEntries.length > 0) {
-                            byFile.set(filePath, [...existing, ...humanEntries]);
-                        }
-                    } catch { /* skip unreadable files */ }
-                }
+            // Untracked files: keep AI lines, add human entries for the rest.
+            for (const filePath of untrackedFiles) {
+                if (!byFile.has(filePath)) continue;
+                const existing = byFile.get(filePath)!;
+                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
+                try {
+                    const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
+                    const lineCount = content.split(/\r?\n/).length;
+                    const humanEntries: LineBlame[] = [];
+                    for (let ln = 1; ln <= lineCount; ln++) {
+                        if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
+                    }
+                    if (humanEntries.length > 0) {
+                        byFile.set(filePath, [...existing, ...humanEntries]);
+                    }
+                } catch { /* skip unreadable files */ }
             }
 
             this.blameMap.clear();

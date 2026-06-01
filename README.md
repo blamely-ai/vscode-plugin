@@ -6,6 +6,36 @@
 
 ---
 
+## Requirements
+
+This extension requires the **blamely CLI** installed and running in the background.
+
+**macOS:**
+```bash
+curl -sSL https://blamely.ai/blamely-mac-install.sh | bash
+```
+
+**Linux:**
+```bash
+curl -sSL https://blamely.ai/blamely-linux-install.sh | bash
+```
+
+**Windows** (PowerShell):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://blamely.ai/blamely-windows-install.bat | iex"
+```
+
+Installers are idempotent — safe to re-run after adding a new AI tool. Verify:
+
+```bash
+blamely status    # daemon health + detected tools
+blamely doctor    # full self-check
+```
+
+Full guide: **[blamely.ai](https://blamely.ai)**
+
+---
+
 ## Why developers use Blamely
 
 - **Transparency in code review.** Reviewers can see AI-assisted hunks directly in the editor (gutter + hovers) instead of guessing from commit size or tone.
@@ -98,6 +128,20 @@ Additional examples for **`keybindings.json`** (adjust keys to taste):
 ```
 
 The full list of `<originalCommandId>` values matches the chat/composer apply and keep IDs Blamely tracks (Cursor, Copilot, built-in chat, etc.). **Stock VS Code does not expose executed-command events**, so Blamely cannot log the command id when you click Apply in the UI. Discover IDs via **Keyboard Shortcuts** (search “Copilot” / “chat apply”) or see `chatPanel` / `chatInline` / Copilot entries in [`src/utils/trackedAiApplyCommands.ts`](src/utils/trackedAiApplyCommands.ts).
+
+---
+
+## After each commit
+
+A clear AI vs Human bar prints in your terminal after every `git commit`:
+
+```
+AI 72% (18)  [████████████████████████████░░░░░░░░░░░░]  Human 28% (7)
+  claude  12 lines  (claude-opus-4-6) — 4200 in / 890 out tok
+  cursor   6 lines  (composer-1)      — 1100 in / 340 out tok
+```
+
+The same data is attached to the commit as a git note (`refs/notes/blamely`) and available in **Blamely: History** in the SCM sidebar.
 
 ---
 

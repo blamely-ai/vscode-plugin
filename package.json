@@ -1,8 +1,8 @@
 {
   "name": "blamely",
   "displayName": "Blamely",
-  "description": "Display AI vs human attribution from oobeya-cli runtime data and git note reports. https://blamely.ai",
-  "version": "1.2.0",
+  "description": "Track AI vs human code attribution line by line. Requires the blamely CLI. https://blamely.ai",
+  "version": "1.1.1",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -15,7 +15,7 @@
     "url": "https://github.com/blamely-ai/vscode-plugin/issues"
   },
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.85.0"
   },
   "keywords": [
     "ai",
@@ -54,6 +54,52 @@
         "command": "blamely.showBlame",
         "title": "Blamely: Show Blame for Current File",
         "category": "Blamely"
+      },
+      {
+        "command": "blamely.showDaemonStatus",
+        "title": "Blamely: Show Daemon Status",
+        "category": "Blamely"
+      },
+      {
+        "command": "blamely.signalInlineAccept",
+        "title": "Blamely: Signal Inline Completion Accepted",
+        "category": "Blamely",
+        "enablement": "never"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "tab",
+        "command": "runCommands",
+        "args": {
+          "commands": [
+            "blamely.signalInlineAccept",
+            "editor.action.inlineSuggest.commit"
+          ]
+        },
+        "when": "inlineSuggestionVisible && !editorReadonly"
+      },
+      {
+        "key": "cmd+right",
+        "command": "runCommands",
+        "args": {
+          "commands": [
+            "blamely.signalInlineAccept",
+            "editor.action.inlineSuggest.acceptNextWord"
+          ]
+        },
+        "when": "inlineSuggestionVisible && !editorReadonly && isMac"
+      },
+      {
+        "key": "ctrl+right",
+        "command": "runCommands",
+        "args": {
+          "commands": [
+            "blamely.signalInlineAccept",
+            "editor.action.inlineSuggest.acceptNextWord"
+          ]
+        },
+        "when": "inlineSuggestionVisible && !editorReadonly && !isMac"
       }
     ],
     "configuration": {
@@ -74,6 +120,11 @@
           "enum": ["auto", "copilot", "cursor"],
           "default": "auto",
           "markdownDescription": "Which AI tool to credit for edits this extension detects. `auto` infers from the host editor (VS Code with the GitHub Copilot extension → Copilot; Cursor → Cursor). Set this explicitly when you run **GitHub Copilot inside Cursor** (or Cursor Tab inside VS Code) so chat applies and inline completions are attributed to the right tool. Copilot and Cursor are tracked as fully independent tools."
+        },
+        "blamely.debugDetection": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log AI-edit detection to the **Blamely** output channel: every executed command id, each chat-apply/inline-accept match, and each recorded edit (tool, gen_type, line range). Use this to verify attribution and to discover the chat-apply command id your editor/version uses."
         }
       }
     },
@@ -96,7 +147,7 @@
     "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
     "chai": "^4.4.1",

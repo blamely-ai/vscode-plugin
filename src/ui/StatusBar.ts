@@ -1,15 +1,24 @@
+import * as http from 'http';
 import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
+import { readDaemonPort } from '../cli/paths';
+
+const HEARTBEAT_MS = 5_000;
 
 /**
- * Status bar — reads runtime attribution from oobeya-cli SQLite via CliDataService.
+ * Blamely status bar item — shows AI/Human attribution percentages and a
+ * daemon connection lamp that updates every 5 seconds via a /health heartbeat.
+ *
+ * 🟢 $(circle-filled) = daemon reachable   🔴 $(circle-filled) = daemon offline
  */
 export class StatusBar implements vscode.Disposable {
     private item: vscode.StatusBarItem;
     private blameMap: BlameMap;
     private cliData: CliDataService;
     private disposables: vscode.Disposable[] = [];
+    private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    private daemonAlive = false;
 
     private static readonly ICON_LINES = '≡';
 
@@ -18,35 +27,62 @@ export class StatusBar implements vscode.Disposable {
         this.cliData = cliData;
         this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         this.item.command = 'blamelySidebar.focus';
-        void this.update();
         this.item.show();
-        this.disposables.push(cliData.onRefresh(() => void this.update()));
+
+        // Immediate first render + heartbeat loop.
+        void this.heartbeat();
+        this.heartbeatTimer = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
+
+        this.disposables.push(cliData.onRefresh(() => void this.render()));
     }
 
-    async update(): Promise<void> {
+    /** Ping /health, update the lamp, then re-render. */
+    private async heartbeat(): Promise<void> {
+        this.daemonAlive = await this.pingHealth();
+        void this.render();
+    }
+
+    private async render(): Promise<void> {
         const summary = this.blameMap.getSummary();
-        const daemon = this.cliData.getDaemonStatus();
-        const daemonHint = daemon.running
-            ? `blamely daemon :${daemon.port}`
-            : 'blamely daemon offline';
+        const lamp = this.daemonAlive
+            ? '$(circle-filled) '
+            : '$(circle-outline) ';
+        const lampColor = this.daemonAlive
+            ? new vscode.ThemeColor('charts.green')
+            : new vscode.ThemeColor('charts.red');
 
         const totalLines = summary.aiLines + summary.humanLines;
-
-        if (totalLines === 0) {
-            this.item.text = `🤖 AI: 0 ${StatusBar.ICON_LINES} 0% | 👤 Human: 0 ${StatusBar.ICON_LINES} 0%`;
-            this.item.tooltip = `Blamely — ${daemonHint}. Run blamely install && blamely daemon.`;
-            return;
-        }
-
-        const aiPercent = Math.round((summary.aiLines / totalLines) * 100);
+        const aiPercent = totalLines === 0 ? 0 : Math.round((summary.aiLines / totalLines) * 100);
         const humanPercent = 100 - aiPercent;
+
         this.item.text =
-            `🤖 AI: ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
+            `${lamp}🤖 AI: ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
             `👤 Human: ${summary.humanLines} ${StatusBar.ICON_LINES} ${humanPercent}%`;
-        this.item.tooltip = `Blamely runtime (${daemonHint}) — ≡ lines. Click for Changes.`;
+        this.item.color = lampColor;
+        this.item.tooltip = this.daemonAlive
+            ? `Blamely daemon running — click for Changes`
+            : `Blamely daemon offline — run: blamely daemon`;
+    }
+
+    private pingHealth(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const port = readDaemonPort();
+            if (port == null) { resolve(false); return; }
+            const req = http.request(
+                { host: '127.0.0.1', port, path: '/health', method: 'GET', timeout: 2000 },
+                (res) => { res.resume(); resolve(res.statusCode === 200); },
+            );
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+            req.end();
+        });
     }
 
     dispose(): void {
+        if (this.heartbeatTimer != null) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
         for (const d of this.disposables) d.dispose();
         this.item.dispose();
     }
