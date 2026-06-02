@@ -9,8 +9,36 @@ import { checkCliHealth } from './CliHealth';
 import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
+import { normalizePath } from '../utils/Platform';
+import { isBlankLine } from '../utils/BlankLines';
 
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
+
+function normalizedGenType(genType: string | null | undefined): string {
+    return (genType ?? '').trim().toLowerCase();
+}
+
+function isInlineCompletionType(genType: string | null | undefined): boolean {
+    return normalizedGenType(genType) === 'completion';
+}
+
+function isAiInteractionType(genType: string | null | undefined): boolean {
+    const g = normalizedGenType(genType);
+    return g === 'completion' || g === 'chat' || g === 'cli';
+}
+
+/** Max line span for in-memory line→edit maps (V8 Map size ~16M entries). */
+const MAX_AI_LINE_INDEX_SPAN = 500;
+
+function hasBoundedRange(row: CliEditRow): boolean {
+    return row.end_line >= row.start_line && row.end_line - row.start_line <= MAX_AI_LINE_INDEX_SPAN;
+}
+
+function isIndexableLineRange(row: CliEditRow): boolean {
+    const start = Math.max(1, row.start_line ?? 1);
+    const end = row.end_line ?? start;
+    return end >= start && end - start <= MAX_AI_LINE_INDEX_SPAN;
+}
 
 /**
  * Parse `git diff --unified=0 HEAD` output into a map of relPath → added line numbers.
@@ -56,6 +84,241 @@ function isAiTool(tool: string): boolean {
     return AI_TOOLS.has(tool.toLowerCase());
 }
 
+function isAiEditRow(row: CliEditRow): boolean {
+    return isAiTool(row.tool) || isAiInteractionType(row.gen_type);
+}
+
+/**
+ * Map repo-relative file → content_sha → newest AI edit row.
+ */
+function isChatOrCliGenType(genType: string | null | undefined): boolean {
+    const g = normalizedGenType(genType);
+    return g === 'chat' || g === 'cli';
+}
+
+function rowCoversLine(row: CliEditRow, ln: number): boolean {
+    const start = Math.max(1, row.start_line ?? 1);
+    const end = row.end_line ?? start;
+    return ln >= start && ln <= end;
+}
+
+function isLineAttributionCandidate(row: CliEditRow): boolean {
+    if (!isAiEditRow(row)) return false;
+    const g = normalizedGenType(row.gen_type);
+    return g === 'chat' || g === 'cli' || (g === 'completion' && hasBoundedRange(row));
+}
+
+/**
+ * Resolve AI for one git-diff line from SQLite (rows are newest-first).
+ * Prefer the newest edit whose content_sha matches current line text so a
+ * later whole-file apply does not stamp every line with the last model name.
+ */
+function resolveAiEditForChangedLine(
+    filePath: string,
+    ln: number,
+    lineText: string,
+    edits: CliEditRow[],
+): CliEditRow | null {
+    const normFile = filePath.replace(/\\/g, '/');
+    const hash = lineSha(lineText.replace(/\r$/, ''));
+
+    // content_sha rows keep stale start/end after a middle insert — match by hash only.
+    for (const row of edits) {
+        if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
+        if (!isLineAttributionCandidate(row)) continue;
+        if (row.content_sha && row.content_sha === hash) return row;
+    }
+
+    for (const row of edits) {
+        if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
+        if (!isLineAttributionCandidate(row)) continue;
+        if (row.content_sha) continue;
+        if (!rowCoversLine(row, ln)) continue;
+        if (!isIndexableLineRange(row)) continue;
+        return row;
+    }
+    return null;
+}
+
+/**
+ * Paint AI on every line whose current text matches a session content_sha, at the
+ * line's present position (fixes 138–139 → 140–141 after CLI insert at 103–104).
+ */
+function applyContentShaAttribution(
+    repoRoot: string,
+    edits: CliEditRow[],
+    filePaths: Iterable<string>,
+    byFile: Map<string, LineBlame[]>,
+): void {
+    const shaByFile = new Map<string, Map<string, CliEditRow>>();
+    for (const row of edits) {
+        if (!row.content_sha || !isAiEditRow(row)) continue;
+        const file = row.file_path.replace(/\\/g, '/');
+        let bySha = shaByFile.get(file);
+        if (!bySha) {
+            bySha = new Map();
+            shaByFile.set(file, bySha);
+        }
+        if (!bySha.has(row.content_sha)) bySha.set(row.content_sha, row);
+    }
+
+    for (const filePath of filePaths) {
+        const norm = filePath.replace(/\\/g, '/');
+        const bySha = shaByFile.get(norm);
+        if (!bySha?.size) continue;
+        let lines: string[];
+        try {
+            lines = fs.readFileSync(path.join(repoRoot, norm), 'utf8').split(/\r?\n/);
+        } catch {
+            continue;
+        }
+        const entries = [...(byFile.get(norm) ?? [])];
+        let mutated = false;
+        for (let ln = 1; ln <= lines.length; ln++) {
+            const text = lines[ln - 1];
+            if (text === undefined || isBlankLine(text)) continue;
+            const row = bySha.get(lineSha(text.replace(/\r$/, '')));
+            if (!row) continue;
+            const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
+            const idx = entries.findIndex(e => e.lineNumber === ln);
+            if (idx >= 0) {
+                if (entries[idx].authorType !== 'AI' || entries[idx].model !== entry.model) {
+                    entries[idx] = entry;
+                    mutated = true;
+                }
+            } else {
+                entries.push(entry);
+                mutated = true;
+            }
+        }
+        if (mutated) {
+            entries.sort((a, b) => a.lineNumber - b.lineNumber);
+            byFile.set(norm, entries);
+        }
+    }
+}
+
+/**
+ * For each line in `git diff HEAD`, classify from current file text only:
+ * match an AI edit's content_sha → AI; otherwise → Human.
+ * (Chat accept then delete/retype must not keep stale AI on the human line.)
+ */
+function reconcileChangedLinesAttribution(
+    repoRoot: string,
+    edits: CliEditRow[],
+    changedByFile: Map<string, number[]>,
+    byFile: Map<string, LineBlame[]>,
+    blameMap: BlameMap,
+): void {
+    for (const [filePath, lineNums] of changedByFile) {
+        let lines: string[];
+        try {
+            lines = fs.readFileSync(path.join(repoRoot, filePath), 'utf8').split(/\r?\n/);
+        } catch {
+            continue;
+        }
+        const entries = [...(byFile.get(filePath) ?? [])];
+        let mutated = false;
+        for (const ln of lineNums) {
+            const text = lines[ln - 1];
+            if (text === undefined) continue;
+            const idx = entries.findIndex(e => e.lineNumber === ln);
+            const existing = idx >= 0 ? entries[idx] : undefined;
+            const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
+
+            let aiRow = resolveAiEditForChangedLine(filePath, ln, text, edits);
+
+            let entry: LineBlame;
+            if (aiRow) {
+                entry = buildLineBlame(repoRoot, filePath, ln, aiRow);
+            } else if (pending) {
+                entry = {
+                    lineNumber: ln,
+                    authorType: 'AI',
+                    provider: pending.tool ?? undefined,
+                    timestamp: new Date().toISOString(),
+                    model: pending.model ?? undefined,
+                    interactionType: pending.genType ?? 'chat',
+                    aiChars: 1,
+                    humanChars: 0,
+                    changeType: 'ADD',
+                    codingType: 'TYPING',
+                    boundedAiRange: true,
+                };
+            } else if (
+                existing?.authorType === 'AI' &&
+                isAiInteractionType(existing.interactionType) &&
+                isChatOrCliGenType(existing.interactionType)
+            ) {
+                continue;
+            } else {
+                entry = buildHumanLineBlame(ln);
+            }
+
+            if (idx >= 0) {
+                if (
+                    entries[idx].authorType !== entry.authorType ||
+                    entries[idx].provider !== entry.provider
+                ) {
+                    entries[idx] = entry;
+                    mutated = true;
+                }
+            } else {
+                entries.push(entry);
+                mutated = true;
+            }
+        }
+        if (mutated) {
+            entries.sort((a, b) => a.lineNumber - b.lineNumber);
+            byFile.set(filePath, entries);
+        }
+    }
+}
+
+/**
+ * Keep only lines that differ from HEAD (or whole untracked files). Drops stale
+ * SQLite rows so gutter/status bar/Changes reset after commit.
+ */
+function scopeToUncommittedWorkingTree(
+    byFile: Map<string, LineBlame[]>,
+    changedSets: Map<string, Set<number>>,
+    untrackedFiles: Set<string>,
+): void {
+    for (const [file, entries] of [...byFile.entries()]) {
+        if (untrackedFiles.has(file)) continue;
+        const changed = changedSets.get(file);
+        if (!changed?.size) {
+            byFile.delete(file);
+            continue;
+        }
+        byFile.set(
+            file,
+            entries.filter(
+                e => changed.has(e.lineNumber) || e.contentShaAttributed === true,
+            ),
+        );
+    }
+}
+
+/** Register blame under workspace-relative keys so gutter lookup matches SQLite repo paths. */
+function expandBlameMapKeys(repoRoot: string, byFile: Map<string, LineBlame[]>): Map<string, LineBlame[]> {
+    const out = new Map<string, LineBlame[]>();
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    for (const [repoRel, entries] of byFile) {
+        out.set(repoRel, entries);
+        const abs = path.join(repoRoot, repoRel);
+        for (const folder of folders) {
+            const rel = normalizePath(path.relative(folder.uri.fsPath, abs));
+            if (!rel || rel.startsWith('..') || rel === repoRel) continue;
+            out.set(rel, entries);
+            if (folders.length > 1) {
+                out.set(normalizePath(`${folder.name}/${rel}`), entries);
+            }
+        }
+    }
+    return out;
+}
+
 function lineCharCount(repoRoot: string, filePath: string, lineNumber: number): number {
     try {
         const abs = path.join(repoRoot, filePath);
@@ -75,18 +338,23 @@ function buildLineBlame(
     repoRoot: string,
     filePath: string,
     lineNumber: number,
-    row: CliEditRow
+    row: CliEditRow,
+    opts?: { contentShaAttributed?: boolean },
 ): LineBlame {
-    const ai = isAiTool(row.tool);
+    const ai = isAiTool(row.tool) || isAiInteractionType(row.gen_type);
     const chars = lineCharCount(repoRoot, filePath, lineNumber);
     const ts = new Date(Math.floor(row.ts / 1e6)).toISOString();
+    const boundedAiRange =
+        isAiInteractionType(row.gen_type) &&
+        hasBoundedRange(row) &&
+        (row.end_line - row.start_line <= MAX_AI_LINE_INDEX_SPAN);
     return {
         lineNumber,
         authorType: ai ? 'AI' : 'HUMAN',
         provider: ai ? row.tool : null,
         timestamp: ts,
         commitSha: null,
-        model: row.model,
+        model: row.model ?? undefined,
         prompt: null,
         interactionType: row.gen_type || null,
         ide: null,
@@ -96,6 +364,8 @@ function buildLineBlame(
         newLineNumber: lineNumber,
         oldLineNumber: null,
         codingType: 'TYPING',
+        boundedAiRange,
+        contentShaAttributed: opts?.contentShaAttributed ?? false,
     };
 }
 
@@ -117,7 +387,6 @@ function lineSha(s: string): string {
  */
 function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, LineBlame[]> {
     const assigned = new Map<string, Map<number, CliEditRow>>();          // range-based: file → line → edit
-    const contentEdits = new Map<string, Map<string, CliEditRow>>();      // content-based: file → sha → edit
     const fileLineCounts = new Map<string, number | null>();
     const MAX_LINES_PER_EDIT = 10000; // guard against huge ranges
 
@@ -132,10 +401,13 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
     for (const row of edits) {
         const file = row.file_path.replace(/\\/g, '/');
 
-        if (row.content_sha) {
-            let m = contentEdits.get(file);
-            if (!m) { m = new Map(); contentEdits.set(file, m); }
-            if (!m.has(row.content_sha)) m.set(row.content_sha, row); // newest-first → first wins
+        // Chat/cli with content_sha: line numbers in SQLite drift after edits;
+        // classify those lines in reconcileChangedLinesAttribution (git diff only).
+        if (
+            row.content_sha &&
+            isAiInteractionType(row.gen_type) &&
+            !isInlineCompletionType(row.gen_type)
+        ) {
             continue;
         }
 
@@ -151,7 +423,10 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
         }
         const start = Math.max(1, row.start_line ?? 1);
         let end = row.end_line ?? start;
-        if (fileLines !== null) end = Math.min(end, fileLines);
+        // Inline completions: trust the tight range — file may be unsaved when read.
+        if (!isInlineCompletionType(row.gen_type) && fileLines !== null) {
+            end = Math.min(end, fileLines);
+        }
         if (end - start + 1 > MAX_LINES_PER_EDIT) end = start + MAX_LINES_PER_EDIT - 1;
         for (let ln = start; ln <= end; ln++) {
             if (!byLine.has(ln)) byLine.set(ln, row);
@@ -167,26 +442,8 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
         result.set(file, entries);
     }
 
-    // Content-based files: hash each current line and attribute when it matches.
-    for (const [file, shaMap] of contentEdits) {
-        let lines: string[];
-        try {
-            lines = fs.readFileSync(path.join(repoRoot, file), 'utf8').split(/\r?\n/);
-        } catch {
-            continue;
-        }
-        const existing = result.get(file) ?? [];
-        const claimed = new Set(existing.map(e => e.lineNumber));
-        const entries: LineBlame[] = [...existing];
-        for (let i = 0; i < lines.length; i++) {
-            const ln = i + 1;
-            const text = lines[i];
-            if (text.trim().length === 0 || claimed.has(ln)) continue; // skip blanks / already-claimed
-            const row = shaMap.get(lineSha(text.replace(/\r$/, '')));
-            if (row) entries.push(buildLineBlame(repoRoot, file, ln, row));
-        }
-        if (entries.length > 0) result.set(file, entries);
-    }
+    // Content-based attribution runs in reconcileChangedLinesAttribution (git-diff
+    // lines only) so human edits after a chat accept are not painted as AI.
 
     for (const [file, entries] of result) {
         entries.sort((a, b) => a.lineNumber - b.lineNumber);
@@ -210,6 +467,11 @@ export class CliDataService implements vscode.Disposable {
         return this._repoRoot;
     }
     private refreshTimer?: NodeJS.Timeout;
+    private saveListener?: vscode.Disposable;
+    private openListener?: vscode.Disposable;
+    private activeEditorListener?: vscode.Disposable;
+    private workspaceListener?: vscode.Disposable;
+    private startupTimers: NodeJS.Timeout[] = [];
     private listeners: CliDataRefreshListener[] = [];
     private lastDaemonStatus: DaemonStatus = { running: false };
     private disposed = false;
@@ -231,12 +493,67 @@ export class CliDataService implements vscode.Disposable {
     }
 
     async start(): Promise<void> {
+        // Initial load when the IDE opens (git index / daemon / SQLite may not be ready yet).
         await this.refresh();
-        this.refreshTimer = setInterval(() => void this.refresh(), 2000);
+        for (const delay of [500, 1500, 4000, 8000, 15000]) {
+            this.startupTimers.push(setTimeout(() => void this.refresh(), delay));
+        }
+        // Save (manual or autosave) flushes buffers so `git diff HEAD` matches disk.
+        this.saveListener = vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh());
+        // Re-load when editors open or become active (unsaved buffers are flushed in refresh).
+        this.openListener = vscode.workspace.onDidOpenTextDocument((doc) => {
+            if (doc.uri.scheme === 'file') this.scheduleRefresh();
+        });
+        this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
+        this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
+    }
+
+    /** Coalesce bursts (Save All, rapid tab switches) into one refresh. */
+    scheduleRefresh(): void {
+        if (this.disposed) return;
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        this.refreshTimer = setTimeout(() => void this.refresh(), 300);
+    }
+
+    /**
+     * Optimistic AI paint from CompletionDetector — skip a stale in-flight refresh.
+     */
+    pushImmediateBlame(
+        relPath: string,
+        startLine: number,
+        endLine: number,
+        tool: string,
+        genType: string,
+    ): void {
+        const existing = [...(this.blameMap.getBlame(relPath))];
+        const now = new Date().toISOString();
+        for (let ln = startLine; ln <= endLine; ln++) {
+            const idx = existing.findIndex(e => e.lineNumber === ln);
+            const entry: LineBlame = {
+                lineNumber: ln,
+                authorType: 'AI',
+                provider: tool,
+                timestamp: now,
+                interactionType: genType,
+                aiChars: 1,
+                humanChars: 0,
+                changeType: 'ADD',
+                codingType: 'TYPING',
+                boundedAiRange: true,
+            };
+            if (idx >= 0) existing[idx] = entry;
+            else existing.push(entry);
+        }
+        existing.sort((a, b) => a.lineNumber - b.lineNumber);
+        this.blameMap.setFileBlame(relPath, existing);
+        this.blameMap.lastOptimisticPaintMs = Date.now();
+        this.blameMap.markPendingAiLines(relPath, startLine, endLine, tool, null, genType);
+        this.notify();
     }
 
     async refresh(): Promise<void> {
         if (this.disposed) return;
+        const refreshStartMs = Date.now();
         try {
             const folder = vscode.workspace.workspaceFolders?.[0];
             if (!folder) {
@@ -260,25 +577,26 @@ export class CliDataService implements vscode.Disposable {
 
             void this.checkDaemonHealth();
 
-            // Session filter: only include AI edits made after the last commit.
-            // After commit, sinceNanos advances → pre-commit edits excluded → BlameMap resets to 0.
-            const lastCommitOut = await GitUtils.runGitCommand(repoRoot, 'log', '-1', '--format=%ct');
-            const sinceNanos = lastCommitOut?.trim() ? Math.floor(parseFloat(lastCommitOut.trim()) * 1e9) : 0;
+            // Scope by branch-based work session, not a timestamp window. The
+            // git-diff-HEAD intersection below narrows these to uncommitted lines,
+            // so the gutter resets after commit without a fragile `ts >=` cutoff and
+            // survives cherry-pick/squash. Detached HEAD → null → only NULL rows.
+            const branchOut = await GitUtils.runGitCommand(repoRoot, 'symbolic-ref', '--quiet', '--short', 'HEAD');
+            const branch = branchOut?.trim() ? branchOut.trim() : null;
+            const headSha = (await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD'))?.trim() ?? '';
 
             // Try the canonical repoId first, then two path-normalization fallbacks
             // so the plugin matches whatever format blamely-cli stored (symlink vs real path).
-            let edits = await loadEditsForRepo(this.repoId, sinceNanos);
-            if (edits.length === 0) {
-                const candidates: string[] = [];
-                try { candidates.push(fs.realpathSync(repoRoot)); } catch { /* ignore */ }
-                candidates.push(path.normalize(repoRoot).replace(/[/\\]+$/, ''));
-                for (const alt of candidates) {
-                    if (alt && alt !== this.repoId) {
-                        const altEdits = await loadEditsForRepo(alt, sinceNanos);
-                        if (altEdits.length > 0) { edits = altEdits; break; }
-                    }
-                }
+            let edits = await loadEditsForRepo(this.repoId, branch, headSha, repoRoot);
+            if (edits === null) {
+                // Read failure (e.g. SQLite momentarily locked by the daemon). Keep
+                // the current gutter; do NOT rebuild it as Human.
+                return;
             }
+
+            // Flush open/dirty buffers before git diff (critical on IDE reopen).
+            await this.saveDirtyDocumentsForFiles(repoRoot, await this.pathsNeedingFlush(repoRoot, edits));
+
             const byFile = editsToBlameMap(repoRoot, edits);
 
             // Lines that actually differ from HEAD in the working tree (the '+'
@@ -298,36 +616,25 @@ export class CliDataService implements vscode.Disposable {
                 }
             }
 
-            // CONSTRAIN AI attribution to lines that truly changed vs HEAD. A chat
-            // "apply" that rewrites a whole file stores a whole-file range, but only
-            // the lines that actually differ should show as AI — unchanged lines
-            // match the committed content and must NOT be painted. If a file has no
-            // working-tree change at all, none of its (stale) AI edits are shown.
-            for (const [file, entries] of byFile) {
-                if (untrackedFiles.has(file)) continue; // whole new file is AI-eligible
-                const changed = changedSets.get(file);
-                const filtered = entries.filter(
-                    e => e.authorType !== 'AI' || (changed?.has(e.lineNumber) ?? false)
-                );
-                byFile.set(file, filtered);
+            const affectedFiles = new Set<string>([...changedSets.keys(), ...untrackedFiles]);
+
+            // Re-locate AI lines by content_sha before scoping to git-diff line numbers.
+            applyContentShaAttribution(repoRoot, edits, affectedFiles, byFile);
+
+            // Only uncommitted lines vs HEAD (clears gutter/status bar/Changes after commit).
+            scopeToUncommittedWorkingTree(byFile, changedSets, untrackedFiles);
+
+            const hasUncommittedWork = changedByFile.size > 0 || untrackedFiles.size > 0;
+            if (!hasUncommittedWork) {
+                this.blameMap.clearAllPendingAi();
             }
 
-            // Add human LineBlame entries for changed lines not attributed to AI.
-            for (const [filePath, lineNums] of changedByFile) {
-                const existing = byFile.get(filePath) ?? [];
-                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
-                const humanEntries = lineNums
-                    .filter(ln => !aiLineSet.has(ln))
-                    .map(ln => buildHumanLineBlame(ln));
-                if (humanEntries.length > 0) {
-                    byFile.set(filePath, [...existing, ...humanEntries]);
-                }
-            }
-
-            // Untracked files: keep AI lines, add human entries for the rest.
+            // Untracked files: trust only tight AI ranges; add human for the rest.
             for (const filePath of untrackedFiles) {
                 if (!byFile.has(filePath)) continue;
-                const existing = byFile.get(filePath)!;
+                const existing = byFile.get(filePath)!.filter(
+                    e => e.authorType !== 'AI' || e.boundedAiRange
+                );
                 const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
                 try {
                     const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
@@ -342,13 +649,105 @@ export class CliDataService implements vscode.Disposable {
                 } catch { /* skip unreadable files */ }
             }
 
-            this.blameMap.clear();
-            for (const [file, entries] of byFile) {
-                this.blameMap.setFileBlame(file, entries);
+            if (hasUncommittedWork) {
+                this.applyPendingAi(byFile);
             }
+
+            // Authoritative per git-diff line (overrides stale range / pending mislabels).
+            reconcileChangedLinesAttribution(repoRoot, edits, changedByFile, byFile, this.blameMap);
+
+            // Only skip apply when an optimistic paint happened during THIS refresh
+            // (not a stale timestamp from a prior partial run).
+            if (
+                this.blameMap.lastOptimisticPaintMs > refreshStartMs &&
+                Date.now() - this.blameMap.lastOptimisticPaintMs < 500
+            ) {
+                return;
+            }
+
+            this.blameMap.lastOptimisticPaintMs = 0;
+            this.blameMap.replaceAll(expandBlameMapKeys(repoRoot, byFile));
             this.notify();
         } catch (err) {
             Logger.warn(`CliDataService refresh: ${err}`);
+        }
+    }
+
+    private applyPendingAi(byFile: Map<string, LineBlame[]>): void {
+        for (const filePath of this.blameMap.pendingAiPaths()) {
+            const pending = this.blameMap.pendingAiLinesFor(filePath);
+            if (pending.size === 0) continue;
+            const entries = [...(byFile.get(filePath) ?? [])];
+            let mutated = false;
+            for (const [ln, p] of pending) {
+                const idx = entries.findIndex(e => e.lineNumber === ln);
+                const existing = idx >= 0 ? entries[idx] : undefined;
+                if (existing?.authorType === 'AI') {
+                    this.blameMap.clearPendingAiLine(filePath, ln);
+                    continue;
+                }
+                const aiEntry: LineBlame = {
+                    lineNumber: ln,
+                    authorType: 'AI',
+                    provider: p.tool ?? undefined,
+                    timestamp: new Date().toISOString(),
+                    model: p.model ?? undefined,
+                    interactionType: p.genType ?? 'completion',
+                    aiChars: Math.max(existing?.humanChars ?? 1, 1),
+                    humanChars: 0,
+                    changeType: 'ADD',
+                    codingType: 'TYPING',
+                    boundedAiRange: true,
+                };
+                if (idx >= 0) entries[idx] = aiEntry;
+                else entries.push(aiEntry);
+                mutated = true;
+            }
+            if (mutated) {
+                entries.sort((a, b) => a.lineNumber - b.lineNumber);
+                byFile.set(filePath, entries);
+            }
+        }
+    }
+
+    private async pathsNeedingFlush(
+        repoRoot: string,
+        edits: CliEditRow[],
+    ): Promise<Set<string>> {
+        const paths = new Set(edits.map(e => e.file_path.replace(/\\/g, '/')));
+        const diffNames = await GitUtils.runGitCommand(repoRoot, 'diff', '--name-only', 'HEAD');
+        if (diffNames) {
+            for (const line of diffNames.split('\n')) {
+                const f = line.trim().replace(/\\/g, '/');
+                if (f) paths.add(f);
+            }
+        }
+        const untracked = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
+        if (untracked) {
+            for (const line of untracked.split('\n')) {
+                const f = line.trim().replace(/\\/g, '/');
+                if (f) paths.add(f);
+            }
+        }
+        for (const doc of vscode.workspace.textDocuments) {
+            if (doc.uri.scheme !== 'file' || doc.isClosed) continue;
+            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
+            if (rel && !rel.startsWith('..')) paths.add(rel);
+        }
+        return paths;
+    }
+
+    private async saveDirtyDocumentsForFiles(repoRoot: string, filePaths: Set<string>): Promise<void> {
+        if (filePaths.size === 0) return;
+        for (const doc of vscode.workspace.textDocuments) {
+            if (doc.uri.scheme !== 'file' || doc.isClosed || !doc.isDirty) continue;
+            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
+            if (!rel || rel.startsWith('..') || !filePaths.has(rel)) continue;
+            try {
+                await doc.save();
+            } catch {
+                // read-only or disposed — refresh will use buffer-less git state
+            }
         }
     }
 
@@ -365,9 +764,13 @@ export class CliDataService implements vscode.Disposable {
 
     dispose(): void {
         this.disposed = true;
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-        }
+        if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        for (const t of this.startupTimers) clearTimeout(t);
+        this.startupTimers = [];
+        this.saveListener?.dispose();
+        this.openListener?.dispose();
+        this.activeEditorListener?.dispose();
+        this.workspaceListener?.dispose();
         this.listeners = [];
     }
 }

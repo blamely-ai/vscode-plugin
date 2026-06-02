@@ -42,6 +42,11 @@ export class StatusBar implements vscode.Disposable {
         void this.render();
     }
 
+    /** Called after CliDataService finishes a refresh (in addition to onRefresh). */
+    async renderAfterRefresh(): Promise<void> {
+        await this.render();
+    }
+
     private async render(): Promise<void> {
         const summary = this.blameMap.getSummary();
         const lamp = this.daemonAlive

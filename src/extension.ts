@@ -50,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         cliData.onRefresh(() => {
             sidebarProvider?.refresh();
             blameDecorations?.updateDecorations();
+            void statusBar?.renderAfterRefresh?.();
         })
     );
 
@@ -78,6 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const head = await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD');
         if (head && head !== lastHead) {
             lastHead = head;
+            void cliData?.refresh();
             void historyProvider?.refresh();
         }
     };
@@ -94,7 +96,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         .get<boolean>('detectInlineCompletion', true);
     if (completionEnabled) {
         const daemonClient = new DaemonClient();
-        completionDetector = new CompletionDetector(daemonClient);
+        completionDetector = new CompletionDetector(daemonClient, cliData);
         completionDetector.register();
         disposables.push(completionDetector);
     }
@@ -110,7 +112,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     await cliData.start();
+    blameDecorations?.updateDecorations();
+    void statusBar?.renderAfterRefresh();
     void historyProvider.refresh();
+
+    disposables.push(
+        vscode.window.onDidChangeWindowState((e) => {
+            if (e.focused) {
+                void cliData?.refresh();
+            }
+        }),
+    );
 
     for (const d of disposables) {
         context.subscriptions.push(d);

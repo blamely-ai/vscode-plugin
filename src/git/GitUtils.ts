@@ -68,6 +68,30 @@ export async function getNoteContent(cwd: string, sha: string): Promise<string |
     return runSafe(cwd, 'notes', '--ref=blamely', 'show', sha);
 }
 
+/**
+ * Short name of the checked-out branch for the repo at [cwd], or null when HEAD
+ * is detached. Used to tag edits with their branch-based work session.
+ */
+export async function getBranchName(cwd: string): Promise<string | null> {
+    const out = await runSafe(cwd, 'symbolic-ref', '--quiet', '--short', 'HEAD');
+    const b = out?.trim();
+    return b ? b : null;
+}
+
+/**
+ * Reports whether the repo at [cwd] is mid-way through a history-rewriting
+ * operation (cherry-pick, merge, revert, rebase). Edits observed during these
+ * are replays of existing content, not fresh authorship, so detectors pause.
+ */
+export async function inProgressGitOp(cwd: string): Promise<boolean> {
+    const gitDir = (await runSafe(cwd, 'rev-parse', '--absolute-git-dir'))?.trim();
+    if (!gitDir) return false;
+    for (const marker of ['CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply']) {
+        if (fs.existsSync(path.join(gitDir, marker))) return true;
+    }
+    return false;
+}
+
 export async function runGitCommand(cwd: string, ...args: string[]): Promise<string | null> {
     return runSafe(cwd, ...args);
 }

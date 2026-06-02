@@ -36,6 +36,19 @@ export function warn(message: string): void {
     emit('warn', `[WARN  ${new Date().toISOString()}] ${message}`);
 }
 
+/** Logged when `blamely.debugDetection` is enabled (matches IntelliJ debug gutter logs). */
+export function debug(message: string): void {
+    try {
+        const vscode = require('vscode');
+        if (!vscode.workspace.getConfiguration('blamely').get('debugDetection', false)) {
+            return;
+        }
+    } catch {
+        return;
+    }
+    emit('info', `[DEBUG ${new Date().toISOString()}] ${message}`);
+}
+
 export function error(message: string, err?: unknown): void {
     const suffix = err instanceof Error ? `: ${err.message}` : '';
     emit('error', `[ERROR ${new Date().toISOString()}] ${message}${suffix}`);

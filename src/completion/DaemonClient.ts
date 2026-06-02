@@ -18,6 +18,9 @@ export interface EditPayload {
     suggested_lines?: number;
     lines: EditRange[];
     raw_meta?: string;
+    // Branch the editor was on when the edit was made. The daemon scopes
+    // attribution by branch-based work session; resolved from repo if empty.
+    branch?: string;
 }
 
 // DaemonClient posts attribution events to the blamely daemon's /edit HTTP

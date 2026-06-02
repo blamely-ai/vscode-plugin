@@ -2,6 +2,35 @@ import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
 import { blameFileKey } from '../utils/WorkspacePaths';
+import { isBlankLine } from '../utils/BlankLines';
+import {
+    blameGutterTooltipText,
+    escapeMarkdown,
+    quotePromptForTooltip,
+} from './BlameDecorationsTooltip';
+
+export { blameGutterTooltipText, formatBlameChangedDate } from './BlameDecorationsTooltip';
+
+function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
+    const hoverMessage = new vscode.MarkdownString();
+    hoverMessage.isTrusted = false;
+    const text = blameGutterTooltipText(entry);
+    for (const line of text.split('\n')) {
+        if (line.startsWith('Author:')) {
+            hoverMessage.appendMarkdown(`- **Author:** ${line.slice('Author:'.length).trim()}\n`);
+        } else if (line.startsWith('Model:')) {
+            hoverMessage.appendMarkdown(`- **Model:** \`${escapeMarkdown(line.slice('Model:'.length).trim())}\`\n`);
+        } else if (line.startsWith('Change Date:')) {
+            hoverMessage.appendMarkdown(`- **Updated:** ${escapeMarkdown(line.slice('Change Date:'.length).trim())}\n`);
+        } else if (line.startsWith('Commit:')) {
+            hoverMessage.appendMarkdown(`- **Commit:** \`${escapeMarkdown(line.slice('Commit:'.length).trim())}\`\n`);
+        }
+    }
+    if (entry.authorType === 'AI' && entry.prompt) {
+        hoverMessage.appendMarkdown(`- **Prompt:** ${quotePromptForTooltip(entry.prompt)}\n`);
+    }
+    return hoverMessage;
+}
 
 /** Small brain SVG for AI gutter icon (matches IntelliJ GutterBrain). */
 const GUTTER_AI_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/></svg>';
@@ -129,34 +158,21 @@ export class BlameDecorations implements vscode.Disposable {
             const lineIndex = entry.lineNumber - 1;
             if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
 
-            let lineLength = 0;
+            let lineText = '';
             try {
-                lineLength = editor.document.lineAt(lineIndex).text.length;
+                lineText = editor.document.lineAt(lineIndex).text;
             } catch {
                 continue;
             }
+            if (isBlankLine(lineText)) continue;
+            const lineLength = lineText.length;
             const range = lineLength === 0
                 ? new vscode.Range(lineIndex, 0, lineIndex, 0)
                 : new vscode.Range(lineIndex, 0, lineIndex, lineLength);
-            const hoverMessage = new vscode.MarkdownString();
-            hoverMessage.isTrusted = false;
-
+            const hoverMessage = blameGutterHoverMessage(entry);
             if (entry.authorType === 'AI') {
-                hoverMessage.appendMarkdown(`- **Author:** AI\n`);
-                if (entry.model) {
-                    hoverMessage.appendMarkdown(`- **Model:** \`${this.escapeMd(entry.model)}\`\n`);
-                }
-                if (entry.prompt) {
-                    hoverMessage.appendMarkdown(`- **Prompt:** ${this.quotePrompt(entry.prompt)}\n`);
-                }
-                hoverMessage.appendMarkdown(`- **Updated:** ${this.formatTimestamp(entry.timestamp)}\n`);
                 aiRanges.push({ range, hoverMessage });
             } else {
-                hoverMessage.appendMarkdown(`- **Author:** Human\n`);
-                hoverMessage.appendMarkdown(`- **Updated:** ${this.formatTimestamp(entry.timestamp)}\n`);
-                if (entry.commitSha) {
-                    hoverMessage.appendMarkdown(`- **Commit:** \`${entry.commitSha.slice(0, 8)}\`\n`);
-                }
                 humanRanges.push({ range, hoverMessage });
             }
         }
@@ -167,32 +183,6 @@ export class BlameDecorations implements vscode.Disposable {
         } catch {
             /* ignore UI rendering errors */
         }
-    }
-
-    private formatTimestamp(raw: string): string {
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) return this.escapeMd(raw);
-        return this.escapeMd(d.toLocaleString());
-    }
-
-    private quotePrompt(prompt: string): string {
-        const clean = this.escapeMd(prompt).trim();
-        const short = clean.length > 220 ? `${clean.slice(0, 220)}...` : clean;
-        return `> ${short}`;
-    }
-
-    private escapeMd(value: string): string {
-        return value
-            .replace(/\\/g, '\\\\')
-            .replace(/`/g, '\\`')
-            .replace(/\*/g, '\\*')
-            .replace(/_/g, '\\_')
-            .replace(/\[/g, '\\[')
-            .replace(/\]/g, '\\]')
-            .replace(/\(/g, '\\(')
-            .replace(/\)/g, '\\)')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
     }
 
     dispose(): void {

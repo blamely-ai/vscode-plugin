@@ -1,8 +1,11 @@
+import * as crypto from 'crypto';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getRepoRoot } from '../git/GitUtils';
+import { CliDataService } from '../cli/CliDataService';
+import { getRepoId } from '../cli/repoId';
+import { getRepoRoot, getBranchName, inProgressGitOp } from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
-import { DaemonClient, EditPayload } from './DaemonClient';
+import { DaemonClient, EditPayload, EditRange } from './DaemonClient';
 
 // Minimum chars used only by the clipboard-paste heuristic below.
 const MIN_COMPLETION_CHARS = 8;
@@ -77,7 +80,10 @@ export class CompletionDetector implements vscode.Disposable {
     private chatApplyPending = false;
     private chatApplyTimer: ReturnType<typeof setTimeout> | null = null;
 
-    constructor(private daemon: DaemonClient) { }
+    constructor(
+        private daemon: DaemonClient,
+        private cliData?: CliDataService,
+    ) { }
 
     private debugEnabled(): boolean {
         return vscode.workspace.getConfiguration('blamely').get<boolean>('debugDetection', false);
@@ -219,10 +225,18 @@ export class CompletionDetector implements vscode.Disposable {
         const filePath = doc.uri.fsPath;
         const repoRoot = await this.resolveRepoRoot(filePath);
         if (!repoRoot) return;
+
+        // Pause during cherry-pick/merge/revert/rebase: edits applied by replaying
+        // history aren't fresh authorship. content_sha re-attributes them after.
+        if (await inProgressGitOp(repoRoot)) return;
+
         const relPath = path
             .relative(repoRoot, filePath)
             .replace(/\\/g, '/');
         if (!relPath || relPath.startsWith('..')) return;
+
+        const branch = await getBranchName(repoRoot);
+        const repoId = (await getRepoId(repoRoot)) ?? repoRoot;
 
         const confidence = 'high'; // a command proved it; both chat and completion are high-confidence
         const tool = resolveTool();
@@ -244,27 +258,50 @@ export class CompletionDetector implements vscode.Disposable {
         if (bands.length === 0) return; // pure deletion / no added lines
 
         const totalChars = filtered.reduce((n, c) => n + c.text.length, 0);
+        const lineRanges = buildLineRangesWithSha(doc, bands);
+        let anySent = false;
         for (const band of bands) {
+            const bandLines = lineRanges.filter(r => r.start >= band.start && r.end <= band.end);
             const payload: EditPayload = {
                 tool,
                 confidence,
                 gen_type: genType,
-                repo_path: repoRoot,
+                repo_path: repoId,
                 file_path: relPath,
                 suggested_lines: band.end - band.start + 1,
-                lines: [{ start: band.start, end: Math.max(band.end, band.start) }],
+                lines: bandLines.length > 0
+                    ? bandLines
+                    : [{ start: band.start, end: Math.max(band.end, band.start) }],
                 raw_meta: JSON.stringify({
                     source: 'vscode_plugin',
                     host: vscode.env.appName,
                     chars: totalChars,
                     gen_type_signal: chatApply ? 'chat_apply_cmd' : 'inline_suggest_cmd',
                 }),
+                branch: branch ?? undefined,
             };
             if (this.debugEnabled()) {
                 Logger.info(`record: tool=${tool} gen_type=${genType} ${relPath} L${band.start}-${band.end} (${totalChars} chars)`);
             }
-            await this.daemon.send(payload);
+            this.cliData?.pushImmediateBlame(relPath, band.start, band.end, tool, genType);
+            if (await this.daemon.send(payload)) {
+                anySent = true;
+            }
         }
+        if (anySent) {
+            await this.saveDocumentThenRefresh(doc);
+        }
+    }
+
+    private async saveDocumentThenRefresh(doc: vscode.TextDocument): Promise<void> {
+        if (doc.isDirty) {
+            try {
+                await doc.save();
+            } catch {
+                // read-only — still refresh
+            }
+        }
+        await this.cliData?.refresh();
     }
 
     private async resolveRepoRoot(file: string): Promise<string | null> {
@@ -331,6 +368,27 @@ function changedLineBands(
     const endIdx = n.length - 1 - s; // 0-based, last changed new-side line
     if (endIdx < startIdx) return []; // no added lines (pure deletion)
     return [{ start: startIdx + 1, end: endIdx + 1 }];
+}
+
+function lineSha(text: string): string {
+    return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/** Per-line content_sha so attribution survives line shifts after save/reopen. */
+function buildLineRangesWithSha(
+    doc: vscode.TextDocument,
+    bands: Array<{ start: number; end: number }>,
+): EditRange[] {
+    const out: EditRange[] = [];
+    for (const band of bands) {
+        for (let ln = band.start; ln <= band.end; ln++) {
+            const line = doc.lineAt(ln - 1);
+            const text = line.text.replace(/\r$/, '');
+            if (text.trim().length === 0) continue;
+            out.push({ start: ln, end: ln, content_sha: lineSha(text) });
+        }
+    }
+    return out;
 }
 
 function countChar(s: string, ch: string): number {
