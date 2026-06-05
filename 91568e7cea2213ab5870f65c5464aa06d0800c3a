@@ -1,0 +1,472 @@
+{
+  "schema": 2,
+  "commit": "91568e7cea2213ab5870f65c5464aa06d0800c3a",
+  "branch": "main",
+  "base_sha": "32d075da6863ee2fef472e44db15630278b12807",
+  "message": "feat: enhance AI line attribution handling and improve README and package descriptions",
+  "totals": {
+    "ai_lines": 0,
+    "human_lines": 132,
+    "deleted_lines": 124,
+    "files": 8
+  },
+  "by_tool": {},
+  "by_gen_type": {
+    "chat": 0,
+    "cli": 0,
+    "completion": 0,
+    "human": 256
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "type": "MODIFIED",
+      "added": 46,
+      "deleted": 118,
+      "lines": [
+        {
+          "start": 3,
+          "end": 3,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 5,
+          "end": 18,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 22,
+          "end": 22,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 52,
+          "end": 52,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 52,
+          "end": 53,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 54,
+          "end": 54,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 54,
+          "end": 54,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 55,
+          "end": 55,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 55,
+          "end": 55,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 56,
+          "end": 56,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 56,
+          "end": 56,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 57,
+          "end": 61,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 65,
+          "end": 65,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 65,
+          "end": 66,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 67,
+          "end": 67,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 67,
+          "end": 68,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 69,
+          "end": 75,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 79,
+          "end": 79,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 79,
+          "end": 80,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 81,
+          "end": 81,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 81,
+          "end": 85,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 88,
+          "end": 89,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 92,
+          "end": 94,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 98,
+          "end": 98,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 99,
+          "end": 103,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 104,
+          "end": 104,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 104,
+          "end": 104,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 105,
+          "end": 105,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 105,
+          "end": 105,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 106,
+          "end": 106,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 106,
+          "end": 106,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 107,
+          "end": 107,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 107,
+          "end": 200,
+          "type": "delete",
+          "author_type": "Human"
+        }
+      ]
+    },
+    {
+      "path": "package.json",
+      "type": "MODIFIED",
+      "added": 9,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 4,
+          "end": 4,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 25,
+          "end": 30,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 34,
+          "end": 35,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/blame/BlameMap.ts",
+      "type": "MODIFIED",
+      "added": 16,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 30,
+          "end": 37,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 86,
+          "end": 86,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 96,
+          "end": 102,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/CliDataService.ts",
+      "type": "MODIFIED",
+      "added": 32,
+      "deleted": 4,
+      "lines": [
+        {
+          "start": 1,
+          "end": 1,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 12,
+          "end": 12,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 178,
+          "end": 178,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 226,
+          "end": 230,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 284,
+          "end": 291,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 308,
+          "end": 308,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 372,
+          "end": 374,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 535,
+          "end": 535,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 559,
+          "end": 559,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 689,
+          "end": 698,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 702,
+          "end": 705,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/NoteParser.ts",
+      "type": "MODIFIED",
+      "added": 3,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 10,
+          "end": 12,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/pendingMatch.ts",
+      "type": "ADDED",
+      "added": 18,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 1,
+          "end": 18,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/completion/CompletionDetector.ts",
+      "type": "MODIFIED",
+      "added": 8,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 265,
+          "end": 271,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 293,
+          "end": 293,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/ui/BlameDecorations.ts",
+      "type": "MODIFIED",
+      "added": 0,
+      "deleted": 2,
+      "lines": [
+        {
+          "start": 5,
+          "end": 5,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 167,
+          "end": 167,
+          "type": "delete",
+          "author_type": "Human"
+        }
+      ]
+    }
+  ],
+  "generated_by": "blamely 0.1.0",
+  "conversation": [
+    {
+      "role": "user",
+      "text": "write me more hellow world"
+    },
+    {
+      "role": "assistant",
+      "text": "I'll create a short TODO plan, then add several small \"Hello World\" example files and append more lines to .Now I'll create example files and then read and update .Reading  to append Hello World Reading  to append Hello World variants.Now appending several Hello World lines to .Applying the patch to…"
+    }
+  ]
+}
