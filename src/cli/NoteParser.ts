@@ -7,7 +7,9 @@ export function parseCliNote(raw: string): CliNote | null {
     }
     try {
         const note = JSON.parse(trimmed) as CliNote;
-        if (note.schema !== 1 || !note.commit) {
+        // schema 1: per-line lines[]; schema 2: collapsed {start,end} ranges.
+        // This parser only reads by_gen_type/totals, so both are accepted.
+        if ((note.schema !== 1 && note.schema !== 2) || !note.commit) {
             return null;
         }
         return note;

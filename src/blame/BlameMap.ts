@@ -27,6 +27,14 @@ export interface PendingAiLine {
     model: string | null;
     genType: string | null;
     expiresAtMs: number;
+    /**
+     * sha256 of the AI line text captured at accept time. The pending overlay is
+     * keyed by line NUMBER, which does not survive a human inserting a line in the
+     * middle of the band; this sha lets the reader confirm the current line still
+     * holds the AI text before painting it AI (so an inserted human line is not
+     * mis-credited). Null only for blank lines (no sha captured).
+     */
+    contentSha?: string | null;
 }
 
 const PENDING_AI_TTL_MS = 12_000;
@@ -75,6 +83,7 @@ export class BlameMap {
         tool: string | null,
         model: string | null,
         genType: string | null,
+        lineShas?: Map<number, string>,
     ): void {
         const key = filePath.replace(/\\/g, '/');
         const expiresAt = Date.now() + PENDING_AI_TTL_MS;
@@ -84,7 +93,13 @@ export class BlameMap {
             this.pendingAi.set(key, byLine);
         }
         for (let ln = startLine; ln <= endLine; ln++) {
-            byLine.set(ln, { tool, model, genType, expiresAtMs: expiresAt });
+            byLine.set(ln, {
+                tool,
+                model,
+                genType,
+                expiresAtMs: expiresAt,
+                contentSha: lineShas?.get(ln) ?? null,
+            });
         }
     }
 

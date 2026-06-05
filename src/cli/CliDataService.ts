@@ -1,4 +1,3 @@
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -10,7 +9,7 @@ import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
-import { isBlankLine } from '../utils/BlankLines';
+import { lineSha, pendingMatchesLine } from './pendingMatch';
 
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
@@ -176,7 +175,7 @@ function applyContentShaAttribution(
         let mutated = false;
         for (let ln = 1; ln <= lines.length; ln++) {
             const text = lines[ln - 1];
-            if (text === undefined || isBlankLine(text)) continue;
+            if (text === undefined) continue;
             const row = bySha.get(lineSha(text.replace(/\r$/, '')));
             if (!row) continue;
             const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
@@ -224,7 +223,11 @@ function reconcileChangedLinesAttribution(
             if (text === undefined) continue;
             const idx = entries.findIndex(e => e.lineNumber === ln);
             const existing = idx >= 0 ? entries[idx] : undefined;
-            const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
+            const pendingRaw = blameMap.pendingAiLinesFor(filePath).get(ln);
+            // Confirm the line still holds the captured AI text — a human line
+            // inserted inside the band slides into the frozen pending range and
+            // must not be painted AI.
+            const pending = pendingRaw && pendingMatchesLine(pendingRaw, text) ? pendingRaw : undefined;
 
             let aiRow = resolveAiEditForChangedLine(filePath, ln, text, edits);
 
@@ -278,6 +281,14 @@ function reconcileChangedLinesAttribution(
 /**
  * Keep only lines that differ from HEAD (or whole untracked files). Drops stale
  * SQLite rows so gutter/status bar/Changes reset after commit.
+ *
+ * The gutter shows ONLY uncommitted working-tree changes (`git diff HEAD`). A
+ * line is kept iff it is in that diff. We must NOT keep content_sha-attributed
+ * lines that fall outside the diff: those are ALREADY-COMMITTED AI lines whose
+ * text still matches a session content_sha, and keeping them made committed code
+ * from an earlier commit linger in the gutter alongside a new uncommitted edit in
+ * the same file. A genuinely uncommitted AI line always differs from HEAD, so it
+ * is in `changed` already — no exception needed.
  */
 function scopeToUncommittedWorkingTree(
     byFile: Map<string, LineBlame[]>,
@@ -294,7 +305,7 @@ function scopeToUncommittedWorkingTree(
         byFile.set(
             file,
             entries.filter(
-                e => changed.has(e.lineNumber) || e.contentShaAttributed === true,
+                e => changed.has(e.lineNumber),
             ),
         );
     }
@@ -369,9 +380,6 @@ function buildLineBlame(
     };
 }
 
-function lineSha(s: string): string {
-    return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
-}
 
 /**
  * Build per-file AI line attribution from edit rows.
@@ -524,6 +532,7 @@ export class CliDataService implements vscode.Disposable {
         endLine: number,
         tool: string,
         genType: string,
+        lineShas?: Map<number, string>,
     ): void {
         const existing = [...(this.blameMap.getBlame(relPath))];
         const now = new Date().toISOString();
@@ -547,7 +556,7 @@ export class CliDataService implements vscode.Disposable {
         existing.sort((a, b) => a.lineNumber - b.lineNumber);
         this.blameMap.setFileBlame(relPath, existing);
         this.blameMap.lastOptimisticPaintMs = Date.now();
-        this.blameMap.markPendingAiLines(relPath, startLine, endLine, tool, null, genType);
+        this.blameMap.markPendingAiLines(relPath, startLine, endLine, tool, null, genType, lineShas);
         this.notify();
     }
 
@@ -677,9 +686,23 @@ export class CliDataService implements vscode.Disposable {
         for (const filePath of this.blameMap.pendingAiPaths()) {
             const pending = this.blameMap.pendingAiLinesFor(filePath);
             if (pending.size === 0) continue;
+            // Read current text so each pending line can be confirmed against its
+            // captured content_sha before being painted AI (skips human inserts).
+            let lines: string[] | null = null;
+            if (this._repoRoot) {
+                try {
+                    lines = fs.readFileSync(path.join(this._repoRoot, filePath), 'utf8').split(/\r?\n/);
+                } catch {
+                    lines = null;
+                }
+            }
             const entries = [...(byFile.get(filePath) ?? [])];
             let mutated = false;
             for (const [ln, p] of pending) {
+                if (p.contentSha && lines) {
+                    const text = lines[ln - 1];
+                    if (text === undefined || !pendingMatchesLine(p, text)) continue;
+                }
                 const idx = entries.findIndex(e => e.lineNumber === ln);
                 const existing = idx >= 0 ? entries[idx] : undefined;
                 if (existing?.authorType === 'AI') {

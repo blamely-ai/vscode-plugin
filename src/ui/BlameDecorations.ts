@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
 import { blameFileKey } from '../utils/WorkspacePaths';
-import { isBlankLine } from '../utils/BlankLines';
 import {
     blameGutterTooltipText,
     escapeMarkdown,
@@ -164,7 +163,6 @@ export class BlameDecorations implements vscode.Disposable {
             } catch {
                 continue;
             }
-            if (isBlankLine(lineText)) continue;
             const lineLength = lineText.length;
             const range = lineLength === 0
                 ? new vscode.Range(lineIndex, 0, lineIndex, 0)

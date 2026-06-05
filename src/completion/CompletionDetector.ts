@@ -262,6 +262,13 @@ export class CompletionDetector implements vscode.Disposable {
         let anySent = false;
         for (const band of bands) {
             const bandLines = lineRanges.filter(r => r.start >= band.start && r.end <= band.end);
+            // Per-line content_sha so the optimistic/pending overlay can confirm a
+            // line still holds the AI text — a human line inserted inside the band
+            // (which slides into the frozen pending range) is then NOT painted AI.
+            const bandShas = new Map<number, string>();
+            for (const r of bandLines) {
+                if (r.content_sha) bandShas.set(r.start, r.content_sha);
+            }
             const payload: EditPayload = {
                 tool,
                 confidence,
@@ -283,7 +290,7 @@ export class CompletionDetector implements vscode.Disposable {
             if (this.debugEnabled()) {
                 Logger.info(`record: tool=${tool} gen_type=${genType} ${relPath} L${band.start}-${band.end} (${totalChars} chars)`);
             }
-            this.cliData?.pushImmediateBlame(relPath, band.start, band.end, tool, genType);
+            this.cliData?.pushImmediateBlame(relPath, band.start, band.end, tool, genType, bandShas);
             if (await this.daemon.send(payload)) {
                 anySent = true;
             }

@@ -1,7 +1,7 @@
 {
   "name": "blamely",
   "displayName": "Blamely",
-  "description": "Track AI vs human code attribution line by line. Requires the blamely CLI. https://blamely.ai",
+  "description": "Attribute every line of code to AI or human — across inline completions, chat apply, and agent runs. Live in the status bar, permanent on each commit via git notes. Local-first. Requires the blamely CLI · https://blamely.ai",
   "version": "1.1.1",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -22,10 +22,17 @@
     "git",
     "blame",
     "attribution",
+    "copilot",
+    "cursor",
+    "jetbrains",
+    "ai-vs-human",
+    "code-ownership",
+    "developer-analytics",
     "blamely"
   ],
   "categories": [
-    "SCM Providers"
+    "SCM Providers",
+    "Visualization"
   ],
   "activationEvents": [
     "onStartupFinished"
