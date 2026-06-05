@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "commit": "5e4679b8237a1180b86f90298477e240b30fac5e",
+  "branch": "main",
+  "base_sha": "91568e7cea2213ab5870f65c5464aa06d0800c3a",
+  "message": "test",
+  "totals": {
+    "ai_lines": 0,
+    "human_lines": 42,
+    "deleted_lines": 0,
+    "files": 1
+  },
+  "by_tool": {},
+  "by_gen_type": {
+    "chat": 0,
+    "cli": 0,
+    "completion": 0,
+    "human": 42
+  },
+  "files": [
+    {
+      "path": "src/test/PendingAi.test.ts",
+      "type": "ADDED",
+      "added": 42,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 1,
+          "end": 42,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    }
+  ],
+  "generated_by": "blamely 0.1.0"
+}
