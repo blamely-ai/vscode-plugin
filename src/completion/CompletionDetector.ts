@@ -381,7 +381,11 @@ function lineSha(text: string): string {
     return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-/** Per-line content_sha so attribution survives line shifts after save/reopen. */
+/** Per-line content_sha so attribution survives line shifts after save/reopen.
+ * Blank lines are included as range records with no sha: they still appear in
+ * the AI set (so the gutter shows AI on blank lines in AI-generated code) but
+ * the range match is guarded later — if the user types on a formerly-blank line
+ * the non-blank content signals that the line is now human-authored. */
 function buildLineRangesWithSha(
     doc: vscode.TextDocument,
     bands: Array<{ start: number; end: number }>,
@@ -391,8 +395,13 @@ function buildLineRangesWithSha(
         for (let ln = band.start; ln <= band.end; ln++) {
             const line = doc.lineAt(ln - 1);
             const text = line.text.replace(/\r$/, '');
-            if (text.trim().length === 0) continue;
-            out.push({ start: ln, end: ln, content_sha: lineSha(text) });
+            if (text.trim().length === 0) {
+                // Blank line: no sha — stored as a range entry so the line appears
+                // in the AI set for the untracked-file loop.
+                out.push({ start: ln, end: ln });
+            } else {
+                out.push({ start: ln, end: ln, content_sha: lineSha(text) });
+            }
         }
     }
     return out;

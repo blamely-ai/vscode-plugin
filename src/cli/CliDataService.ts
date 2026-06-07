@@ -10,6 +10,7 @@ import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
 import { lineSha, pendingMatchesLine } from './pendingMatch';
+import { DaemonClient } from '../completion/DaemonClient';
 
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
@@ -134,6 +135,9 @@ function resolveAiEditForChangedLine(
         if (row.content_sha) continue;
         if (!rowCoversLine(row, ln)) continue;
         if (!isIndexableLineRange(row)) continue;
+        // A single-line record with no sha was a blank line at record time. If the
+        // user has since typed here, the line is now human-authored — don't match.
+        if (row.start_line === row.end_line && lineText.trim().length > 0) continue;
         return row;
     }
     return null;
@@ -181,7 +185,17 @@ function applyContentShaAttribution(
             const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
             const idx = entries.findIndex(e => e.lineNumber === ln);
             if (idx >= 0) {
-                if (entries[idx].authorType !== 'AI' || entries[idx].model !== entry.model) {
+                // A prior range-based pass (editsToBlameMap, e.g. a null-sha blank-line
+                // record whose original position now holds shifted AI content) may have
+                // placed an AI entry here with contentShaAttributed=false. A verified
+                // sha match always wins — promote it even when authorType/model already
+                // agree, so downstream content checks (untracked-file loop) see the
+                // line as sha-confirmed rather than treating it as an unverified range.
+                if (
+                    entries[idx].authorType !== 'AI' ||
+                    entries[idx].model !== entry.model ||
+                    !entries[idx].contentShaAttributed
+                ) {
                     entries[idx] = entry;
                     mutated = true;
                 }
@@ -479,6 +493,8 @@ export class CliDataService implements vscode.Disposable {
     private openListener?: vscode.Disposable;
     private activeEditorListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
+    private fsListeners: vscode.Disposable[] = [];
+    private readonly daemonClient = new DaemonClient();
     private startupTimers: NodeJS.Timeout[] = [];
     private listeners: CliDataRefreshListener[] = [];
     private lastDaemonStatus: DaemonStatus = { running: false };
@@ -514,6 +530,63 @@ export class CliDataService implements vscode.Disposable {
         });
         this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
+        this.fsListeners = this.registerFsListeners();
+    }
+
+    private registerFsListeners(): vscode.Disposable[] {
+        const resolve = async (absPath: string): Promise<{ repoPath: string; relPath: string } | null> => {
+            const repoRoot = await GitUtils.getRepoRoot(absPath);
+            if (!repoRoot) return null;
+            const repoPath = (await getRepoId(repoRoot)) ?? repoRoot;
+            const relPath = path.relative(repoRoot, absPath).replace(/\\/g, '/');
+            if (!relPath || relPath.startsWith('..')) return null;
+            return { repoPath, relPath };
+        };
+
+        return [
+            // File created or re-created: restore any soft-deleted attribution.
+            vscode.workspace.onDidCreateFiles(async (e) => {
+                for (const uri of e.files) {
+                    const r = await resolve(uri.fsPath);
+                    if (!r) continue;
+                    await this.daemonClient.sendFsEvent({ kind: 'create', repo_path: r.repoPath, path: r.relPath });
+                    Logger.debug(`FsEvent create: ${r.relPath}`);
+                }
+                this.scheduleRefresh();
+            }),
+
+            // File deleted: soft-delete attribution (recoverable on undo).
+            vscode.workspace.onDidDeleteFiles(async (e) => {
+                for (const uri of e.files) {
+                    const r = await resolve(uri.fsPath);
+                    if (!r) continue;
+                    await this.daemonClient.sendFsEvent({ kind: 'delete', repo_path: r.repoPath, path: r.relPath });
+                    Logger.debug(`FsEvent delete: ${r.relPath}`);
+                }
+                this.scheduleRefresh();
+            }),
+
+            // File renamed or moved: update file_path in DB so attribution follows.
+            // Copy (duplicate file) appears as onDidCreateFiles; the VS Code API does
+            // not expose a native copy event — onDidRenameFiles covers rename + move only.
+            vscode.workspace.onDidRenameFiles(async (e) => {
+                for (const { oldUri, newUri } of e.files) {
+                    const oldRoot = await GitUtils.getRepoRoot(oldUri.fsPath);
+                    const newRoot = await GitUtils.getRepoRoot(newUri.fsPath);
+                    if (!oldRoot || !newRoot || oldRoot !== newRoot) continue;
+                    const repoPath = (await getRepoId(oldRoot)) ?? oldRoot;
+                    const oldRel = path.relative(oldRoot, oldUri.fsPath).replace(/\\/g, '/');
+                    const newRel = path.relative(newRoot, newUri.fsPath).replace(/\\/g, '/');
+                    if (!oldRel || oldRel.startsWith('..') || !newRel || newRel.startsWith('..')) continue;
+                    await this.daemonClient.sendFsEvent({
+                        kind: 'rename', repo_path: repoPath,
+                        old_path: oldRel, new_path: newRel,
+                    });
+                    Logger.debug(`FsEvent rename: ${oldRel} → ${newRel}`);
+                }
+                this.scheduleRefresh();
+            }),
+        ];
     }
 
     /** Coalesce bursts (Save All, rapid tab switches) into one refresh. */
@@ -641,20 +714,29 @@ export class CliDataService implements vscode.Disposable {
             // Untracked files: trust only tight AI ranges; add human for the rest.
             for (const filePath of untrackedFiles) {
                 if (!byFile.has(filePath)) continue;
-                const existing = byFile.get(filePath)!.filter(
+                const rawExisting = byFile.get(filePath)!.filter(
                     e => e.authorType !== 'AI' || e.boundedAiRange
                 );
-                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
                 try {
                     const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
-                    const lineCount = content.split(/\r?\n/).length;
+                    const fileLines = content.split(/\r?\n/);
+                    const lineCount = fileLines.length;
+                    // Null-sha AI entries (blank at record time) must be re-verified against
+                    // current content: if the user has since typed on that line, it is now
+                    // human-authored. Sha-verified entries (contentShaAttributed) are already
+                    // confirmed by content hash and are kept as-is.
+                    const existing = rawExisting.filter(e => {
+                        if (e.authorType !== 'AI') return true;
+                        if (e.contentShaAttributed) return true;
+                        const text = fileLines[e.lineNumber - 1] ?? '';
+                        return text.trim().length === 0;
+                    });
+                    const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
                     const humanEntries: LineBlame[] = [];
                     for (let ln = 1; ln <= lineCount; ln++) {
                         if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
                     }
-                    if (humanEntries.length > 0) {
-                        byFile.set(filePath, [...existing, ...humanEntries]);
-                    }
+                    byFile.set(filePath, [...existing, ...humanEntries]);
                 } catch { /* skip unreadable files */ }
             }
 
@@ -702,6 +784,11 @@ export class CliDataService implements vscode.Disposable {
                 if (p.contentSha && lines) {
                     const text = lines[ln - 1];
                     if (text === undefined || !pendingMatchesLine(p, text)) continue;
+                } else if (!p.contentSha && lines) {
+                    // No sha was captured — this was a blank line at accept time.
+                    // If the user has since typed here, the line is no longer AI.
+                    const text = lines[ln - 1];
+                    if (text !== undefined && text.trim().length > 0) continue;
                 }
                 const idx = entries.findIndex(e => e.lineNumber === ln);
                 const existing = idx >= 0 ? entries[idx] : undefined;
@@ -794,6 +881,8 @@ export class CliDataService implements vscode.Disposable {
         this.openListener?.dispose();
         this.activeEditorListener?.dispose();
         this.workspaceListener?.dispose();
+        for (const d of this.fsListeners) d.dispose();
+        this.fsListeners = [];
         this.listeners = [];
     }
 }
