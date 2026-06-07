@@ -1,0 +1,192 @@
+{
+  "schema": 2,
+  "commit": "40b7d25be5c8f25ac1039021dddee31c5eb50b2f",
+  "branch": "main",
+  "base_sha": "5e4679b8237a1180b86f90298477e240b30fac5e",
+  "message": "feat: implement file system event handling for attribution restoration and soft-deletion",
+  "totals": {
+    "ai_lines": 0,
+    "human_lines": 139,
+    "deleted_lines": 3,
+    "files": 4
+  },
+  "by_tool": {},
+  "by_gen_type": {
+    "chat": 0,
+    "cli": 0,
+    "completion": 0,
+    "human": 142
+  },
+  "files": [
+    {
+      "path": "src/cli/CliDataService.ts",
+      "type": "MODIFIED",
+      "added": 96,
+      "deleted": 3,
+      "lines": [
+        {
+          "start": 13,
+          "end": 13,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 138,
+          "end": 140,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 188,
+          "end": 198,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 496,
+          "end": 497,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 533,
+          "end": 589,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 647,
+          "end": 647,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 656,
+          "end": 657,
+          "type": "delete",
+          "author_type": "Human"
+        },
+        {
+          "start": 717,
+          "end": 717,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 722,
+          "end": 734,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 739,
+          "end": 739,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 787,
+          "end": 791,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 884,
+          "end": 885,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/cli/SqliteReader.ts",
+      "type": "MODIFIED",
+      "added": 1,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 134,
+          "end": 134,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/completion/CompletionDetector.ts",
+      "type": "MODIFIED",
+      "added": 12,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 384,
+          "end": 388,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 398,
+          "end": 404,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    },
+    {
+      "path": "src/completion/DaemonClient.ts",
+      "type": "MODIFIED",
+      "added": 30,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 26,
+          "end": 40,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 54,
+          "end": 54,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 62,
+          "end": 74,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 81,
+          "end": 81,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    }
+  ],
+  "generated_by": "blamely 0.1.0",
+  "conversation": [
+    {
+      "role": "user",
+      "text": "could you please ofcuscated code when create release"
+    }
+  ]
+}
