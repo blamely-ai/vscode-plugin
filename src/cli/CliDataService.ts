@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -9,8 +10,7 @@ import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
-import { lineSha, pendingMatchesLine } from './pendingMatch';
-import { DaemonClient } from '../completion/DaemonClient';
+import { isBlankLine } from '../utils/BlankLines';
 
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
@@ -135,9 +135,6 @@ function resolveAiEditForChangedLine(
         if (row.content_sha) continue;
         if (!rowCoversLine(row, ln)) continue;
         if (!isIndexableLineRange(row)) continue;
-        // A single-line record with no sha was a blank line at record time. If the
-        // user has since typed here, the line is now human-authored — don't match.
-        if (row.start_line === row.end_line && lineText.trim().length > 0) continue;
         return row;
     }
     return null;
@@ -179,23 +176,13 @@ function applyContentShaAttribution(
         let mutated = false;
         for (let ln = 1; ln <= lines.length; ln++) {
             const text = lines[ln - 1];
-            if (text === undefined) continue;
+            if (text === undefined || isBlankLine(text)) continue;
             const row = bySha.get(lineSha(text.replace(/\r$/, '')));
             if (!row) continue;
             const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
             const idx = entries.findIndex(e => e.lineNumber === ln);
             if (idx >= 0) {
-                // A prior range-based pass (editsToBlameMap, e.g. a null-sha blank-line
-                // record whose original position now holds shifted AI content) may have
-                // placed an AI entry here with contentShaAttributed=false. A verified
-                // sha match always wins — promote it even when authorType/model already
-                // agree, so downstream content checks (untracked-file loop) see the
-                // line as sha-confirmed rather than treating it as an unverified range.
-                if (
-                    entries[idx].authorType !== 'AI' ||
-                    entries[idx].model !== entry.model ||
-                    !entries[idx].contentShaAttributed
-                ) {
+                if (entries[idx].authorType !== 'AI' || entries[idx].model !== entry.model) {
                     entries[idx] = entry;
                     mutated = true;
                 }
@@ -237,11 +224,7 @@ function reconcileChangedLinesAttribution(
             if (text === undefined) continue;
             const idx = entries.findIndex(e => e.lineNumber === ln);
             const existing = idx >= 0 ? entries[idx] : undefined;
-            const pendingRaw = blameMap.pendingAiLinesFor(filePath).get(ln);
-            // Confirm the line still holds the captured AI text — a human line
-            // inserted inside the band slides into the frozen pending range and
-            // must not be painted AI.
-            const pending = pendingRaw && pendingMatchesLine(pendingRaw, text) ? pendingRaw : undefined;
+            const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
 
             let aiRow = resolveAiEditForChangedLine(filePath, ln, text, edits);
 
@@ -295,14 +278,6 @@ function reconcileChangedLinesAttribution(
 /**
  * Keep only lines that differ from HEAD (or whole untracked files). Drops stale
  * SQLite rows so gutter/status bar/Changes reset after commit.
- *
- * The gutter shows ONLY uncommitted working-tree changes (`git diff HEAD`). A
- * line is kept iff it is in that diff. We must NOT keep content_sha-attributed
- * lines that fall outside the diff: those are ALREADY-COMMITTED AI lines whose
- * text still matches a session content_sha, and keeping them made committed code
- * from an earlier commit linger in the gutter alongside a new uncommitted edit in
- * the same file. A genuinely uncommitted AI line always differs from HEAD, so it
- * is in `changed` already — no exception needed.
  */
 function scopeToUncommittedWorkingTree(
     byFile: Map<string, LineBlame[]>,
@@ -319,7 +294,7 @@ function scopeToUncommittedWorkingTree(
         byFile.set(
             file,
             entries.filter(
-                e => changed.has(e.lineNumber),
+                e => changed.has(e.lineNumber) || e.contentShaAttributed === true,
             ),
         );
     }
@@ -394,6 +369,9 @@ function buildLineBlame(
     };
 }
 
+function lineSha(s: string): string {
+    return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
 
 /**
  * Build per-file AI line attribution from edit rows.
@@ -493,8 +471,6 @@ export class CliDataService implements vscode.Disposable {
     private openListener?: vscode.Disposable;
     private activeEditorListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
-    private fsListeners: vscode.Disposable[] = [];
-    private readonly daemonClient = new DaemonClient();
     private startupTimers: NodeJS.Timeout[] = [];
     private listeners: CliDataRefreshListener[] = [];
     private lastDaemonStatus: DaemonStatus = { running: false };
@@ -530,63 +506,6 @@ export class CliDataService implements vscode.Disposable {
         });
         this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
-        this.fsListeners = this.registerFsListeners();
-    }
-
-    private registerFsListeners(): vscode.Disposable[] {
-        const resolve = async (absPath: string): Promise<{ repoPath: string; relPath: string } | null> => {
-            const repoRoot = await GitUtils.getRepoRoot(absPath);
-            if (!repoRoot) return null;
-            const repoPath = (await getRepoId(repoRoot)) ?? repoRoot;
-            const relPath = path.relative(repoRoot, absPath).replace(/\\/g, '/');
-            if (!relPath || relPath.startsWith('..')) return null;
-            return { repoPath, relPath };
-        };
-
-        return [
-            // File created or re-created: restore any soft-deleted attribution.
-            vscode.workspace.onDidCreateFiles(async (e) => {
-                for (const uri of e.files) {
-                    const r = await resolve(uri.fsPath);
-                    if (!r) continue;
-                    await this.daemonClient.sendFsEvent({ kind: 'create', repo_path: r.repoPath, path: r.relPath });
-                    Logger.debug(`FsEvent create: ${r.relPath}`);
-                }
-                this.scheduleRefresh();
-            }),
-
-            // File deleted: soft-delete attribution (recoverable on undo).
-            vscode.workspace.onDidDeleteFiles(async (e) => {
-                for (const uri of e.files) {
-                    const r = await resolve(uri.fsPath);
-                    if (!r) continue;
-                    await this.daemonClient.sendFsEvent({ kind: 'delete', repo_path: r.repoPath, path: r.relPath });
-                    Logger.debug(`FsEvent delete: ${r.relPath}`);
-                }
-                this.scheduleRefresh();
-            }),
-
-            // File renamed or moved: update file_path in DB so attribution follows.
-            // Copy (duplicate file) appears as onDidCreateFiles; the VS Code API does
-            // not expose a native copy event — onDidRenameFiles covers rename + move only.
-            vscode.workspace.onDidRenameFiles(async (e) => {
-                for (const { oldUri, newUri } of e.files) {
-                    const oldRoot = await GitUtils.getRepoRoot(oldUri.fsPath);
-                    const newRoot = await GitUtils.getRepoRoot(newUri.fsPath);
-                    if (!oldRoot || !newRoot || oldRoot !== newRoot) continue;
-                    const repoPath = (await getRepoId(oldRoot)) ?? oldRoot;
-                    const oldRel = path.relative(oldRoot, oldUri.fsPath).replace(/\\/g, '/');
-                    const newRel = path.relative(newRoot, newUri.fsPath).replace(/\\/g, '/');
-                    if (!oldRel || oldRel.startsWith('..') || !newRel || newRel.startsWith('..')) continue;
-                    await this.daemonClient.sendFsEvent({
-                        kind: 'rename', repo_path: repoPath,
-                        old_path: oldRel, new_path: newRel,
-                    });
-                    Logger.debug(`FsEvent rename: ${oldRel} → ${newRel}`);
-                }
-                this.scheduleRefresh();
-            }),
-        ];
     }
 
     /** Coalesce bursts (Save All, rapid tab switches) into one refresh. */
@@ -605,7 +524,6 @@ export class CliDataService implements vscode.Disposable {
         endLine: number,
         tool: string,
         genType: string,
-        lineShas?: Map<number, string>,
     ): void {
         const existing = [...(this.blameMap.getBlame(relPath))];
         const now = new Date().toISOString();
@@ -629,7 +547,7 @@ export class CliDataService implements vscode.Disposable {
         existing.sort((a, b) => a.lineNumber - b.lineNumber);
         this.blameMap.setFileBlame(relPath, existing);
         this.blameMap.lastOptimisticPaintMs = Date.now();
-        this.blameMap.markPendingAiLines(relPath, startLine, endLine, tool, null, genType, lineShas);
+        this.blameMap.markPendingAiLines(relPath, startLine, endLine, tool, null, genType);
         this.notify();
     }
 
@@ -714,29 +632,20 @@ export class CliDataService implements vscode.Disposable {
             // Untracked files: trust only tight AI ranges; add human for the rest.
             for (const filePath of untrackedFiles) {
                 if (!byFile.has(filePath)) continue;
-                const rawExisting = byFile.get(filePath)!.filter(
+                const existing = byFile.get(filePath)!.filter(
                     e => e.authorType !== 'AI' || e.boundedAiRange
                 );
+                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
                 try {
                     const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
-                    const fileLines = content.split(/\r?\n/);
-                    const lineCount = fileLines.length;
-                    // Null-sha AI entries (blank at record time) must be re-verified against
-                    // current content: if the user has since typed on that line, it is now
-                    // human-authored. Sha-verified entries (contentShaAttributed) are already
-                    // confirmed by content hash and are kept as-is.
-                    const existing = rawExisting.filter(e => {
-                        if (e.authorType !== 'AI') return true;
-                        if (e.contentShaAttributed) return true;
-                        const text = fileLines[e.lineNumber - 1] ?? '';
-                        return text.trim().length === 0;
-                    });
-                    const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
+                    const lineCount = content.split(/\r?\n/).length;
                     const humanEntries: LineBlame[] = [];
                     for (let ln = 1; ln <= lineCount; ln++) {
                         if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
                     }
-                    byFile.set(filePath, [...existing, ...humanEntries]);
+                    if (humanEntries.length > 0) {
+                        byFile.set(filePath, [...existing, ...humanEntries]);
+                    }
                 } catch { /* skip unreadable files */ }
             }
 
@@ -768,28 +677,9 @@ export class CliDataService implements vscode.Disposable {
         for (const filePath of this.blameMap.pendingAiPaths()) {
             const pending = this.blameMap.pendingAiLinesFor(filePath);
             if (pending.size === 0) continue;
-            // Read current text so each pending line can be confirmed against its
-            // captured content_sha before being painted AI (skips human inserts).
-            let lines: string[] | null = null;
-            if (this._repoRoot) {
-                try {
-                    lines = fs.readFileSync(path.join(this._repoRoot, filePath), 'utf8').split(/\r?\n/);
-                } catch {
-                    lines = null;
-                }
-            }
             const entries = [...(byFile.get(filePath) ?? [])];
             let mutated = false;
             for (const [ln, p] of pending) {
-                if (p.contentSha && lines) {
-                    const text = lines[ln - 1];
-                    if (text === undefined || !pendingMatchesLine(p, text)) continue;
-                } else if (!p.contentSha && lines) {
-                    // No sha was captured — this was a blank line at accept time.
-                    // If the user has since typed here, the line is no longer AI.
-                    const text = lines[ln - 1];
-                    if (text !== undefined && text.trim().length > 0) continue;
-                }
                 const idx = entries.findIndex(e => e.lineNumber === ln);
                 const existing = idx >= 0 ? entries[idx] : undefined;
                 if (existing?.authorType === 'AI') {
@@ -881,8 +771,6 @@ export class CliDataService implements vscode.Disposable {
         this.openListener?.dispose();
         this.activeEditorListener?.dispose();
         this.workspaceListener?.dispose();
-        for (const d of this.fsListeners) d.dispose();
-        this.fsListeners = [];
         this.listeners = [];
     }
 }

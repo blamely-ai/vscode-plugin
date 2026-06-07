@@ -262,13 +262,6 @@ export class CompletionDetector implements vscode.Disposable {
         let anySent = false;
         for (const band of bands) {
             const bandLines = lineRanges.filter(r => r.start >= band.start && r.end <= band.end);
-            // Per-line content_sha so the optimistic/pending overlay can confirm a
-            // line still holds the AI text — a human line inserted inside the band
-            // (which slides into the frozen pending range) is then NOT painted AI.
-            const bandShas = new Map<number, string>();
-            for (const r of bandLines) {
-                if (r.content_sha) bandShas.set(r.start, r.content_sha);
-            }
             const payload: EditPayload = {
                 tool,
                 confidence,
@@ -290,7 +283,7 @@ export class CompletionDetector implements vscode.Disposable {
             if (this.debugEnabled()) {
                 Logger.info(`record: tool=${tool} gen_type=${genType} ${relPath} L${band.start}-${band.end} (${totalChars} chars)`);
             }
-            this.cliData?.pushImmediateBlame(relPath, band.start, band.end, tool, genType, bandShas);
+            this.cliData?.pushImmediateBlame(relPath, band.start, band.end, tool, genType);
             if (await this.daemon.send(payload)) {
                 anySent = true;
             }
@@ -381,11 +374,7 @@ function lineSha(text: string): string {
     return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-/** Per-line content_sha so attribution survives line shifts after save/reopen.
- * Blank lines are included as range records with no sha: they still appear in
- * the AI set (so the gutter shows AI on blank lines in AI-generated code) but
- * the range match is guarded later — if the user types on a formerly-blank line
- * the non-blank content signals that the line is now human-authored. */
+/** Per-line content_sha so attribution survives line shifts after save/reopen. */
 function buildLineRangesWithSha(
     doc: vscode.TextDocument,
     bands: Array<{ start: number; end: number }>,
@@ -395,13 +384,8 @@ function buildLineRangesWithSha(
         for (let ln = band.start; ln <= band.end; ln++) {
             const line = doc.lineAt(ln - 1);
             const text = line.text.replace(/\r$/, '');
-            if (text.trim().length === 0) {
-                // Blank line: no sha — stored as a range entry so the line appears
-                // in the AI set for the untracked-file loop.
-                out.push({ start: ln, end: ln });
-            } else {
-                out.push({ start: ln, end: ln, content_sha: lineSha(text) });
-            }
+            if (text.trim().length === 0) continue;
+            out.push({ start: ln, end: ln, content_sha: lineSha(text) });
         }
     }
     return out;

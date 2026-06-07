@@ -23,21 +23,8 @@ export interface EditPayload {
     branch?: string;
 }
 
-export interface FsEventPayload {
-    kind: 'delete' | 'create' | 'rename' | 'copy';
-    repo_path: string;
-    // delete / create
-    path?: string;
-    // rename / move
-    old_path?: string;
-    new_path?: string;
-    // copy
-    src_path?: string;
-    dst_path?: string;
-}
-
-// DaemonClient posts attribution events to the blamely daemon's /edit and /fs
-// HTTP endpoints. The daemon listens on a random localhost port written to
+// DaemonClient posts attribution events to the blamely daemon's /edit HTTP
+// endpoint. The daemon listens on a random localhost port written to
 // ~/.blamely/daemon.port; we re-read that file on every send so a daemon
 // restart (which picks a new port) is picked up immediately without any
 // stale-cache failure. readFileSync is ~0.1ms — no caching needed.
@@ -51,7 +38,7 @@ export class DaemonClient {
             return false;
         }
         try {
-            await this.post(port, '/edit', payload);
+            await this.post(port, payload);
             return true;
         } catch (err) {
             this.maybeWarn(`POST /edit failed: ${(err as Error).message}`);
@@ -59,26 +46,14 @@ export class DaemonClient {
         }
     }
 
-    async sendFsEvent(payload: FsEventPayload): Promise<boolean> {
-        const port = readDaemonPort();
-        if (port == null) return false; // daemon not running — silently skip
-        try {
-            await this.post(port, '/fs', payload);
-            return true;
-        } catch (err) {
-            this.maybeWarn(`POST /fs failed: ${(err as Error).message}`);
-            return false;
-        }
-    }
-
-    private post(port: number, path: string, payload: EditPayload | FsEventPayload): Promise<void> {
+    private post(port: number, payload: EditPayload): Promise<void> {
         return new Promise((resolve, reject) => {
             const body = Buffer.from(JSON.stringify(payload), 'utf8');
             const req = http.request(
                 {
                     host: '127.0.0.1',
                     port,
-                    path,
+                    path: '/edit',
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
