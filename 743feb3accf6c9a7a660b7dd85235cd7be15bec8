@@ -1,0 +1,52 @@
+{
+  "schema": 2,
+  "commit": "743feb3accf6c9a7a660b7dd85235cd7be15bec8",
+  "branch": "main",
+  "base_sha": "e303d907be0b5d2c4a455fcdc2c47a5427f06b17",
+  "message": "feat: improve blank line handling and clean up unused code in attribution logic",
+  "totals": {
+    "ai_lines": 0,
+    "human_lines": 4,
+    "deleted_lines": 0,
+    "files": 1
+  },
+  "by_tool": {},
+  "by_gen_type": {
+    "chat": 0,
+    "cli": 0,
+    "completion": 0,
+    "human": 4
+  },
+  "files": [
+    {
+      "path": "src/blame/BlameMap.ts",
+      "type": "MODIFIED",
+      "added": 4,
+      "deleted": 0,
+      "lines": [
+        {
+          "start": 30,
+          "end": 31,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 80,
+          "end": 80,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        },
+        {
+          "start": 90,
+          "end": 90,
+          "type": "add",
+          "author_type": "Human",
+          "gen_type": "human"
+        }
+      ]
+    }
+  ],
+  "generated_by": "blamely 0.1.0"
+}
