@@ -18,6 +18,8 @@ function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
     for (const line of text.split('\n')) {
         if (line.startsWith('Author:')) {
             hoverMessage.appendMarkdown(`- **Author:** ${line.slice('Author:'.length).trim()}\n`);
+        } else if (line.startsWith('Tool:')) {
+            hoverMessage.appendMarkdown(`- **Tool:** ${escapeMarkdown(line.slice('Tool:'.length).trim())}\n`);
         } else if (line.startsWith('Model:')) {
             hoverMessage.appendMarkdown(`- **Model:** \`${escapeMarkdown(line.slice('Model:'.length).trim())}\`\n`);
         } else if (line.startsWith('Change Date:')) {

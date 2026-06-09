@@ -27,6 +27,8 @@ export interface PendingAiLine {
     model: string | null;
     genType: string | null;
     expiresAtMs: number;
+    /** sha256 of the line text at accept time; null when not captured (e.g. blank lines) — keeps the legacy line-number bridge for those. */
+    contentSha?: string | null;
 }
 
 const PENDING_AI_TTL_MS = 12_000;
@@ -75,6 +77,7 @@ export class BlameMap {
         tool: string | null,
         model: string | null,
         genType: string | null,
+        shas?: Map<number, string>,
     ): void {
         const key = filePath.replace(/\\/g, '/');
         const expiresAt = Date.now() + PENDING_AI_TTL_MS;
@@ -84,7 +87,7 @@ export class BlameMap {
             this.pendingAi.set(key, byLine);
         }
         for (let ln = startLine; ln <= endLine; ln++) {
-            byLine.set(ln, { tool, model, genType, expiresAtMs: expiresAt });
+            byLine.set(ln, { tool, model, genType, expiresAtMs: expiresAt, contentSha: shas?.get(ln) ?? null });
         }
     }
 

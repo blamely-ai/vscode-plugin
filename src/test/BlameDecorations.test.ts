@@ -49,6 +49,7 @@ describe('BlameDecorations', () => {
         const text = blameGutterTooltipText(entry);
         assert.ok(text.includes('Author: AI'), text);
         assert.ok(text.includes('Change Date:'), text);
+        assert.ok(text.includes('Tool: Copilot'), text);
         assert.ok(text.includes('Model: gpt-4'), text);
         assert.ok(!text.includes('Interaction:'), text);
     });

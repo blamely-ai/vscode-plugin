@@ -141,8 +141,10 @@ function resolveAiEditForChangedLine(
 }
 
 /**
- * Paint AI on every line whose current text matches a session content_sha, at the
- * line's present position (fixes 138–139 → 140–141 after CLI insert at 103–104).
+ * Paint AI on every line whose recorded line number matches and whose content-SHA
+ * confirms the match. Line number is the primary key; content-SHA is the confirmation.
+ * A `}` at line 10 only matches the AI row recorded at line 10 — a human-added `}`
+ * at line 247 has the same SHA but a different position, so it never matches.
  */
 function applyContentShaAttribution(
     repoRoot: string,
@@ -150,22 +152,22 @@ function applyContentShaAttribution(
     filePaths: Iterable<string>,
     byFile: Map<string, LineBlame[]>,
 ): void {
-    const shaByFile = new Map<string, Map<string, CliEditRow>>();
+    const lineByFile = new Map<string, Map<number, CliEditRow>>();
     for (const row of edits) {
         if (!row.content_sha || !isAiEditRow(row)) continue;
         const file = row.file_path.replace(/\\/g, '/');
-        let bySha = shaByFile.get(file);
-        if (!bySha) {
-            bySha = new Map();
-            shaByFile.set(file, bySha);
+        let byLine = lineByFile.get(file);
+        if (!byLine) {
+            byLine = new Map();
+            lineByFile.set(file, byLine);
         }
-        if (!bySha.has(row.content_sha)) bySha.set(row.content_sha, row);
+        if (!byLine.has(row.start_line)) byLine.set(row.start_line, row);
     }
 
     for (const filePath of filePaths) {
         const norm = filePath.replace(/\\/g, '/');
-        const bySha = shaByFile.get(norm);
-        if (!bySha?.size) continue;
+        const byLine = lineByFile.get(norm);
+        if (!byLine?.size) continue;
         let lines: string[];
         try {
             lines = fs.readFileSync(path.join(repoRoot, norm), 'utf8').split(/\r?\n/);
@@ -175,10 +177,11 @@ function applyContentShaAttribution(
         const entries = [...(byFile.get(norm) ?? [])];
         let mutated = false;
         for (let ln = 1; ln <= lines.length; ln++) {
+            const row = byLine.get(ln);
+            if (!row) continue;
             const text = lines[ln - 1];
             if (text === undefined || isBlankLine(text)) continue;
-            const row = bySha.get(lineSha(text.replace(/\r$/, '')));
-            if (!row) continue;
+            if (lineSha(text.replace(/\r$/, '')) !== row.content_sha) continue;
             const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
             const idx = entries.findIndex(e => e.lineNumber === ln);
             if (idx >= 0) {
@@ -291,12 +294,12 @@ function scopeToUncommittedWorkingTree(
             byFile.delete(file);
             continue;
         }
-        byFile.set(
-            file,
-            entries.filter(
-                e => changed.has(e.lineNumber) || e.contentShaAttributed === true,
-            ),
-        );
+        // Keep only lines present in the working-tree diff. No || contentShaAttributed
+        // here: committed AI lines that are verbatim-unchanged vs HEAD would match via
+        // content-SHA but must not show (they're not current changes). Drifted
+        // uncommitted lines are safe: a line new since HEAD always appears in
+        // `git diff HEAD` so its new position is in the changed set already.
+        byFile.set(file, entries.filter(e => changed.has(e.lineNumber)));
     }
 }
 

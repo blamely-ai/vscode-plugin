@@ -58,7 +58,7 @@ export class StatusBar implements vscode.Disposable {
 
         const totalLines = summary.aiLines + summary.humanLines;
         const aiPercent = totalLines === 0 ? 0 : Math.round((summary.aiLines / totalLines) * 100);
-        const humanPercent = 100 - aiPercent;
+        const humanPercent = totalLines === 0 ? 0 : 100 - aiPercent;
 
         this.item.text =
             `${lamp}🤖 AI: ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
