@@ -605,6 +605,7 @@ export class CliDataService implements vscode.Disposable {
     private activeEditorListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
     private startupTimers: NodeJS.Timeout[] = [];
+    private periodicTimer?: NodeJS.Timeout;
     private listeners: CliDataRefreshListener[] = [];
     private lastDaemonStatus: DaemonStatus = { running: false };
     private disposed = false;
@@ -643,6 +644,10 @@ export class CliDataService implements vscode.Disposable {
         });
         this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
+        // Safety-net poll: new files (and edits whose daemon write lands after the
+        // scheduleRefresh retry ladder) surface within 5s even when no editor
+        // event fires — without this the UI waits for the next user action.
+        this.periodicTimer = setInterval(() => void this.refresh(), 5000);
     }
 
     /** Coalesce bursts into one refresh, then retry once in case the daemon hasn't
@@ -906,6 +911,7 @@ export class CliDataService implements vscode.Disposable {
         this.disposed = true;
         if (this.refreshTimer) clearTimeout(this.refreshTimer);
         if (this.retryTimer) clearTimeout(this.retryTimer);
+        if (this.periodicTimer) clearInterval(this.periodicTimer);
         for (const t of this.startupTimers) clearTimeout(t);
         this.startupTimers = [];
         this.saveListener?.dispose();
