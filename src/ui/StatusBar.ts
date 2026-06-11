@@ -2,7 +2,7 @@ import * as http from 'http';
 import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
-import { readDaemonPort } from '../cli/paths';
+import { readDaemonPort, readDaemonSocket } from '../cli/paths';
 
 const HEARTBEAT_MS = 5_000;
 
@@ -58,7 +58,7 @@ export class StatusBar implements vscode.Disposable {
 
         const totalLines = summary.aiLines + summary.humanLines;
         const aiPercent = totalLines === 0 ? 0 : Math.round((summary.aiLines / totalLines) * 100);
-        const humanPercent = 100 - aiPercent;
+        const humanPercent = totalLines === 0 ? 0 : 100 - aiPercent;
 
         this.item.text =
             `${lamp}🤖 AI: ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
@@ -71,12 +71,12 @@ export class StatusBar implements vscode.Disposable {
 
     private pingHealth(): Promise<boolean> {
         return new Promise((resolve) => {
-            const port = readDaemonPort();
-            if (port == null) { resolve(false); return; }
-            const req = http.request(
-                { host: '127.0.0.1', port, path: '/health', method: 'GET', timeout: 2000 },
-                (res) => { res.resume(); resolve(res.statusCode === 200); },
-            );
+            const sock = readDaemonSocket();
+            const port = sock == null ? readDaemonPort() : null;
+            if (sock == null && port == null) { resolve(false); return; }
+            const opts: http.RequestOptions = { path: '/health', method: 'GET', timeout: 2000 };
+            if (sock != null) { opts.socketPath = sock; } else { opts.host = '127.0.0.1'; opts.port = port!; }
+            const req = http.request(opts, (res) => { res.resume(); resolve(res.statusCode === 200); });
             req.on('error', () => resolve(false));
             req.on('timeout', () => { req.destroy(); resolve(false); });
             req.end();

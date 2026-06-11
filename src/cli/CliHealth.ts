@@ -6,9 +6,11 @@ import * as http from 'http';
 import {
     blamelyHome,
     daemonPortPath,
+    daemonSocketPath,
     gitHooksDir,
     installedBinaryPath,
     readDaemonPort,
+    readDaemonSocket,
     statePath,
 } from './paths';
 import { DaemonStatus } from './types';
@@ -41,6 +43,7 @@ function isCliInstalled(): boolean {
         if (fs.existsSync(statePath())) return true;
         if (fs.existsSync(installedBinaryPath())) return true;
         if (fs.existsSync(daemonPortPath())) return true;
+        if (fs.existsSync(daemonSocketPath())) return true;
         if (fs.existsSync(path.join(blamelyHome(), 'db.sqlite'))) return true;
     } catch {
         /* ignore */
@@ -49,25 +52,33 @@ function isCliInstalled(): boolean {
 }
 
 async function probeDaemon(): Promise<DaemonStatus> {
-    const port = readDaemonPort();
-    if (!port) {
+    const sock = readDaemonSocket();
+    const port = sock == null ? readDaemonPort() : null;
+    if (sock == null && port == null) {
         return { running: false };
     }
     return new Promise(resolve => {
-        const req = http.get(`http://127.0.0.1:${port}/health`, res => {
+        const opts: http.RequestOptions = { path: '/health', timeout: 800 };
+        if (sock != null) {
+            opts.socketPath = sock;
+        } else {
+            opts.host = '127.0.0.1';
+            opts.port = port!;
+        }
+        const req = http.get(opts, res => {
             let body = '';
-            res.on('data', c => { body += c; });
+            res.on('data', (c: string) => { body += c; });
             res.on('end', () => {
                 resolve({
                     running: res.statusCode === 200 && body.includes('"ok"'),
-                    port,
+                    port: port ?? undefined,
                 });
             });
         });
-        req.on('error', () => resolve({ running: false, port }));
-        req.setTimeout(800, () => {
+        req.on('error', () => resolve({ running: false, port: port ?? undefined }));
+        req.on('timeout', () => {
             req.destroy();
-            resolve({ running: false, port });
+            resolve({ running: false, port: port ?? undefined });
         });
     });
 }
@@ -117,7 +128,7 @@ export async function checkCliHealth(): Promise<CliHealthReport> {
                 'or inspect ~/.blamely/daemon.log for errors.',
             detail: daemon.port
                 ? `Port file exists (${daemon.port}) but /health did not respond.`
-                : 'No daemon.port file — the daemon may never have started.',
+                : 'No daemon.sock or daemon.port file — the daemon may never have started.',
             installUrl,
             daemon,
         };
@@ -142,7 +153,7 @@ export async function checkCliHealth(): Promise<CliHealthReport> {
     return {
         status: 'healthy',
         title: 'Blamely CLI healthy',
-        message: `Daemon running on port ${daemon.port}.`,
+        message: daemon.port ? `Daemon running on port ${daemon.port}.` : 'Daemon running via Unix socket.',
         installUrl,
         daemon,
     };

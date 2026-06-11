@@ -1,5 +1,5 @@
 import * as http from 'http';
-import { readDaemonPort } from '../cli/paths';
+import { readDaemonPort, readDaemonSocket } from '../cli/paths';
 import * as Logger from '../utils/Logger';
 
 export interface EditRange {
@@ -23,22 +23,22 @@ export interface EditPayload {
     branch?: string;
 }
 
-// DaemonClient posts attribution events to the blamely daemon's /edit HTTP
-// endpoint. The daemon listens on a random localhost port written to
-// ~/.blamely/daemon.port; we re-read that file on every send so a daemon
-// restart (which picks a new port) is picked up immediately without any
-// stale-cache failure. readFileSync is ~0.1ms — no caching needed.
+// DaemonClient posts attribution events to the blamely daemon's /edit endpoint.
+// The daemon now uses a Unix domain socket at ~/.blamely/daemon.sock, which
+// bypasses any network-level security tools that intercept localhost TCP.
+// Falls back to the TCP port file for backward compat with old daemons.
 export class DaemonClient {
     private lastWarnAt = 0;
 
     async send(payload: EditPayload): Promise<boolean> {
-        const port = readDaemonPort();
-        if (port == null) {
-            this.maybeWarn('daemon port file missing (blamely daemon not running?)');
+        const sock = readDaemonSocket();
+        const port = sock == null ? readDaemonPort() : null;
+        if (sock == null && port == null) {
+            this.maybeWarn('daemon socket/port file missing (blamely daemon not running?)');
             return false;
         }
         try {
-            await this.post(port, payload);
+            await this.post(sock, port, payload);
             return true;
         } catch (err) {
             this.maybeWarn(`POST /edit failed: ${(err as Error).message}`);
@@ -46,30 +46,32 @@ export class DaemonClient {
         }
     }
 
-    private post(port: number, payload: EditPayload): Promise<void> {
+    private post(sock: string | null, port: number | null, payload: EditPayload): Promise<void> {
         return new Promise((resolve, reject) => {
             const body = Buffer.from(JSON.stringify(payload), 'utf8');
-            const req = http.request(
-                {
-                    host: '127.0.0.1',
-                    port,
-                    path: '/edit',
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Content-Length': body.length,
-                    },
-                    timeout: 1500,
+            const opts: http.RequestOptions = {
+                path: '/edit',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': body.length,
                 },
-                (res) => {
-                    res.resume();
-                    if (res.statusCode === 204) {
-                        resolve();
-                    } else {
-                        reject(new Error(`daemon returned ${res.statusCode}`));
-                    }
+                timeout: 1500,
+            };
+            if (sock != null) {
+                opts.socketPath = sock;
+            } else {
+                opts.host = '127.0.0.1';
+                opts.port = port!;
+            }
+            const req = http.request(opts, (res) => {
+                res.resume();
+                if (res.statusCode === 204) {
+                    resolve();
+                } else {
+                    reject(new Error(`daemon returned ${res.statusCode}`));
                 }
-            );
+            });
             req.on('error', reject);
             req.on('timeout', () => req.destroy(new Error('timeout')));
             req.write(body);

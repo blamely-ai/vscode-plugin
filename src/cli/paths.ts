@@ -23,6 +23,21 @@ export function daemonPortPath(): string {
     return path.join(blamelyHome(), 'daemon.port');
 }
 
+export function daemonSocketPath(): string {
+    return path.join(blamelyHome(), 'daemon.sock');
+}
+
+/** Returns the socket path if the socket file exists (daemon running), otherwise null.
+ *  The socket file must NOT be read — it is a Unix domain socket, not a plain file. */
+export function readDaemonSocket(): string | null {
+    try {
+        const p = daemonSocketPath();
+        return fs.existsSync(p) ? p : null;
+    } catch {
+        return null;
+    }
+}
+
 export function statePath(): string {
     return path.join(blamelyHome(), 'state.json');
 }

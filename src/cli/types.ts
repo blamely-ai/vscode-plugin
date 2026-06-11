@@ -7,6 +7,7 @@ export interface CliNote {
         ai_lines: number;
         human_lines: number;
         deleted_lines: number;
+        ai_deleted_lines?: number;
         files: number;
         tokens?: {
             input: number;
@@ -70,6 +71,11 @@ export interface CliEditRow {
     // Used to attribute a line to AI only when its current content still
     // matches what the AI applied. Empty/null for range-only edits.
     content_sha: string | null;
+    // Hash of the whitespace-normalized line text (trim + collapse internal
+    // whitespace). Fallback match when an autoformatter reflows an
+    // AI-written line (reindent, trailing whitespace) and content_sha no
+    // longer matches. Empty/null for blank lines or range-only edits.
+    content_sha_norm: string | null;
 }
 
 export interface DaemonStatus {

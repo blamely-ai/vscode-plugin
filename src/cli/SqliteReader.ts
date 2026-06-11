@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 
 const SQLITE_CANDIDATES = ['sqlite3', '/usr/bin/sqlite3', '/opt/homebrew/bin/sqlite3'];
 
-type LoadMode = 'session' | 'branch' | 'legacy';
+type LoadMode = 'session' | 'legacy';
 
 // Returns null when the database could not be read (binary missing, locked, IO).
 async function runSqliteJson(db: string, sql: string): Promise<unknown[] | null> {
@@ -63,18 +63,6 @@ function buildWhere(
         return `e.repo_path IN (${repoIn}) AND e.session_id IS NULL`;
     }
 
-    if (mode === 'branch') {
-        if (branch != null) {
-            return `e.repo_path IN (${repoIn}) AND (
-  e.branch = '${branchKey}'
-  OR e.session_id IN (
-    SELECT id FROM sessions WHERE branch = '${branchKey}' AND repo_path IN (${repoIn})
-  )
-)`;
-        }
-        return `e.repo_path IN (${repoIn}) AND (e.branch IS NULL OR e.session_id IS NULL)`;
-    }
-
     // session: current work cycle (branch + HEAD tip)
     const legacy =
         branch != null
@@ -112,6 +100,10 @@ function mapRows(rows: unknown[] | null): CliEditRow[] | null {
                     row.content_sha != null && String(row.content_sha) !== ''
                         ? String(row.content_sha)
                         : null,
+                content_sha_norm:
+                    row.content_sha_norm != null && String(row.content_sha_norm) !== ''
+                        ? String(row.content_sha_norm)
+                        : null,
             };
         })
         .filter(r => r.file_path && r.start_line > 0 && r.end_line >= r.start_line);
@@ -128,7 +120,8 @@ async function queryEdits(
     const sql = `
         SELECT e.id AS id, e.ts AS ts, e.file_path AS file_path, e.tool AS tool,
                e.model AS model, e.gen_type AS gen_type,
-               el.start_line AS start_line, el.end_line AS end_line, el.content_sha AS content_sha
+               el.start_line AS start_line, el.end_line AS end_line, el.content_sha AS content_sha,
+               el.content_sha_norm AS content_sha_norm
         FROM edits e
         JOIN edit_lines el ON el.edit_id = e.id
         WHERE ${where}
@@ -153,9 +146,14 @@ function repoPathCandidates(repoId: string, repoRoot?: string): string[] {
 }
 
 /**
- * Loads edits for the current work session, with fallbacks for IDE reopen:
- * 1) branch + HEAD session, 2) any edit on branch (git diff constrains gutter),
- * 3) legacy unscoped rows.
+ * Loads edits for the current work session, with a fallback for IDE reopen:
+ * 1) branch + HEAD session (current session_id, or legacy NULL rows on this
+ *    branch), 2) legacy unscoped rows.
+ *
+ * Deliberately does NOT fall back to "any session on this branch": content_sha
+ * attribution must stay scoped to the current session, otherwise a human
+ * pasting AI code generated in a PREVIOUS session (e.g. before the last
+ * commit) would be matched against that stale content_sha and shown as AI.
  */
 async function logSessionCandidates(
     paths: string[],
@@ -163,15 +161,9 @@ async function logSessionCandidates(
     head: string,
     mode: LoadMode,
 ): Promise<void> {
-    if (branch == null) return;
+    if (branch == null || mode !== 'session') return;
     const repoIn = repoPathInList(paths);
-    const sql =
-        mode === 'session'
-            ? `SELECT id, base_sha FROM sessions WHERE branch = '${esc(branch)}' AND repo_path IN (${repoIn}) ORDER BY base_sha DESC LIMIT 8`
-            : mode === 'branch'
-              ? `SELECT id, base_sha FROM sessions WHERE branch = '${esc(branch)}' AND repo_path IN (${repoIn}) LIMIT 8`
-              : '';
-    if (!sql) return;
+    const sql = `SELECT id, base_sha FROM sessions WHERE branch = '${esc(branch)}' AND repo_path IN (${repoIn}) ORDER BY base_sha DESC LIMIT 8`;
     const rows = await runSqliteJson(dbPath(), sql);
     if (!rows) return;
     const ids = rows.map(r => {
@@ -200,7 +192,7 @@ export async function loadEditsForRepo(
     const paths = repoPathCandidates(repoId, repoRoot);
     let anySuccessfulRead = false;
 
-    for (const mode of ['session', 'branch', 'legacy'] as LoadMode[]) {
+    for (const mode of ['session', 'legacy'] as LoadMode[]) {
         await logSessionCandidates(paths, branch, head, mode);
         const rows = await queryEdits(paths, branch, head, mode);
         if (rows === null) {

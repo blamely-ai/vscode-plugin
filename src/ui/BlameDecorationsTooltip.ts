@@ -9,10 +9,17 @@ export function formatBlameChangedDate(raw: string): string {
     return d.toLocaleString();
 }
 
+/** Raw provider id (e.g. `codex`, `copilot`) → display label for gutter hover (e.g. `Codex`, `Copilot`). */
+export function toolDisplayName(provider: string): string {
+    const trimmed = provider.trim().toLowerCase();
+    return trimmed.length === 0 ? trimmed : trimmed[0].toUpperCase() + trimmed.slice(1);
+}
+
 export function blameGutterTooltipText(entry: LineBlame): string {
     const changed = formatBlameChangedDate(entry.timestamp);
     if (entry.authorType === 'AI') {
         const lines = ['Author: AI'];
+        if (entry.provider) lines.push(`Tool: ${toolDisplayName(entry.provider)}`);
         if (entry.model) lines.push(`Model: ${entry.model}`);
         lines.push(`Change Date: ${changed}`);
         return lines.join('\n');

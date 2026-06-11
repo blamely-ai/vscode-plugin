@@ -7,7 +7,7 @@ export function parseCliNote(raw: string): CliNote | null {
     }
     try {
         const note = JSON.parse(trimmed) as CliNote;
-        if (note.schema !== 1 || !note.commit) {
+        if ((note.schema !== 1 && note.schema !== 2) || !note.commit) {
             return null;
         }
         return note;

@@ -14,6 +14,7 @@ interface CommitReport {
     totalFilesChanged: number;
     totalLinesAdded: number;
     totalLinesDeleted: number;
+    aiLinesDeleted: number;
     totalChanges: number;
     aiLinesAdded: number;
     humanLinesAdded: number;
@@ -176,6 +177,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
             totalFilesChanged: note.totals.files,
             totalLinesAdded: totalAdded,
             totalLinesDeleted: note.totals.deleted_lines,
+            aiLinesDeleted: note.totals.ai_deleted_lines ?? 0,
             totalChanges: totalAdded + note.totals.deleted_lines,
             aiLinesAdded: ai,
             humanLinesAdded: human,
@@ -454,7 +456,9 @@ body {
 }
 
 .diff-add  { font-family: var(--mono); font-size: 11px; color: var(--human-color); text-align: right; }
-.diff-del  { font-family: var(--mono); font-size: 11px; color: var(--delete-color); text-align: right; }
+.diff-del  { font-family: var(--mono); font-size: 11px; text-align: right; }
+.diff-del-ai    { color: var(--ai-color); }
+.diff-del-human { color: var(--delete-color); }
 .coding-time { font-family: var(--mono); font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
 .commit-author { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 75px; }
 
@@ -644,8 +648,17 @@ body {
             h += `<span class="commit-hash">${sha}</span>`;
             h += `<div class="commit-author" title="${report.authorDate ? this.esc(report.author + ' · ' + report.authorDate) : authorDisplay}">${authorDisplay}</div>`;
             h += `<div class="commit-msg" title="${this.esc(rawMsg)}">${msg}</div>`;
+            const aiDel = report.aiLinesDeleted;
+            const humanDel = report.totalLinesDeleted - aiDel;
+            let delHtml = '';
+            if (aiDel > 0) {
+                delHtml += `<span class="diff-del-ai">&minus;${aiDel}</span>`;
+            }
+            if (humanDel > 0 || aiDel === 0) {
+                delHtml += `<span class="diff-del-human">&minus;${humanDel}</span>`;
+            }
             h += `<div class="diff-add">+${report.totalLinesAdded}</div>`;
-            h += `<div class="diff-del">&minus;${report.totalLinesDeleted}</div>`;
+            h += `<div class="diff-del">${delHtml}</div>`;
             h += `<div class="mini-bar-cell"><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${Math.min(aiPctNum, 100)}%"></div></div><span class="mini-pct">${pctLabel}%</span></div>`;
             h += `<div class="coding-time">${report.codingTimeMs > 0 ? this.formatDuration(report.codingTimeMs) : '—'}</div>`;
             h += `<div>${tagHtml}</div>`;

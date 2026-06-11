@@ -120,13 +120,42 @@ function resolveAiEditForChangedLine(
     edits: CliEditRow[],
 ): CliEditRow | null {
     const normFile = filePath.replace(/\\/g, '/');
-    const hash = lineSha(lineText.replace(/\r$/, ''));
+    const text = lineText.replace(/\r$/, '');
+    const hash = lineSha(text);
 
-    // content_sha rows keep stale start/end after a middle insert — match by hash only.
+    // content_sha path: prefer exact line-number match so the copy-paste guard
+    // doesn't fire for a line that is genuinely at its recorded position.
+    // When multiple edits share the same content (e.g. `}`), exact-first prevents
+    // a newer edit at line 25 from overshadowing the real edit at line 50.
+    let bestRow: CliEditRow | null = null;
+    let bestDrift = Infinity;
     for (const row of edits) {
         if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
         if (!isLineAttributionCandidate(row)) continue;
-        if (row.content_sha && row.content_sha === hash) return row;
+        if (!row.content_sha || row.content_sha !== hash) continue;
+        if (row.start_line === ln) return row;  // exact match: no drift, no copy-paste ambiguity
+        const drift = Math.abs((row.start_line ?? ln) - ln);
+        if (drift < bestDrift) { bestDrift = drift; bestRow = row; }
+    }
+    if (bestRow != null) return bestRow;
+
+    // content_sha_norm fallback: an autoformatter reflowed this line's
+    // whitespace (reindent, trailing whitespace) after the AI wrote it, so its
+    // exact content_sha no longer matches but its whitespace-collapsed
+    // content_sha_norm still does.
+    const normHash = lineShaNorm(text);
+    if (normHash) {
+        let bestNormRow: CliEditRow | null = null;
+        let bestNormDrift = Infinity;
+        for (const row of edits) {
+            if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
+            if (!isLineAttributionCandidate(row)) continue;
+            if (!row.content_sha_norm || row.content_sha_norm !== normHash) continue;
+            if (row.start_line === ln) return row;
+            const drift = Math.abs((row.start_line ?? ln) - ln);
+            if (drift < bestNormDrift) { bestNormDrift = drift; bestNormRow = row; }
+        }
+        if (bestNormRow != null) return bestNormRow;
     }
 
     for (const row of edits) {
@@ -140,32 +169,56 @@ function resolveAiEditForChangedLine(
     return null;
 }
 
+// Max line drift for untracked-file fallback. Human insertions/deletions shift AI
+// lines; the fallback re-locates them by content SHA within this window.
+const MAX_CONTENT_SHA_DRIFT = 200;
+
 /**
- * Paint AI on every line whose current text matches a session content_sha, at the
- * line's present position (fixes 138–139 → 140–141 after CLI insert at 103–104).
+ * Two-pass content-SHA attribution:
+ *
+ * Pass 1 (all files): line-number-first. byLine[N] exists and SHA matches → AI.
+ * This prevents a human-added `}` at line 247 from matching the AI row at line 10.
+ *
+ * Pass 2 (untracked files only): drift fallback. For lines that failed pass 1,
+ * look up by content SHA. If found and the original position no longer holds that
+ * content (i.e. the line drifted due to an insertion/deletion above it), attribute
+ * as AI. If the original is still in place, the current line is a human copy →uman.
+ * This handles "press Enter → all AI lines below shift by 1 → show Human" without
+ * reintroducing copy-paste false positives.
  */
 function applyContentShaAttribution(
     repoRoot: string,
     edits: CliEditRow[],
     filePaths: Iterable<string>,
     byFile: Map<string, LineBlame[]>,
+    untrackedFiles?: Set<string>,
 ): void {
-    const shaByFile = new Map<string, Map<string, CliEditRow>>();
+    const lineByFile = new Map<string, Map<number, CliEditRow>>();
+    // Store ALL rows per SHA (not just the newest) so the drift lookup can pick
+    // the row whose start_line is closest to the current line being evaluated.
+    // With only one row per SHA, a newer edit at line 10 would shadow the real
+    // edit at line 50, making origStillAtHome fire on the wrong position.
+    const shaByFile  = new Map<string, Map<string, CliEditRow[]>>();
     for (const row of edits) {
         if (!row.content_sha || !isAiEditRow(row)) continue;
         const file = row.file_path.replace(/\\/g, '/');
+        let byLine = lineByFile.get(file);
+        if (!byLine) { byLine = new Map(); lineByFile.set(file, byLine); }
+        if (!byLine.has(row.start_line)) byLine.set(row.start_line, row);
+
         let bySha = shaByFile.get(file);
-        if (!bySha) {
-            bySha = new Map();
-            shaByFile.set(file, bySha);
-        }
-        if (!bySha.has(row.content_sha)) bySha.set(row.content_sha, row);
+        if (!bySha) { bySha = new Map(); shaByFile.set(file, bySha); }
+        let list = bySha.get(row.content_sha);
+        if (!list) { list = []; bySha.set(row.content_sha, list); }
+        list.push(row);
     }
 
     for (const filePath of filePaths) {
         const norm = filePath.replace(/\\/g, '/');
-        const bySha = shaByFile.get(norm);
-        if (!bySha?.size) continue;
+        const byLine = lineByFile.get(norm);
+        if (!byLine?.size) continue;
+        const isUntracked = untrackedFiles?.has(norm) ?? false;
+        const bySha = isUntracked ? shaByFile.get(norm) : undefined;
         let lines: string[];
         try {
             lines = fs.readFileSync(path.join(repoRoot, norm), 'utf8').split(/\r?\n/);
@@ -177,7 +230,44 @@ function applyContentShaAttribution(
         for (let ln = 1; ln <= lines.length; ln++) {
             const text = lines[ln - 1];
             if (text === undefined || isBlankLine(text)) continue;
-            const row = bySha.get(lineSha(text.replace(/\r$/, '')));
+            const sha = lineSha(text.replace(/\r$/, ''));
+
+            // Pass 1: exact position + content confirmation.
+            const exactRow = byLine.get(ln);
+            let row: CliEditRow | undefined;
+            if (exactRow && sha === exactRow.content_sha) {
+                row = exactRow;
+            } else if (exactRow?.content_sha_norm && lineShaNorm(text.replace(/\r$/, '')) === exactRow.content_sha_norm) {
+                // Autoformatter reflowed this line's whitespace (reindent,
+                // trailing whitespace) after the AI wrote it: exact content_sha
+                // no longer matches but content_sha_norm still does.
+                row = exactRow;
+            } else if (bySha) {
+                // Pass 2 (untracked only): drift fallback — line shifted due to a
+                // human insertion/deletion above it.
+                // Pick the candidate whose start_line is closest to ln: when two AI
+                // edits share the same content (e.g. `}`), the closest one is the
+                // most likely origin of the drifted line.
+                const candidates = bySha.get(sha);
+                if (candidates) {
+                    let driftRow: CliEditRow | undefined;
+                    let closest = Infinity;
+                    for (const c of candidates) {
+                        const d = Math.abs(ln - c.start_line);
+                        if (d < closest) { closest = d; driftRow = c; }
+                    }
+                    if (driftRow && closest <= MAX_CONTENT_SHA_DRIFT) {
+                        // originalStillAtHome: if the recorded position still holds
+                        // the same content, this line is a human copy, not a drift.
+                        const origIdx = driftRow.start_line - 1;
+                        const origStillAtHome =
+                            origIdx >= 0 && origIdx < lines.length &&
+                            lineSha(lines[origIdx].replace(/\r$/, '')) === sha;
+                        if (!origStillAtHome) row = driftRow;
+                    }
+                }
+            }
+
             if (!row) continue;
             const entry = buildLineBlame(repoRoot, norm, ln, row, { contentShaAttributed: true });
             const idx = entries.findIndex(e => e.lineNumber === ln);
@@ -227,6 +317,30 @@ function reconcileChangedLinesAttribution(
             const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
 
             let aiRow = resolveAiEditForChangedLine(filePath, ln, text, edits);
+
+            // Copy-paste guard: content found at a different line than recorded.
+            // If the original position still holds that content, this is a human
+            // copy — not the AI line drifting. Clear aiRow so it shows Human.
+            // matchedByNorm distinguishes a content_sha_norm drift match (e.g. an
+            // autoformatter-reflowed AI line whose shape was duplicated elsewhere)
+            // from a content_sha exact drift match, so the guard re-checks the
+            // recorded position with the SAME hash that produced the match.
+            if (aiRow && (aiRow.start_line ?? ln) !== ln) {
+                const lineHash = lineSha(text.replace(/\r$/, ''));
+                const lineNormHash = lineShaNorm(text.replace(/\r$/, ''));
+                const matchedByNorm = aiRow.content_sha !== lineHash && aiRow.content_sha_norm === lineNormHash;
+                const origIdx = (aiRow.start_line ?? 1) - 1;
+                const origLine = origIdx >= 0 && origIdx < lines.length ? lines[origIdx].replace(/\r$/, '') : undefined;
+                let origStillAtHome = false;
+                if (origLine !== undefined) {
+                    if (matchedByNorm) {
+                        origStillAtHome = !!aiRow.content_sha_norm && lineShaNorm(origLine) === aiRow.content_sha_norm;
+                    } else if (aiRow.content_sha) {
+                        origStillAtHome = lineSha(origLine) === aiRow.content_sha;
+                    }
+                }
+                if (origStillAtHome) aiRow = null;
+            }
 
             let entry: LineBlame;
             if (aiRow) {
@@ -291,12 +405,12 @@ function scopeToUncommittedWorkingTree(
             byFile.delete(file);
             continue;
         }
-        byFile.set(
-            file,
-            entries.filter(
-                e => changed.has(e.lineNumber) || e.contentShaAttributed === true,
-            ),
-        );
+        // Keep only lines present in the working-tree diff. No || contentShaAttributed
+        // here: committed AI lines that are verbatim-unchanged vs HEAD would match via
+        // content-SHA but must not show (they're not current changes). Drifted
+        // uncommitted lines are safe: a line new since HEAD always appears in
+        // `git diff HEAD` so its new position is in the changed set already.
+        byFile.set(file, entries.filter(e => changed.has(e.lineNumber)));
     }
 }
 
@@ -371,6 +485,23 @@ function buildLineBlame(
 
 function lineSha(s: string): string {
     return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+/** Mirrors the CLI's tools.NormalizeLineText: trim + collapse internal whitespace. */
+function normalizeLineText(s: string): string {
+    return s.trim().split(/\s+/).join(' ');
+}
+
+/**
+ * sha256 of the whitespace-normalized line text, or '' for blank/whitespace-only
+ * lines — mirrors content_sha_norm's record-time convention so blank lines never
+ * spuriously match each other. Fallback for content_sha when an autoformatter
+ * reflows an AI-written line (reindent, trailing whitespace) after the AI wrote it.
+ */
+function lineShaNorm(s: string): string {
+    const norm = normalizeLineText(s);
+    if (norm === '') return '';
+    return crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
 }
 
 /**
@@ -467,8 +598,10 @@ export class CliDataService implements vscode.Disposable {
         return this._repoRoot;
     }
     private refreshTimer?: NodeJS.Timeout;
+    private retryTimer?: NodeJS.Timeout;
     private saveListener?: vscode.Disposable;
     private openListener?: vscode.Disposable;
+    private changeListener?: vscode.Disposable;
     private activeEditorListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
     private startupTimers: NodeJS.Timeout[] = [];
@@ -500,6 +633,10 @@ export class CliDataService implements vscode.Disposable {
         }
         // Save (manual or autosave) flushes buffers so `git diff HEAD` matches disk.
         this.saveListener = vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh());
+        // AI agents write via workspace.applyEdit() without saving — catch those changes too.
+        this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+            if (e.document.uri.scheme === 'file') this.scheduleRefresh();
+        });
         // Re-load when editors open or become active (unsaved buffers are flushed in refresh).
         this.openListener = vscode.workspace.onDidOpenTextDocument((doc) => {
             if (doc.uri.scheme === 'file') this.scheduleRefresh();
@@ -508,11 +645,14 @@ export class CliDataService implements vscode.Disposable {
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
     }
 
-    /** Coalesce bursts (Save All, rapid tab switches) into one refresh. */
+    /** Coalesce bursts into one refresh, then retry once in case the daemon hasn't
+     *  written the edit row to SQLite yet when the first refresh fires. */
     scheduleRefresh(): void {
         if (this.disposed) return;
         if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        if (this.retryTimer) clearTimeout(this.retryTimer);
         this.refreshTimer = setTimeout(() => void this.refresh(), 300);
+        this.retryTimer  = setTimeout(() => void this.refresh(), 1500);
     }
 
     /**
@@ -619,7 +759,7 @@ export class CliDataService implements vscode.Disposable {
             const affectedFiles = new Set<string>([...changedSets.keys(), ...untrackedFiles]);
 
             // Re-locate AI lines by content_sha before scoping to git-diff line numbers.
-            applyContentShaAttribution(repoRoot, edits, affectedFiles, byFile);
+            applyContentShaAttribution(repoRoot, edits, affectedFiles, byFile, untrackedFiles);
 
             // Only uncommitted lines vs HEAD (clears gutter/status bar/Changes after commit).
             scopeToUncommittedWorkingTree(byFile, changedSets, untrackedFiles);
@@ -765,9 +905,11 @@ export class CliDataService implements vscode.Disposable {
     dispose(): void {
         this.disposed = true;
         if (this.refreshTimer) clearTimeout(this.refreshTimer);
+        if (this.retryTimer) clearTimeout(this.retryTimer);
         for (const t of this.startupTimers) clearTimeout(t);
         this.startupTimers = [];
         this.saveListener?.dispose();
+        this.changeListener?.dispose();
         this.openListener?.dispose();
         this.activeEditorListener?.dispose();
         this.workspaceListener?.dispose();
