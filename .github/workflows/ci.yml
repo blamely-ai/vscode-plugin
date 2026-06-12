@@ -35,28 +35,5 @@ jobs:
 
       - name: Run tests
         run: npm test
-
-  release:
-    needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Package VSIX (release compile + obfuscate, no source in bundle)
-        run: npm run compile:release && npm run obfuscate && npx @vscode/vsce package --no-dependencies --allow-missing-repository -o Blamely-${{ github.ref_name }}.vsix
-        
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: '*.vsix'
-          name: Release Blamely-${{ github.ref_name }}
-          generate_release_notes: true
+        # Releases are handled by release.yml (publishes the .vsix to the public
+        # RELEASE_REPO + marketplaces on a vX.Y.Z tag), so CI is build+test only.
