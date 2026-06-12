@@ -1,0 +1,135 @@
+name: Build & Publish Release (VS Code extension)
+
+# Mirrors the CLI's release workflow (blamely-cli/.github/workflows/release.yml):
+# on a vX.Y.Z tag, build the .vsix and publish it to the SAME public release
+# repo the CLI installers pull from, so `blamely install` can fetch the
+# extension straight from
+#   https://github.com/<RELEASE_REPO>/releases/download/latest/blamely.vsix
+# (blamelyVsixURL in blamely-cli/internal/install/editorext.go) — bypassing the
+# VS Code Marketplace entirely (no rate limits, no signature-download).
+#
+# How it triggers:
+#   - Push a tag of the form `vX.Y.Z`.
+#   - Or kick off manually via "Run workflow" (workflow_dispatch).
+#
+# Required secrets:
+#   RELEASE_REPO        owner/repo of the PUBLIC release repo (e.g. blamely-ai/blamely)
+#   RELEASE_REPO_TOKEN  fine-grained PAT with `contents: write` on RELEASE_REPO
+#
+# Optional secrets (each marketplace publish is skipped when its token is unset):
+#   VSCE_PAT   Azure DevOps PAT for the VS Code Marketplace publisher ("blamely")
+#   OVSX_PAT   Open VSX access token (Cursor / Antigravity gallery)
+#
+# Artifacts published to RELEASE_REPO:
+#   <tag> release:  blamely-<tag>.vsix
+#   latest release: blamely.vsix   (stable name the installer downloads)
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.4.9). Required when running manually.'
+        required: true
+        type: string
+
+permissions:
+  contents: read   # release writes go to RELEASE_REPO via the PAT
+
+jobs:
+  release:
+    name: build & publish .vsix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build VSIX
+        id: pkg
+        shell: bash
+        run: |
+          set -e
+          # Same pipeline as CI: release compile + JS obfuscation, then package
+          # with no TypeScript/source in the bundle (.vscodeignore governs that).
+          npm run compile:release
+          npm run obfuscate
+          versioned="blamely-${{ steps.tag.outputs.tag }}.vsix"
+          npx @vscode/vsce package --no-dependencies --allow-missing-repository -o "$versioned"
+          cp "$versioned" blamely.vsix   # stable name the CLI installer downloads
+          ls -la *.vsix
+          echo "versioned=$versioned" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSIONED: ${{ steps.pkg.outputs.versioned }}
+        shell: bash
+        run: |
+          set -e
+          if [ -z "$GH_TOKEN" ] || [ -z "$RELEASE_REPO" ]; then
+            echo "Missing required secrets: RELEASE_REPO and/or RELEASE_REPO_TOKEN."
+            exit 1
+          fi
+          # Versioned release (created by whichever workflow gets there first;
+          # the CLI release.yml may have already made it for this tag).
+          gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$RELEASE_REPO" \
+              --title "blamely $TAG" --generate-notes --verify-tag=false
+          gh release upload "$TAG" --repo "$RELEASE_REPO" --clobber "$VERSIONED"
+
+          # Rolling `latest` release — stable asset name for the installer.
+          gh release view latest --repo "$RELEASE_REPO" >/dev/null 2>&1 || \
+            gh release create latest --repo "$RELEASE_REPO" \
+              --title "Latest" \
+              --notes "Rolling build from the most recent release." \
+              --verify-tag=false
+          gh release upload latest --repo "$RELEASE_REPO" --clobber blamely.vsix
+
+      - name: Publish to VS Code Marketplace (optional)
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VERSIONED: ${{ steps.pkg.outputs.versioned }}
+        shell: bash
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT not set — skipping Marketplace publish."
+            exit 0
+          fi
+          npx @vscode/vsce publish --packagePath "$VERSIONED" --pat "$VSCE_PAT"
+
+      - name: Publish to Open VSX (optional)
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VERSIONED: ${{ steps.pkg.outputs.versioned }}
+        shell: bash
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "OVSX_PAT not set — skipping Open VSX publish."
+            exit 0
+          fi
+          npx ovsx publish "$VERSIONED" -p "$OVSX_PAT"
