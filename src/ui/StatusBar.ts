@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
 import { readDaemonPort, readDaemonSocket } from '../cli/paths';
+import { blameFileKey } from '../utils/WorkspacePaths';
 
 const HEARTBEAT_MS = 5_000;
 
@@ -34,6 +35,11 @@ export class StatusBar implements vscode.Disposable {
         this.heartbeatTimer = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
 
         this.disposables.push(cliData.onRefresh(() => void this.render()));
+        // The count is scoped to the active file, so re-render when the user
+        // switches editors (otherwise it would show the previous file's numbers).
+        this.disposables.push(
+            vscode.window.onDidChangeActiveTextEditor(() => void this.render()),
+        );
     }
 
     /** Ping /health, update the lamp, then re-render. */
@@ -48,7 +54,14 @@ export class StatusBar implements vscode.Disposable {
     }
 
     private async render(): Promise<void> {
-        const summary = this.blameMap.getSummary();
+        // Count the ACTIVE FILE only, so the status bar matches the gutter icons
+        // in front of the user (getSummaryForFile shares getBlame's path
+        // resolution and the gutter's per-line dedup). No file editor focused
+        // (e.g. a settings tab) → empty summary rather than a stale workspace total.
+        const editor = vscode.window.activeTextEditor;
+        const summary = editor && editor.document.uri.scheme === 'file'
+            ? this.blameMap.getSummaryForFile(blameFileKey(editor.document.uri))
+            : { aiChars: 0, humanChars: 0, aiLines: 0, humanLines: 0, totalLines: 0 };
         const lamp = this.daemonAlive
             ? '$(circle-filled) '
             : '$(circle-outline) ';

@@ -1,0 +1,79 @@
+name: Publish to Open VSX
+
+# Standalone pipeline that builds the .vsix and publishes it to Open VSX
+# (https://open-vsx.org/extension/blamely/blamely) — the registry Cursor and
+# Antigravity install from, and the source `blamely install` now pulls from since
+# the VS Code Marketplace delisted the extension. Unlike release.yml (which also
+# uploads to the GitHub release repo and VS Code Marketplace), this job only
+# publishes to Open VSX.
+#
+# Triggers:
+#   - Push a tag `vX.Y.Z` (keep it in sync with package.json "version").
+#   - Or run manually via "Run workflow" (workflow_dispatch).
+#
+# Required secret:
+#   OVSX_PAT   Open VSX access token for the "blamely" namespace
+#              (create at https://open-vsx.org/user-settings/tokens; the namespace
+#               must exist — `npx ovsx create-namespace blamely -p $OVSX_PAT` once)
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openvsx-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: ovsx publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify token is configured
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::error::OVSX_PAT secret is not set — cannot publish to Open VSX."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build VSIX
+        id: pkg
+        shell: bash
+        run: |
+          set -e
+          # Same release pipeline as CI: release compile + JS obfuscation, then
+          # package with no TypeScript/source in the bundle (.vscodeignore governs).
+          npm run compile:release
+          npm run obfuscate
+          version="$(node -p "require('./package.json').version")"
+          vsix="blamely-${version}.vsix"
+          npx @vscode/vsce package --no-dependencies --allow-missing-repository -o "$vsix"
+          ls -la "$vsix"
+          echo "vsix=$vsix" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VSIX: ${{ steps.pkg.outputs.vsix }}
+        run: npx ovsx publish "$VSIX" -p "$OVSX_PAT"

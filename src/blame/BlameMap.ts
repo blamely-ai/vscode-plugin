@@ -31,13 +31,57 @@ export interface PendingAiLine {
     contentSha?: string | null;
 }
 
+export interface BlameSummary {
+    aiChars: number;
+    humanChars: number;
+    aiLines: number;
+    humanLines: number;
+    totalLines: number;
+}
+
+function emptySummary(): BlameSummary {
+    return { aiChars: 0, humanChars: 0, aiLines: 0, humanLines: 0, totalLines: 0 };
+}
+
+/** Fold one file's entries into `acc`: dedup by line (keep the row with the most
+ *  chars, ties to the later row) then tally AI vs Human. Shared by getSummary and
+ *  getSummaryForFile so the workspace total and the per-file count stay identical. */
+function addEntriesToSummary(acc: BlameSummary, entries: LineBlame[]): void {
+    const byLine = new Map<number, LineBlame>();
+    for (const e of entries) {
+        if (e.changeType === 'DELETE') continue;
+        const existing = byLine.get(e.lineNumber);
+        const eTotal = e.aiChars + e.humanChars;
+        const curTotal = existing ? existing.aiChars + existing.humanChars : 0;
+        if (!existing || eTotal >= curTotal) {
+            byLine.set(e.lineNumber, e);
+        }
+    }
+    for (const e of byLine.values()) {
+        acc.aiChars += e.aiChars;
+        acc.humanChars += e.humanChars;
+        if (e.authorType === 'AI') acc.aiLines++;
+        else acc.humanLines++;
+    }
+}
+
 const PENDING_AI_TTL_MS = 12_000;
+
+// How long a line stays in the neutral "detecting" state before it resolves to
+// Human by default. Matches the daemon's worst-case record lag (CliDataService's
+// refresh retry tail) so an agent apply has time to be recorded as AI; if no AI
+// record arrives within the window, the line falls back to Human.
+const DETECTING_TTL_MS = 8_000;
 
 export class BlameMap {
     private map = new Map<string, LineBlame[]>();
     /** Skip destructive refresh while an optimistic AI paint is fresher. */
     lastOptimisticPaintMs = 0;
     private pendingAi = new Map<string, Map<number, PendingAiLine>>();
+    // Lines awaiting an AI-vs-Human decision (file -> line -> expiry ms). Set when
+    // an AI-likely insert (agent apply) lands so the gutter shows a neutral
+    // "detecting" icon instead of defaulting to Human and then flipping to AI.
+    private detecting = new Map<string, Map<number, number>>();
 
     getBlame(filePath: string): LineBlame[] {
         const key = filePath.replace(/\\/g, '/');
@@ -112,6 +156,7 @@ export class BlameMap {
     /** Clear overlay state after commit when there is no uncommitted work left. */
     clearAllPendingAi(): void {
         this.pendingAi.clear();
+        this.detecting.clear();
     }
 
     private pruneExpiredPending(): void {
@@ -124,47 +169,91 @@ export class BlameMap {
         }
     }
 
-    getSummary(restrictToBlameKeys?: Set<string>): {
-        aiChars: number;
-        humanChars: number;
-        aiLines: number;
-        humanLines: number;
-        totalLines: number;
-    } {
-        let aiChars = 0;
-        let humanChars = 0;
-        let aiLines = 0;
-        let humanLines = 0;
+    /** Mark [startLine,endLine] as awaiting an AI-vs-Human decision. */
+    markDetecting(filePath: string, startLine: number, endLine: number): void {
+        const key = filePath.replace(/\\/g, '/');
+        const expiresAt = Date.now() + DETECTING_TTL_MS;
+        let byLine = this.detecting.get(key);
+        if (!byLine) {
+            byLine = new Map();
+            this.detecting.set(key, byLine);
+        }
+        for (let ln = startLine; ln <= endLine; ln++) byLine.set(ln, expiresAt);
+    }
 
+    /** Non-expired detecting line numbers for a file. Mirrors getBlame's suffix
+     *  fallback so a repo-relative mark resolves against a workspace-relative key. */
+    detectingLinesFor(filePath: string): Set<number> {
+        this.pruneExpiredDetecting();
+        const key = filePath.replace(/\\/g, '/');
+        const direct = this.detecting.get(key);
+        if (direct?.size) return new Set(direct.keys());
+        const slash = key.lastIndexOf('/');
+        if (slash >= 0) {
+            const suffix = key.slice(slash + 1);
+            for (const [k, byLine] of this.detecting) {
+                if ((k === suffix || k.endsWith('/' + suffix)) && byLine.size) return new Set(byLine.keys());
+            }
+        }
+        return new Set();
+    }
+
+    /** Resolve one line out of detecting (e.g. it just resolved to AI). */
+    clearDetectingLine(filePath: string, line: number): void {
+        const key = filePath.replace(/\\/g, '/');
+        const direct = this.detecting.get(key);
+        if (direct) {
+            direct.delete(line);
+            if (!direct.size) this.detecting.delete(key);
+            return;
+        }
+        const slash = key.lastIndexOf('/');
+        if (slash >= 0) {
+            const suffix = key.slice(slash + 1);
+            for (const [k, byLine] of this.detecting) {
+                if (k === suffix || k.endsWith('/' + suffix)) {
+                    byLine.delete(line);
+                    if (!byLine.size) this.detecting.delete(k);
+                    return;
+                }
+            }
+        }
+    }
+
+    private pruneExpiredDetecting(): void {
+        const now = Date.now();
+        for (const [path, byLine] of this.detecting) {
+            for (const [ln, exp] of byLine) {
+                if (exp <= now) byLine.delete(ln);
+            }
+            if (byLine.size === 0) this.detecting.delete(path);
+        }
+    }
+
+    getSummary(restrictToBlameKeys?: Set<string>): BlameSummary {
+        const acc = emptySummary();
         for (const [filePath, entries] of this.map) {
             if (restrictToBlameKeys && !restrictToBlameKeys.has(filePath)) {
                 continue;
             }
-            const byLine = new Map<number, LineBlame>();
-            for (const e of entries) {
-                if (e.changeType === 'DELETE') continue;
-                const existing = byLine.get(e.lineNumber);
-                const eTotal = e.aiChars + e.humanChars;
-                const curTotal = existing ? existing.aiChars + existing.humanChars : 0;
-                if (!existing || eTotal >= curTotal) {
-                    byLine.set(e.lineNumber, e);
-                }
-            }
-            for (const e of byLine.values()) {
-                aiChars += e.aiChars;
-                humanChars += e.humanChars;
-                if (e.authorType === 'AI') aiLines++;
-                else humanLines++;
-            }
+            addEntriesToSummary(acc, entries);
         }
+        acc.totalLines = acc.aiLines + acc.humanLines;
+        return acc;
+    }
 
-        return {
-            aiChars,
-            humanChars,
-            aiLines,
-            humanLines,
-            totalLines: aiLines + humanLines,
-        };
+    /**
+     * AI/Human summary for a SINGLE file, matching what the gutter shows. Uses
+     * getBlame's path resolution (direct, then repo-relative suffix) and the
+     * same per-line dedup as getSummary; blank lines are already absent because
+     * they're stripped at map-population time (CliDataService). The status bar
+     * calls this so its count equals the icons visible in the active editor.
+     */
+    getSummaryForFile(filePath: string): BlameSummary {
+        const acc = emptySummary();
+        addEntriesToSummary(acc, this.getBlame(filePath));
+        acc.totalLines = acc.aiLines + acc.humanLines;
+        return acc;
     }
 
     clear(): void {

@@ -4,6 +4,20 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-15
+
+### Added
+
+- **Antigravity (Gemini) inline completions attributed as AI** — accepting an inline ("implicit") Gemini suggestion in the Antigravity IDE is now recorded as `gemini` / `completion` instead of falling through to Human. Antigravity applies completions via `applyEdit` with no command, so neither the inline-suggest command nor the multi-line agent-apply path caught them; a single non-paste insert of ≥ 8 non-whitespace characters on the Antigravity host (where Gemini is the only assistant) is now recognized as a completion accept. Gated to the Antigravity host, so VS Code and Cursor are unaffected.
+
+### Fixed
+
+- **Status bar count now matches the gutter** — the AI/Human status bar counted every blame entry across the whole workspace, including blank lines, while the gutter shows only the active file and skips blanks. The status bar now reports the **active file only** (`getSummaryForFile`, sharing the gutter's path resolution and per-line dedup), and blank-line blame is stripped at map-population time so both views agree on the same set of lines.
+
+### Changed
+
+- **Extension install source is Open VSX** — `blamely install` now downloads the `.vsix` from Open VSX and installs it by path, which is registry-independent: it works on VS Code proper (delisted from the Microsoft Marketplace) as well as Cursor/Antigravity, and falls back to the registry id when the download is unavailable.
+
 ## [1.1.0] - 2026-05-13
 
 ### Added

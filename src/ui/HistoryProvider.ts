@@ -160,8 +160,8 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
     }
 
     private parseCliReport(note: CliNote, author: string, authorDate: string): CommitReport {
-        const ai = note.totals.ai_lines;
-        const human = note.totals.human_lines;
+        const ai = note.totals.ai_added_lines ?? note.totals.ai_lines ?? 0;
+        const human = note.totals.human_added_lines ?? note.totals.human_lines ?? 0;
         const total = ai + human;
         const aiPct = total > 0 ? `${Math.round((ai / total) * 100)}%` : '0%';
         const models = modelsFromNote(note);
@@ -169,7 +169,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         const totalAdded = ai + human;
         return {
             commitHash: note.commit,
-            commitMessage: '',
+            commitMessage: note.message ?? '',
             branch: '',
             generatedAt: authorDate,
             author,
@@ -186,7 +186,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
             interactionTypes,
             timeWaitingForAiMs: 0,
             firstStartCodingTime: '',
-            codingTimeMs: 0,
+            codingTimeMs: Math.round((note.coding_time_nanos ?? 0) / 1e6),
             modelCount: models.length,
         };
     }
@@ -208,313 +208,287 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
 
     private static readonly CSS = `
 :root {
-  --bg-primary:    var(--vscode-editor-background, #1e1f22);
-  --bg-secondary:  var(--vscode-sideBar-background, #2b2d30);
-  --bg-elevated:   var(--vscode-editorGroupHeader-tabsBackground, #313438);
-  --bg-hover:      var(--vscode-list-hoverBackground, #383b40);
-  --border:        var(--vscode-panel-border, #3d4045);
-  --border-subtle: #2e3034;
+  --ai:        #5aa2f0;
+  --ai-soft:   rgba(90,162,240,.14);
+  --human:     #5fb56b;
+  --human-soft:rgba(95,181,107,.14);
+  --del:       #e8707a;
+  --amber:     #e9a23b;
+  --violet:    #a78bd6;
 
-  --text-primary:  var(--vscode-foreground, #dfe1e5);
-  --text-secondary:var(--vscode-descriptionForeground, #9da0a8);
-  --text-muted:    #6b6f76;
-  --text-code:     #c9d1d9;
+  --txt:   var(--vscode-foreground, #e7e9ee);
+  --txt-2: var(--vscode-descriptionForeground, #9aa1ad);
+  --txt-3: rgba(127,132,142,.85);
 
-  --ai-color:      #4d9de0;
-  --ai-glow:       rgba(77,157,224,0.18);
-  --human-color:   #56a064;
-  --human-glow:    rgba(86,160,100,0.15);
-  --delete-color:  #e06c75;
-  --delete-glow:   rgba(224,108,117,0.15);
+  /* Theme-agnostic elevation: translucent overlays read well on any VS Code
+     theme (the sidebar bg shows through), giving the soft "floating card" feel. */
+  --surface:    rgba(255,255,255,.025);
+  --surface-2:  rgba(255,255,255,.05);
+  --surface-h:  rgba(255,255,255,.07);
+  --line:       rgba(255,255,255,.08);
+  --line-soft:  rgba(255,255,255,.05);
+  --shadow:     0 1px 2px rgba(0,0,0,.28), 0 14px 32px -18px rgba(0,0,0,.6);
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.22);
 
-  --accent-blue:   #4d9de0;
-  --accent-green:  #56a064;
-  --accent-orange: #e5943a;
-  --accent-purple: #9e7bc4;
+  --r:    14px;
+  --r-md: 11px;
+  --r-sm: 8px;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-
-  --mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'Fira Code', monospace);
-  --sans: var(--vscode-font-family, 'Inter', -apple-system, sans-serif);
+  --mono: var(--vscode-editor-font-family, 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace);
+  --sans: var(--vscode-font-family, -apple-system, 'Inter', system-ui, sans-serif);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: var(--sans);
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--vscode-sideBar-background, #1e1f22);
+  color: var(--txt);
   font-size: 13px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ── header ─────────────────────────────────────────────────────────────── */
 .tool-header {
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  height: 38px;
+  display: flex; align-items: center; gap: 9px;
+  padding: 14px 18px 4px;
   user-select: none;
 }
 .tool-header .icon {
-  width: 16px; height: 16px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: var(--ai-soft);
+  border: 1px solid rgba(90,162,240,.22);
 }
 .tool-header .icon svg { width: 14px; height: 14px; }
 .tool-header h1 {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: 0.02em;
-  flex: 1;
+  font-size: 13px; font-weight: 650; color: var(--txt);
+  letter-spacing: .01em; flex: 1;
 }
 .tool-actions { display: flex; gap: 2px; }
 .tool-btn {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-muted);
-  padding: 4px 6px; border-radius: var(--radius-sm);
-  font-size: 11px; transition: color .15s, background .15s;
+  background: none; border: none; cursor: pointer; color: var(--txt-3);
+  width: 28px; height: 28px; border-radius: 8px; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .15s, background .15s;
 }
-.tool-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.tool-btn:hover { color: var(--txt); background: var(--surface-2); }
 
-.panel { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.panel { padding: 10px 18px 22px; display: flex; flex-direction: column; gap: 18px; }
 .history-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.35;
-  margin: 0;
+  font-size: 11.5px; color: var(--txt-3); line-height: 1.45; margin: 0;
 }
-.history-hint code { font-family: var(--mono); font-size: 10px; }
+.history-hint code {
+  font-family: var(--mono); font-size: 10.5px;
+  background: var(--surface-2); padding: 1px 5px; border-radius: 5px;
+}
 
-.overview-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 10px;
+/* ── hero (overview) ────────────────────────────────────────────────────── */
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 16px;
 }
-.summary-row {
-  display: flex; align-items: center; gap: 10px;
+.hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.hero-pct {
+  font-size: 38px; font-weight: 720; line-height: 1; letter-spacing: -.02em;
+  background: linear-gradient(135deg, #8cc0ff 0%, var(--ai) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.summary-left {
-  display: flex; align-items: center; gap: 8px;
+.hero-sub { font-size: 11px; color: var(--txt-2); margin-top: 4px; letter-spacing: .02em; }
+.hero-tag {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  color: var(--ai); background: var(--ai-soft);
+  border: 1px solid rgba(90,162,240,.25);
+  padding: 4px 9px; border-radius: 999px; white-space: nowrap;
 }
-.summary-right {
-  margin-left: auto;
-  display: flex; align-items: center; gap: 12px;
-}
-.meta-chip {
-  display: flex; align-items: center; gap: 5px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.meta-chip .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-}
-.meta-chip.commits .dot { background: var(--accent-orange); }
-.meta-chip.files   .dot { background: var(--accent-blue); }
-.meta-chip.time    .dot { background: var(--accent-green); }
-.meta-chip.wait    .dot { background: var(--accent-purple); }
-.stat-badge {
-  font-family: var(--mono);
-  font-size: 12px; font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 20px;
-  letter-spacing: -0.01em;
-}
-.stat-badge.ai    { color: var(--ai-color);     background: var(--ai-glow);     border: 1px solid rgba(77,157,224,.25); }
-.stat-badge.human { color: var(--human-color);  background: var(--human-glow);  border: 1px solid rgba(86,160,100,.25); }
-.stat-badge.del   { color: var(--delete-color); background: var(--delete-glow); border: 1px solid rgba(224,108,117,.25); }
+.ratio { display: flex; height: 9px; border-radius: 999px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.ratio .seg { transition: width .7s cubic-bezier(.4,0,.2,1); }
+.ratio .seg.ai    { background: linear-gradient(90deg, #4a93ec, #8cc0ff); }
+.ratio .seg.human { background: linear-gradient(90deg, #4ea75c, #82d48d); }
+.hero-counts { display: flex; gap: 18px; }
+.count { display: flex; flex-direction: column; gap: 3px; }
+.count-val { font-size: 16px; font-weight: 680; font-family: var(--mono); letter-spacing: -.01em; }
+.count-val.ai { color: var(--ai); }
+.count-val.human { color: var(--human); }
+.count-key { font-size: 10px; color: var(--txt-3); display: flex; align-items: center; gap: 5px; text-transform: uppercase; letter-spacing: .07em; }
+.count-key .dot { width: 6px; height: 6px; border-radius: 50%; }
+.count-key.ai .dot { background: var(--ai); }
+.count-key.human .dot { background: var(--human); }
 
-.seg-bar {
-  display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 1.5px;
+/* stat strip under the hero */
+.stat-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; padding-top: 14px; border-top: 1px solid var(--line-soft);
 }
-.seg-bar .seg {
-  border-radius: 2px;
-  transition: width .6s cubic-bezier(.4,0,.2,1);
-}
-.seg-bar .seg.ai    { background: linear-gradient(90deg, #3a8fd4, #5baee8); }
-.seg-bar .seg.human { background: linear-gradient(90deg, #4a9458, #63ba72); }
-.seg-bar .seg.del   { background: linear-gradient(90deg, #c55862, #e07a82); }
+.stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stat-num { font-family: var(--mono); font-size: 14px; font-weight: 640; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-key { font-size: 9.5px; color: var(--txt-3); text-transform: uppercase; letter-spacing: .07em; }
+.add { color: var(--human); }
+.del { color: var(--del); }
+.del-ai { color: var(--ai); }
+.hero-wait { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--line-soft); font-family: var(--mono); font-size: 11px; color: var(--txt-2); }
+.hero-wait .k { display: flex; align-items: center; gap: 5px; color: var(--txt-3); }
 
+/* ── section labels ─────────────────────────────────────────────────────── */
 .section-label {
-  font-size: 10px; font-weight: 600; letter-spacing: .09em;
-  text-transform: uppercase; color: var(--text-muted);
-  padding-left: 2px;
-  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 650; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--txt-3);
+  display: flex; align-items: center; gap: 10px; padding: 0 2px;
 }
-.section-label::after {
-  content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+.section-label .count-pill {
+  font-family: var(--mono); font-weight: 600; color: var(--txt-2);
+  background: var(--surface-2); border-radius: 999px; padding: 1px 7px; letter-spacing: 0;
 }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--line-soft); }
 
-.models-grid { display: flex; flex-direction: column; gap: 7px; }
+/* ── model cards ────────────────────────────────────────────────────────── */
+.models-grid { display: flex; flex-direction: column; gap: 9px; }
 .model-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background .15s, border-color .15s, transform .12s;
-  position: relative; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+  padding: 13px 14px; cursor: default; position: relative; overflow: hidden;
+  transition: background .16s, border-color .16s, transform .16s, box-shadow .16s;
 }
 .model-card::before {
-  content: '';
-  position: absolute; left: 0; top: 0; bottom: 0;
-  width: 3px;
-  border-radius: 2px 0 0 2px;
-  opacity: 0; transition: opacity .2s;
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
 }
-.model-card:hover { background: var(--bg-hover); border-color: var(--border); }
-.model-card:hover::before { opacity: 1; }
-.model-card.rank-1::before { background: var(--ai-color); }
-.model-card.rank-2::before { background: var(--accent-green); }
-.model-card.rank-3::before { background: var(--accent-orange); }
+.model-card.rank-1::before { background: linear-gradient(var(--ai), #8cc0ff); }
+.model-card.rank-2::before { background: linear-gradient(var(--human), #82d48d); }
+.model-card.rank-3::before { background: linear-gradient(var(--amber), #f3c073); }
+.model-card:hover { background: var(--surface-h); border-color: var(--line); transform: translateY(-1px); box-shadow: var(--shadow); }
 
-.model-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 7px;
-}
+.model-header { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
 .rank-badge {
-  font-family: var(--mono); font-size: 9px; font-weight: 700;
-  width: 18px; height: 18px; border-radius: 4px;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
 }
-.rank-1 .rank-badge { background: rgba(77,157,224,.2); color: var(--ai-color); }
-.rank-2 .rank-badge { background: rgba(86,160,100,.2); color: var(--accent-green); }
-.rank-3 .rank-badge { background: rgba(229,148,58,.2);  color: var(--accent-orange); }
-
-.model-name {
-  font-family: var(--mono); font-size: 12px; font-weight: 600;
-  color: var(--text-primary); flex: 1;
-}
-.model-meta {
-  font-size: 11px; color: var(--text-muted);
-  display: flex; gap: 10px;
-}
+.rank-1 .rank-badge { background: var(--ai-soft); color: var(--ai); }
+.rank-2 .rank-badge { background: var(--human-soft); color: var(--human); }
+.rank-3 .rank-badge { background: rgba(233,162,59,.16); color: var(--amber); }
+.model-name { font-family: var(--mono); font-size: 12.5px; font-weight: 620; color: var(--txt); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-meta { font-size: 11px; color: var(--txt-3); display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .model-meta span { font-family: var(--mono); }
-.model-meta .highlight { color: var(--text-secondary); }
+.model-meta .highlight { color: var(--txt-2); font-weight: 600; }
+.model-bar-track { height: 5px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.model-bar-fill { height: 100%; border-radius: 999px; transition: width .8s cubic-bezier(.4,0,.2,1) .1s; }
+.rank-1 .model-bar-fill { background: linear-gradient(90deg, #4a93ec, #8cc0ff); }
+.rank-2 .model-bar-fill { background: linear-gradient(90deg, #4ea75c, #82d48d); }
+.rank-3 .model-bar-fill { background: linear-gradient(90deg, #d6912f, #f3c073); }
 
-.model-bar-track {
-  height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden;
+/* ── commit cards (replaces the cramped table) ──────────────────────────── */
+.commit-list { display: flex; flex-direction: column; gap: 9px; }
+.commit {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+  padding: 12px 14px; cursor: default;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: background .16s, border-color .16s, transform .16s, box-shadow .16s;
 }
-.model-bar-fill {
-  height: 100%; border-radius: 2px;
-  transition: width .7s cubic-bezier(.4,0,.2,1) .1s;
-}
-.rank-1 .model-bar-fill { background: linear-gradient(90deg, #3a8fd4 0%, #7ec8f8 100%); }
-.rank-2 .model-bar-fill { background: linear-gradient(90deg, #4a9458 0%, #7ad485 100%); }
-.rank-3 .model-bar-fill { background: linear-gradient(90deg, #c97a28 0%, #e8b060 100%); }
-
-.commits-table {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-.table-head {
-  display: grid;
-  grid-template-columns: 62px 75px 1fr 60px 60px 120px 60px 80px;
-  padding: 7px 12px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
-  gap: 8px;
-}
-.th {
-  font-size: 10px; font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--text-muted);
-}
-.th.right { text-align: right; }
-
-.commit-row {
-  display: grid;
-  grid-template-columns: 62px 75px 1fr 60px 60px 120px 60px 80px;
-  padding: 8px 12px; gap: 8px;
-  align-items: center;
-  border-bottom: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: background .12s;
-}
-.commit-row:last-child { border-bottom: none; }
-.commit-row:hover { background: var(--bg-hover); }
-
+.commit:hover { background: var(--surface-h); transform: translateY(-1px); box-shadow: var(--shadow); }
+.commit-top { display: flex; align-items: center; gap: 9px; }
 .commit-hash {
-  font-family: var(--mono); font-size: 11px; font-weight: 600;
-  color: var(--accent-blue);
-  text-decoration: none;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 650; color: var(--ai);
+  background: var(--ai-soft); border-radius: 6px; padding: 2px 7px; flex-shrink: 0;
 }
-
-.commit-msg {
-  font-size: 12px; color: var(--text-primary);
+.commit-msg { font-size: 12.5px; color: var(--txt); font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.commit-branch {
+  font-family: var(--mono); font-size: 9.5px; color: var(--violet);
+  background: rgba(167,139,214,.14); border: 1px solid rgba(167,139,214,.22);
+  border-radius: 999px; padding: 2px 8px; flex-shrink: 0; max-width: 90px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.commit-ai-bar { height: 5px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.commit-ai-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4a93ec, #8cc0ff); transition: width .7s cubic-bezier(.4,0,.2,1); }
+.commit-stats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cstat { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; color: var(--txt-2); }
+.cstat .k { color: var(--txt-3); }
+.cstat.ai-pct { margin-left: auto; color: var(--ai); font-weight: 650; }
+.cstat .add { color: var(--human); }
+.cstat .del { color: var(--del); }
+.cstat .del-ai { color: var(--ai); }
+.commit-meta { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.model-chip { font-family: var(--mono); font-size: 9.5px; font-weight: 600; color: var(--txt-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+.gt-chip { font-family: var(--mono); font-size: 9.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; text-transform: capitalize; }
+.gt-chip.gt-chat { color: var(--amber); background: rgba(233,162,59,.14); border: 1px solid rgba(233,162,59,.22); }
+.gt-chip.gt-completion { color: var(--ai); background: var(--ai-soft); border: 1px solid rgba(90,162,240,.22); }
+.gt-chip.gt-cli { color: var(--violet); background: rgba(167,139,214,.14); border: 1px solid rgba(167,139,214,.22); }
 
-.diff-add  { font-family: var(--mono); font-size: 11px; color: var(--human-color); text-align: right; }
-.diff-del  { font-family: var(--mono); font-size: 11px; text-align: right; }
-.diff-del-ai    { color: var(--ai-color); }
-.diff-del-human { color: var(--delete-color); }
-.coding-time { font-family: var(--mono); font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
-.commit-author { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 75px; }
-
-.mini-bar-cell { display: flex; align-items: center; gap: 5px; }
-.mini-bar-track {
-  flex: 1; height: 4px; background: var(--bg-elevated);
-  border-radius: 2px; overflow: hidden;
-}
-.mini-bar-fill {
-  height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, #3a8fd4, #7ec8f8);
-}
-.mini-pct {
-  font-family: var(--mono); font-size: 10px;
-  font-weight: 600; color: var(--ai-color);
-  min-width: 36px; text-align: right;
-}
-
-.tag {
-  display: inline-flex; align-items: center;
-  padding: 2px 6px; border-radius: 3px;
-  font-size: 10px; font-weight: 500;
-  white-space: nowrap;
-}
-.tag.type-completion { background: rgba(158,123,196,.15); color: var(--accent-purple); border: 1px solid rgba(158,123,196,.25); }
-.tag.type-chat_panel { background: rgba(229,148,58,.12); color: var(--accent-orange); border: 1px solid rgba(229,148,58,.2); }
-.tag.type-chat_inline { background: rgba(77,157,224,.15); color: var(--accent-blue); border: 1px solid rgba(77,157,224,.25); }
-.tag.type-branch { background: rgba(158,123,196,.15); color: var(--accent-purple); border: 1px solid rgba(158,123,196,.25); }
-.tag.type-default { background: rgba(158,123,196,.15); color: var(--accent-purple); border: 1px solid rgba(158,123,196,.25); }
-
-.panel-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 2px;
-}
-.footer-info { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+/* ── footer ─────────────────────────────────────────────────────────────── */
+.panel-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 2px; }
+.footer-info { font-size: 10.5px; color: var(--txt-3); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .refresh-btn {
-  background: none; border: 1px solid var(--border);
-  color: var(--text-secondary); cursor: pointer;
-  padding: 4px 10px; border-radius: var(--radius-sm);
-  font-size: 11px; font-family: var(--sans);
-  transition: all .15s; display: flex; align-items: center; gap: 5px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--txt-2); cursor: pointer; flex-shrink: 0;
+  padding: 6px 12px; border-radius: 999px; font-size: 11px; font-family: var(--sans); font-weight: 550;
+  transition: all .15s; display: flex; align-items: center; gap: 6px;
 }
-.refresh-btn:hover { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border); }
+.refresh-btn:hover { background: var(--surface-h); color: var(--txt); }
 
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.overview-card { animation: fadeUp .3s ease both; }
-.models-grid   { animation: fadeUp .3s ease .05s both; }
-.commits-table { animation: fadeUp .3s ease .1s both; }
+/* ── overview card (IntelliJ-style) ── */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 11px; }
+.ov-sub { font-size: 11.5px; color: var(--txt-2); }
+.ov-sub .mono { font-family: var(--mono); color: var(--ai); font-weight: 600; }
+.ov-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.badge { font-family: var(--mono); font-size: 11px; font-weight: 650; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.badge.ai { color: var(--ai); background: var(--ai-soft); border: 1px solid rgba(90,162,240,.28); }
+.badge.human { color: var(--human); background: var(--human-soft); border: 1px solid rgba(95,181,107,.28); }
+.badge.del { color: var(--del); background: rgba(232,112,122,.13); border: 1px solid rgba(232,112,122,.26); }
+.chips { display: flex; flex-wrap: wrap; gap: 9px 14px; }
+.chip { font-size: 10.5px; color: var(--txt-2); display: flex; align-items: center; gap: 5px; }
+.chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.chip.orange::before { background: var(--amber); }
+.chip.blue::before { background: var(--ai); }
+.chip.green::before { background: var(--human); }
+.chip.purple::before { background: var(--violet); }
+.ov-label { font-size: 10px; color: var(--txt-3); text-transform: uppercase; letter-spacing: .06em; margin-top: 3px; }
+.ov-label .ins { color: var(--human); font-family: var(--mono); font-weight: 650; text-transform: none; }
+.ov-label .del { color: var(--del); font-family: var(--mono); font-weight: 650; text-transform: none; }
+.ov-label .vsep { color: var(--line); }
+.bar2 { display: flex; height: 7px; border-radius: 999px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.bar2 .ai { background: linear-gradient(90deg, #4a93ec, #8cc0ff); }
+.bar2 .human { background: linear-gradient(90deg, #4ea75c, #82d48d); }
+.idbar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.idbar .ins { background: var(--human); }
+.idbar .d-ai { background: var(--ai); }
+.idbar .d-h { background: var(--del); }
+.ov-divider { height: 1px; background: var(--line-soft); margin: 3px 0; }
 
-::-webkit-scrollbar { width: 6px; }
+/* ── commits table (mirrors IntelliJ columns) ── */
+.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-sm); overflow-x: auto; }
+.ctable { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+.ctable th { font-size: 9px; font-weight: 650; letter-spacing: .06em; color: var(--txt-3); text-transform: uppercase; text-align: left; padding: 9px 10px; background: var(--surface-2); white-space: nowrap; }
+.ctable th.r, .ctable td.r { text-align: right; }
+.ctable td { padding: 9px 10px; border-top: 1px solid var(--line-soft); white-space: nowrap; color: var(--txt); }
+.ctable tbody tr:hover { background: var(--surface-h); }
+.ctable .hash { font-family: var(--mono); font-weight: 650; color: var(--ai); }
+.ctable .author { color: var(--txt-2); max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+.ctable .msg { color: var(--txt); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.ctable .add { color: var(--human); font-family: var(--mono); }
+.ctable td.del { color: var(--del); font-family: var(--mono); }
+.ctable .time { color: var(--txt-2); font-family: var(--mono); }
+.ctable .aipct { display: flex; align-items: center; gap: 6px; min-width: 96px; }
+.ctable .mini { flex: 1; height: 4px; min-width: 44px; background: var(--surface-2); border-radius: 999px; overflow: hidden; display: inline-block; }
+.ctable .mini-fill { display: block; height: 100%; background: linear-gradient(90deg, #4a93ec, #8cc0ff); border-radius: 999px; }
+.ctable .aip { font-family: var(--mono); font-weight: 650; color: var(--ai); min-width: 30px; text-align: right; }
+.branch { font-family: var(--mono); font-size: 9.5px; color: var(--amber); background: rgba(233,162,59,.13); border: 1px solid rgba(233,162,59,.22); border-radius: 999px; padding: 2px 8px; }
+.branch.b-main { color: var(--violet); background: rgba(167,139,214,.14); border-color: rgba(167,139,214,.22); }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.hero        { animation: fadeUp .34s cubic-bezier(.4,0,.2,1) both; }
+.models-grid { animation: fadeUp .34s cubic-bezier(.4,0,.2,1) .05s both; }
+.commit-list { animation: fadeUp .34s cubic-bezier(.4,0,.2,1) .1s both; }
+
+::-webkit-scrollbar { width: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--surface-h); }
 `;
 
     private buildEmptyHtml(message: string): string {
@@ -528,8 +502,8 @@ body {
 </div>
 <div class="panel">
   <p class="history-hint">Shows commits that have a Blamely report in git notes (<code>refs/notes/blamely</code>) — typically after you commit with the extension active.</p>
-  <div class="overview-card">
-    <p style="color:var(--text-muted);font-size:12px">${this.esc(message)}</p>
+  <div class="hero">
+    <p style="color:var(--txt-2);font-size:12.5px">${this.esc(message)}</p>
   </div>
 </div>
 <script>const vscodeApi=acquireVsCodeApi();function refreshHistory(){vscodeApi.postMessage({command:'refresh'});}</script>
@@ -563,109 +537,113 @@ body {
         h += `<div class="panel">`;
         h += `<p class="history-hint">Committed work only: each row is a past commit with a Blamely snapshot in <code>refs/notes/blamely</code>. Current edits stay in <strong>Blamely: Changes</strong>.</p>`;
 
-        // Overview card
-        h += `<div class="overview-card">`;
-        h += `<div class="summary-row">`;
-        h += `<div class="summary-left">`;
-        h += `<span class="stat-badge ai">${data.totalAiLines} AI lines &middot; ${aiPct.toFixed(1)}%</span>`;
-        h += `<span class="stat-badge human">${data.totalHumanLines} Human &middot; ${humanPct.toFixed(1)}%</span>`;
-        h += `</div>`;
-        h += `<div class="summary-right">`;
-        h += `<span class="meta-chip commits"><span class="dot"></span>${data.commits.length} commits</span>`;
-        h += `<span class="meta-chip files"><span class="dot"></span>${data.totalFiles} files</span>`;
-        if (data.totalCodingTimeMs > 0) {
-            h += `<span class="meta-chip time"><span class="dot"></span>Coding: ${this.formatDuration(data.totalCodingTimeMs)}</span>`;
-        }
-        if (data.totalWaitingMs > 0) {
-            h += `<span class="meta-chip wait"><span class="dot"></span>AI wait: ${this.formatDuration(data.totalWaitingMs)}</span>`;
-        }
-        h += `</div>`;
-        h += `</div>`;
+        // ── Overview: latest commit (mirrors the IntelliJ History design) ──
+        const latest = data.commits[0];
+        const latestAdd = latest.aiLinesAdded + latest.humanLinesAdded;
+        const latestAiPctAdd = latestAdd > 0 ? (100.0 * latest.aiLinesAdded / latestAdd) : 0;
+        const latestHumanPctAdd = 100.0 - latestAiPctAdd;
+        const latestAiDel = latest.aiLinesDeleted;
+        const latestHumanDel = Math.max(0, latest.totalLinesDeleted - latestAiDel);
+        const idTot = latest.totalLinesAdded + latest.totalLinesDeleted;
+        const insW = idTot > 0 ? (100.0 * latest.totalLinesAdded / idTot) : 0;
+        const aiDelW = idTot > 0 ? (100.0 * latestAiDel / idTot) : 0;
+        const humDelW = idTot > 0 ? (100.0 * latestHumanDel / idTot) : 0;
 
-        h += `<div class="seg-bar">`;
-        h += `<div class="seg ai" style="width:${aiPct.toFixed(1)}%"></div>`;
-        h += `<div class="seg human" style="width:${humanPct.toFixed(1)}%"></div>`;
-        h += `</div>`;
-        h += `</div>`; // overview-card
+        // Totals across all commits.
+        let totAiDel = 0;
+        const toolSet = new Set<string>();
+        for (const c of data.commits) {
+            totAiDel += c.aiLinesDeleted;
+            for (const m of c.models) { if (m && m !== 'unknown') { toolSet.add(m); } }
+        }
+        const totHumanDel = Math.max(0, data.totalDeleted - totAiDel);
+        const toolsLabel = toolSet.size === 0 ? '&mdash;'
+            : (toolSet.size <= 2 ? [...toolSet].map(t => this.esc(t)).join(', ') : `${toolSet.size} tools`);
 
-        // Models section
-        if (sortedModels.length > 0) {
-            h += `<div class="section-label">AI Models (${sortedModels.length})</div>`;
+        h += `<div class="card">`;
+        h += `<div class="ov-sub">Latest commit <span class="mono">${latest.commitHash.slice(0, 7)}</span></div>`;
+        h += `<div class="ov-row">`;
+        h += `<div class="badges">`;
+        h += `<span class="badge ai">${latest.aiLinesAdded} AI &middot; ${latestAiPctAdd.toFixed(1)}%</span>`;
+        h += `<span class="badge human">${latest.humanLinesAdded} Human &middot; ${latestHumanPctAdd.toFixed(1)}%</span>`;
+        h += `</div>`;
+        h += `<div class="chips">`;
+        h += `<span class="chip orange">${data.commits.length} in history</span>`;
+        h += `<span class="chip blue">${latest.totalFilesChanged} files</span>`;
+        if (latest.codingTimeMs > 0) { h += `<span class="chip green">Coding ${this.formatDuration(latest.codingTimeMs)}</span>`; }
+        if (latest.timeWaitingForAiMs > 0) { h += `<span class="chip purple">AI wait ${this.formatDuration(latest.timeWaitingForAiMs)}</span>`; }
+        h += `</div></div>`;
+
+        h += `<div class="ov-label">AI vs Human (lines added)</div>`;
+        h += `<div class="bar2"><span class="ai" style="width:${latestAiPctAdd.toFixed(1)}%"></span><span class="human" style="width:${latestHumanPctAdd.toFixed(1)}%"></span></div>`;
+
+        h += `<div class="ov-label">Insert / delete (commit diff) &nbsp;<span class="ins">+${latest.totalLinesAdded}</span> insert <span class="vsep">|</span> <span class="del">&minus;${latest.totalLinesDeleted}</span> delete</div>`;
+        h += `<div class="idbar"><span class="ins" style="width:${insW.toFixed(1)}%"></span><span class="d-ai" style="width:${aiDelW.toFixed(1)}%"></span><span class="d-h" style="width:${humDelW.toFixed(1)}%"></span></div>`;
+
+        h += `<div class="ov-divider"></div>`;
+        h += `<div class="ov-sub">All commits (${data.commits.length})</div>`;
+        h += `<div class="badges">`;
+        h += `<span class="badge ai">+${data.totalAiLines.toLocaleString()} AI</span>`;
+        h += `<span class="badge human">+${data.totalHumanLines.toLocaleString()} Human</span>`;
+        h += `<span class="badge ai">&minus;${totAiDel.toLocaleString()} AI</span>`;
+        h += `<span class="badge del">&minus;${totHumanDel.toLocaleString()} Human</span>`;
+        h += `</div>`;
+        h += `<div class="chips">`;
+        h += `<span class="chip orange">Tools: ${toolsLabel}</span>`;
+        h += `<span class="chip blue">${data.totalFiles} files</span>`;
+        if (data.totalCodingTimeMs > 0) { h += `<span class="chip green">Coding ${this.formatDuration(data.totalCodingTimeMs)}</span>`; }
+        if (data.totalWaitingMs > 0) { h += `<span class="chip purple">AI wait ${this.formatDuration(data.totalWaitingMs)}</span>`; }
+        h += `</div>`;
+        h += `</div>`; // card
+
+        // ── AI Models (latest commit) — even split of the commit's AI lines ──
+        const validModels = latest.models.filter(m => m && m !== 'unknown');
+        if (validModels.length > 0 && latest.aiLinesAdded > 0) {
+            const denom = latest.aiLinesAdded || 1;
+            const base = Math.floor(latest.aiLinesAdded / validModels.length);
+            const rem = latest.aiLinesAdded % validModels.length;
+            h += `<div class="section-label">AI Models <span class="count-pill">latest</span></div>`;
             h += `<div class="models-grid">`;
-
-            for (let i = 0; i < sortedModels.length; i++) {
-                const [modelName, detail] = sortedModels[i];
+            validModels.slice(0, 3).forEach((name, i) => {
+                const lines = base + (i < rem ? 1 : 0);
+                const pct = (100.0 * lines / denom).toFixed(1);
                 const rank = i + 1;
-                const pct = totalModelLines > 0 ? (100.0 * detail.totalLines / totalModelLines).toFixed(1) : '0';
-                const typeList = [...detail.interactionTypes].sort().join(', ');
-
                 h += `<div class="model-card rank-${rank}">`;
-                h += `<div class="model-header">`;
-                h += `<div class="rank-badge">#${rank}</div>`;
-                h += `<span class="model-name">${this.esc(modelName)}</span>`;
-                h += `<div class="model-meta">`;
-                h += `<span class="highlight">${detail.totalLines} lines</span>`;
-                h += `<span>${pct}%</span>`;
-                h += `<span>${detail.commitCount} commit${detail.commitCount !== 1 ? 's' : ''}</span>`;
-                if (typeList) {
-                    h += `<span>${this.esc(typeList)}</span>`;
-                }
-                h += `</div></div>`;
+                h += `<div class="model-header"><div class="rank-badge">#${rank}</div><span class="model-name">${this.esc(name)}</span>`;
+                h += `<div class="model-meta"><span class="highlight">${lines} lines</span><span>${pct}%</span></div></div>`;
                 h += `<div class="model-bar-track"><div class="model-bar-fill" style="width:${pct}%"></div></div>`;
-                h += `</div>`; // model-card
-            }
-
-            h += `</div>`; // models-grid
+                h += `</div>`;
+            });
+            h += `</div>`;
         }
 
-        // Commits section
-        h += `<div class="section-label">Commits (${data.commits.length})</div>`;
-        h += `<div class="commits-table">`;
-        h += `<div class="table-head">`;
-        h += `<div class="th">Hash</div>`;
-        h += `<div class="th">Author</div>`;
-        h += `<div class="th">Message</div>`;
-        h += `<div class="th right">+Add</div>`;
-        h += `<div class="th right">&minus;Del</div>`;
-        h += `<div class="th">AI %</div>`;
-        h += `<div class="th">Coding</div>`;
-        h += `<div class="th">Branch</div>`;
-        h += `</div>`;
-
+        // ── Commits table (same columns as IntelliJ; scrolls horizontally) ──
+        h += `<div class="section-label">Commits <span class="count-pill">${data.commits.length}</span></div>`;
+        h += `<div class="table-wrap"><table class="ctable">`;
+        h += `<thead><tr><th>HASH</th><th>AUTHOR</th><th>MESSAGE</th><th class="r">+ADD</th><th class="r">&minus;DEL</th><th>AI %</th><th class="r">CODING</th><th>BRANCH</th></tr></thead><tbody>`;
         for (const report of data.commits) {
             const sha = report.commitHash.slice(0, 7);
             const rawMsg = report.commitMessage.replace(/\n/g, ' ').trim();
-            const msg = this.esc(rawMsg);
+            const msg = rawMsg ? this.esc(rawMsg) : '(no message)';
             const aiPctNum = parseFloat(report.aiPercentage.replace('%', '')) || 0;
-            const pctLabel = aiPctNum.toFixed(1);
-
-            const tagHtml = report.branch
-                ? `<span class="tag type-branch">${this.esc(report.branch)}</span>`
-                : '';
-
-            const authorDisplay = report.author?.trim() ? this.esc(report.author) : '—';
-            h += `<div class="commit-row">`;
-            h += `<span class="commit-hash">${sha}</span>`;
-            h += `<div class="commit-author" title="${report.authorDate ? this.esc(report.author + ' · ' + report.authorDate) : authorDisplay}">${authorDisplay}</div>`;
-            h += `<div class="commit-msg" title="${this.esc(rawMsg)}">${msg}</div>`;
             const aiDel = report.aiLinesDeleted;
-            const humanDel = report.totalLinesDeleted - aiDel;
-            let delHtml = '';
-            if (aiDel > 0) {
-                delHtml += `<span class="diff-del-ai">&minus;${aiDel}</span>`;
-            }
-            if (humanDel > 0 || aiDel === 0) {
-                delHtml += `<span class="diff-del-human">&minus;${humanDel}</span>`;
-            }
-            h += `<div class="diff-add">+${report.totalLinesAdded}</div>`;
-            h += `<div class="diff-del">${delHtml}</div>`;
-            h += `<div class="mini-bar-cell"><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${Math.min(aiPctNum, 100)}%"></div></div><span class="mini-pct">${pctLabel}%</span></div>`;
-            h += `<div class="coding-time">${report.codingTimeMs > 0 ? this.formatDuration(report.codingTimeMs) : '—'}</div>`;
-            h += `<div>${tagHtml}</div>`;
-            h += `</div>`; // commit-row
+            const humanDel = Math.max(0, report.totalLinesDeleted - aiDel);
+            const author = report.author?.trim() ? this.esc(report.author) : '&mdash;';
+            const branch = report.branch ? this.esc(report.branch) : '&mdash;';
+            const models = report.models.filter(m => m && m !== 'unknown').join(', ');
+            const delTitle = `Deleted: AI −${aiDel} · Human −${humanDel}${models ? ' · ' + this.esc(models) : ''}`;
+            h += `<tr>`;
+            h += `<td class="hash">${sha}</td>`;
+            h += `<td class="author" title="${author}">${author}</td>`;
+            h += `<td class="msg" title="${this.esc(rawMsg)}">${msg}</td>`;
+            h += `<td class="r add">+${report.totalLinesAdded}</td>`;
+            h += `<td class="r del" title="${delTitle}">&minus;${report.totalLinesDeleted}</td>`;
+            h += `<td class="aipct"><span class="mini"><span class="mini-fill" style="width:${Math.min(aiPctNum, 100)}%"></span></span><span class="aip">${aiPctNum.toFixed(0)}%</span></td>`;
+            h += `<td class="r time">${report.codingTimeMs > 0 ? this.formatDuration(report.codingTimeMs) : '&mdash;'}</td>`;
+            h += `<td><span class="branch ${report.branch === 'main' || report.branch === 'master' ? 'b-main' : ''}">${branch}</span></td>`;
+            h += `</tr>`;
         }
-
-        h += `</div>`; // commits-table
+        h += `</tbody></table></div>`;
 
         // Footer
         h += `<div class="panel-footer">`;

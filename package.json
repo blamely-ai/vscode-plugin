@@ -1,8 +1,8 @@
 {
   "name": "blamely",
   "displayName": "Blamely",
-  "description": "Track AI vs human code attribution line by line. Requires the blamely CLI. https://blamely.ai",
-  "version": "1.4.9",
+  "description": "Per-line AI-vs-human code attribution in the gutter, status bar, and commit history. Runs locally — no code or telemetry leaves your machine. Requires the free Blamely CLI.",
+  "version": "1.6.0",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -19,14 +19,26 @@
   },
   "keywords": [
     "ai",
-    "git",
-    "blame",
-    "attribution",
+    "ai attribution",
+    "git blame",
+    "code authorship",
     "blamely"
   ],
   "categories": [
-    "SCM Providers"
+    "SCM Providers",
+    "Visualization"
   ],
+  "pricing": "Free",
+  "qna": "marketplace",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Blamely runs the local Blamely CLI, reads git metadata, and registers a git hook, so it operates only in trusted workspaces."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -117,9 +129,9 @@
         },
         "blamely.aiTool": {
           "type": "string",
-          "enum": ["auto", "copilot", "cursor"],
+          "enum": ["auto", "copilot", "cursor", "gemini"],
           "default": "auto",
-          "markdownDescription": "Which AI tool to credit for edits this extension detects. `auto` infers from the host editor (VS Code with the GitHub Copilot extension → Copilot; Cursor → Cursor). Set this explicitly when you run **GitHub Copilot inside Cursor** (or Cursor Tab inside VS Code) so chat applies and inline completions are attributed to the right tool. Copilot and Cursor are tracked as fully independent tools."
+          "markdownDescription": "Which AI tool to credit for edits this extension detects. `auto` infers from the host editor (VS Code with the GitHub Copilot extension → Copilot; Cursor → Cursor; Antigravity → Gemini). Set this explicitly when you run **GitHub Copilot inside Cursor** (or another assistant inside a host whose default differs) so chat applies and inline completions are attributed to the right tool. Each tool is tracked independently."
         },
         "blamely.debugDetection": {
           "type": "boolean",

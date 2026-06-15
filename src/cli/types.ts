@@ -3,11 +3,20 @@ export interface CliNote {
     schema: number;
     commit: string;
     generated_by?: string;
+    /** Full commit message (subject + body), when the note records it. */
+    message?: string;
+    /** Wall-clock coding time from the earliest observed edit to the commit. */
+    coding_time_nanos?: number;
     totals: {
-        ai_lines: number;
-        human_lines: number;
+        added_lines?: number;
+        ai_added_lines?: number;
+        human_added_lines?: number;
         deleted_lines: number;
         ai_deleted_lines?: number;
+        human_deleted_lines?: number;
+        /** legacy (pre-1.x notes): superseded by ai_added_lines / human_added_lines */
+        ai_lines?: number;
+        human_lines?: number;
         files: number;
         tokens?: {
             input: number;

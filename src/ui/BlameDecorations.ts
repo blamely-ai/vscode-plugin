@@ -38,11 +38,17 @@ function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
 const GUTTER_AI_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/></svg>';
 /** Human (person) SVG for gutter icon (matches IntelliJ GutterHuman). */
 const GUTTER_HUMAN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4" r="2.5" stroke="#56a064" stroke-width="1.2" fill="none"/><path d="M3 13c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="#56a064" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>';
+/** Neutral "detecting" SVG: a three-quarter amber ring (a static spinner) shown
+ *  while an AI-likely insert awaits attribution, before it resolves to AI or Human. */
+const GUTTER_PENDING_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 7a4 4 0 1 1-1.2-2.85" stroke="#e0a23d" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>';
 
 function dataUriForSvg(svg: string): vscode.Uri {
     const encoded = encodeURIComponent(svg).replace(/'/g, '%27');
     return vscode.Uri.parse(`data:image/svg+xml,${encoded}`);
 }
+
+/** Hover for the neutral "detecting" gutter icon. */
+const DETECTING_HOVER = new vscode.MarkdownString('- **Detecting authorship…** resolving AI vs human');
 
 /**
  * Editor line decorations: gutter icon, ruler, optional background, and hover tooltips for AI & Human.
@@ -57,6 +63,7 @@ export class BlameDecorations implements vscode.Disposable {
 
     private aiDecorationType: vscode.TextEditorDecorationType;
     private humanDecorationType: vscode.TextEditorDecorationType;
+    private pendingDecorationType: vscode.TextEditorDecorationType;
 
     constructor(blameMap: BlameMap, cliData?: CliDataService) {
         this.blameMap = blameMap;
@@ -74,6 +81,14 @@ export class BlameDecorations implements vscode.Disposable {
             overviewRulerLane: vscode.OverviewRulerLane.Right,
             isWholeLine: true,
             gutterIconPath: dataUriForSvg(GUTTER_HUMAN_SVG),
+            gutterIconSize: 'contain',
+        });
+
+        this.pendingDecorationType = vscode.window.createTextEditorDecorationType({
+            overviewRulerColor: '#e0a23d',
+            overviewRulerLane: vscode.OverviewRulerLane.Right,
+            isWholeLine: true,
+            gutterIconPath: dataUriForSvg(GUTTER_PENDING_SVG),
             gutterIconSize: 'contain',
         });
 
@@ -96,7 +111,10 @@ export class BlameDecorations implements vscode.Disposable {
         this.disposables.push(cfgChange);
 
         if (cliData) {
-            this.disposables.push(cliData.onRefresh(() => this.updateDecorations()));
+            // Refresh events (pushImmediateBlame OR a completed data refresh) paint
+            // immediately — no debounce. The data is already correct by the time
+            // notify() fires, and delaying makes the Human→AI flash visible.
+            this.disposables.push(cliData.onRefresh(() => this.applyDecorations()));
         }
 
         this.updateDecorations();
@@ -104,6 +122,9 @@ export class BlameDecorations implements vscode.Disposable {
 
     private debounceTimer: NodeJS.Timeout | null = null;
 
+    // Debounced update — only used for raw VS Code document-change events where
+    // we need to coalesce a burst of edits before re-reading the blame map.
+    // pushImmediateBlame / refresh completions call applyDecorations() directly.
     updateDecorations(): void {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);
@@ -135,6 +156,7 @@ export class BlameDecorations implements vscode.Disposable {
         try {
             editor.setDecorations(this.aiDecorationType, []);
             editor.setDecorations(this.humanDecorationType, []);
+            editor.setDecorations(this.pendingDecorationType, []);
         } catch {
             /* ignore UI errors */
         }
@@ -151,13 +173,24 @@ export class BlameDecorations implements vscode.Disposable {
                 byLine.set(e.lineNumber, e);
             }
         }
-        const entries = [...byLine.values()].sort((a, b) => a.lineNumber - b.lineNumber);
+
+        // Lines awaiting an AI-vs-Human decision (set on an agent apply). They
+        // render as the neutral "detecting" icon UNLESS already resolved to AI.
+        // Detecting overrides a default Human paint so the gutter never shows
+        // Human-then-AI; it resolves to AI when the edit is recorded, or to Human
+        // when the window expires (pruned in detectingLinesFor).
+        const detecting = this.blameMap.detectingLinesFor(relativePath);
+
+        // Candidate lines: every line with a blame entry, plus detecting lines
+        // that have no entry yet (a fresh insert before the first data refresh).
+        const candidateLines = new Set<number>([...byLine.keys(), ...detecting]);
 
         const aiRanges: vscode.DecorationOptions[] = [];
         const humanRanges: vscode.DecorationOptions[] = [];
+        const pendingRanges: vscode.DecorationOptions[] = [];
 
-        for (const entry of entries) {
-            const lineIndex = entry.lineNumber - 1;
+        for (const lineNumber of [...candidateLines].sort((a, b) => a - b)) {
+            const lineIndex = lineNumber - 1;
             if (lineIndex < 0 || lineIndex >= editor.document.lineCount) continue;
 
             let lineText = '';
@@ -171,17 +204,23 @@ export class BlameDecorations implements vscode.Disposable {
             const range = lineLength === 0
                 ? new vscode.Range(lineIndex, 0, lineIndex, 0)
                 : new vscode.Range(lineIndex, 0, lineIndex, lineLength);
-            const hoverMessage = blameGutterHoverMessage(entry);
-            if (entry.authorType === 'AI') {
-                aiRanges.push({ range, hoverMessage });
-            } else {
-                humanRanges.push({ range, hoverMessage });
+
+            const entry = byLine.get(lineNumber);
+            if (entry?.authorType === 'AI') {
+                // Resolved to AI — clear any detecting state and show the AI icon.
+                this.blameMap.clearDetectingLine(relativePath, lineNumber);
+                aiRanges.push({ range, hoverMessage: blameGutterHoverMessage(entry) });
+            } else if (detecting.has(lineNumber)) {
+                pendingRanges.push({ range, hoverMessage: DETECTING_HOVER });
+            } else if (entry) {
+                humanRanges.push({ range, hoverMessage: blameGutterHoverMessage(entry) });
             }
         }
 
         try {
             editor.setDecorations(this.aiDecorationType, aiRanges);
             editor.setDecorations(this.humanDecorationType, humanRanges);
+            editor.setDecorations(this.pendingDecorationType, pendingRanges);
         } catch {
             /* ignore UI rendering errors */
         }
@@ -191,6 +230,7 @@ export class BlameDecorations implements vscode.Disposable {
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
         this.aiDecorationType.dispose();
         this.humanDecorationType.dispose();
+        this.pendingDecorationType.dispose();
         for (const d of this.disposables) {
             d.dispose();
         }

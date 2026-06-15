@@ -10,7 +10,7 @@ import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
-import { isBlankLine } from '../utils/BlankLines';
+import { isBlankLine, stripBlankLineBlame } from '../utils/BlankLines';
 
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
@@ -597,13 +597,21 @@ export class CliDataService implements vscode.Disposable {
     get repoRoot(): string | null {
         return this._repoRoot;
     }
-    private refreshTimer?: NodeJS.Timeout;
-    private retryTimer?: NodeJS.Timeout;
+    private refreshTimers: NodeJS.Timeout[] = [];
+    // True while the initial fast (200ms) refresh is already queued. Prevents
+    // burst events from resetting the initial fast refresh — so a 5-second chat
+    // apply with 100 change events still shows the gutter update after 200ms, not
+    // 5.2 seconds.
+    private fastRefreshPending = false;
+    // One-shot repaint timers that fire when a detecting window ends.
+    private detectingTimers: NodeJS.Timeout[] = [];
     private saveListener?: vscode.Disposable;
     private openListener?: vscode.Disposable;
     private changeListener?: vscode.Disposable;
     private activeEditorListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
+    private fileOpsListener?: vscode.Disposable;
+    private fsWatcher?: vscode.FileSystemWatcher;
     private startupTimers: NodeJS.Timeout[] = [];
     private periodicTimer?: NodeJS.Timeout;
     private listeners: CliDataRefreshListener[] = [];
@@ -644,20 +652,77 @@ export class CliDataService implements vscode.Disposable {
         });
         this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
-        // Safety-net poll: new files (and edits whose daemon write lands after the
-        // scheduleRefresh retry ladder) surface within 5s even when no editor
-        // event fires — without this the UI waits for the next user action.
+        // Chat "add file" / agent edits create, delete or rename files without a
+        // document-change event, so the gutter + status bar would otherwise wait
+        // for the 5s safety poll. These VS Code file-operation events fire for
+        // applyEdit/explorer ops; refresh promptly so attribution shows at once.
+        this.fileOpsListener = vscode.Disposable.from(
+            vscode.workspace.onDidCreateFiles(() => this.scheduleRefresh()),
+            vscode.workspace.onDidDeleteFiles(() => this.scheduleRefresh()),
+            vscode.workspace.onDidRenameFiles(() => this.scheduleRefresh()),
+        );
+        // Catch on-disk writes an agent makes outside any editor buffer (a chat
+        // agent writing a brand-new file directly). The '**/*' watcher respects
+        // files.watcherExclude (node_modules/.git/build dirs), and scheduleRefresh
+        // debounces bursts, so this stays cheap.
+        this.fsWatcher = vscode.workspace.createFileSystemWatcher('**/*');
+        this.fsWatcher.onDidCreate(() => this.scheduleRefresh());
+        this.fsWatcher.onDidChange(() => this.scheduleRefresh());
+        this.fsWatcher.onDidDelete(() => this.scheduleRefresh());
+        // Safety-net poll: anything the events above miss surfaces within 5s.
         this.periodicTimer = setInterval(() => void this.refresh(), 5000);
     }
 
-    /** Coalesce bursts into one refresh, then retry once in case the daemon hasn't
-     *  written the edit row to SQLite yet when the first refresh fires. */
+    /** Coalesce bursts into one fast refresh, then retry for late-arriving data. */
     scheduleRefresh(): void {
         if (this.disposed) return;
-        if (this.refreshTimer) clearTimeout(this.refreshTimer);
-        if (this.retryTimer) clearTimeout(this.retryTimer);
-        this.refreshTimer = setTimeout(() => void this.refresh(), 300);
-        this.retryTimer  = setTimeout(() => void this.refresh(), 1500);
+
+        // Fire the first (fast) refresh immediately unless one is already queued.
+        // Do NOT reset this timer on repeated events — that is what causes a
+        // 5-second chat apply (many change events) to delay the gutter update by
+        // 5+ seconds instead of 200ms.
+        if (!this.fastRefreshPending) {
+            this.fastRefreshPending = true;
+            this.refreshTimers.push(setTimeout(() => {
+                this.fastRefreshPending = false;
+                void this.refresh();
+            }, 200));
+        }
+
+        // Always reset the retry tail from "now" (the end of the current edit
+        // burst) so late-arriving watcher edits are still picked up even though
+        // the fast refresh fired before the DB was updated.
+        //
+        // The tail must outlast the DAEMON's recording lag, not just the plugin's.
+        // A Copilot chat apply paints text in the editor (the change events that
+        // drive this schedule) SECONDS before Copilot finalizes its chat JSONL —
+        // and only then does the daemon's chat watcher poll and record the edit.
+        // With a short [1200, 3500] tail, all retries fire before the daemon
+        // writes, so the gutter waits for the 5s safety poll (the "~5s delay").
+        // These points keep refreshing for ~8s after editing stops, so the gutter
+        // updates within ~1s of whenever the daemon records.
+        const retryTimers = this.refreshTimers.filter((_, i) => i > 0);
+        for (const t of retryTimers) clearTimeout(t);
+        this.refreshTimers = this.refreshTimers.slice(0, 1);  // keep fast timer only
+        for (const delay of [1000, 2000, 3200, 4500, 6000, 8000]) {
+            this.refreshTimers.push(setTimeout(() => void this.refresh(), delay));
+        }
+    }
+
+    /**
+     * Mark lines as "detecting" (neutral gutter icon) while an AI-likely insert
+     * awaits attribution, so the gutter doesn't default to Human and then flip to
+     * AI. Paints immediately, then schedules one repaint at the detecting window's
+     * end so a line that never resolved to AI falls back to Human.
+     */
+    markDetecting(relPath: string, startLine: number, endLine: number): void {
+        if (this.disposed) return;
+        this.blameMap.markDetecting(relPath, startLine, endLine);
+        this.notify();
+        const t = setTimeout(() => {
+            if (!this.disposed) this.notify();
+        }, 8200);
+        this.detectingTimers.push(t);
     }
 
     /**
@@ -811,7 +876,13 @@ export class CliDataService implements vscode.Disposable {
             }
 
             this.blameMap.lastOptimisticPaintMs = 0;
-            this.blameMap.replaceAll(expandBlameMapKeys(repoRoot, byFile));
+            // Drop blame for working-tree-blank lines BEFORE populating the map, so
+            // the status-bar summary and the gutter agree: the gutter skips blank
+            // lines visually (BlameDecorations), but getSummary has no document text
+            // and would otherwise count their entries. Keeping the map blank-free is
+            // the single source of truth for both.
+            const deblanked = stripBlankLineBlame(repoRoot, byFile);
+            this.blameMap.replaceAll(expandBlameMapKeys(repoRoot, deblanked));
             this.notify();
         } catch (err) {
             Logger.warn(`CliDataService refresh: ${err}`);
@@ -909,8 +980,11 @@ export class CliDataService implements vscode.Disposable {
 
     dispose(): void {
         this.disposed = true;
-        if (this.refreshTimer) clearTimeout(this.refreshTimer);
-        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.fastRefreshPending = false;
+        for (const t of this.refreshTimers) clearTimeout(t);
+        this.refreshTimers = [];
+        for (const t of this.detectingTimers) clearTimeout(t);
+        this.detectingTimers = [];
         if (this.periodicTimer) clearInterval(this.periodicTimer);
         for (const t of this.startupTimers) clearTimeout(t);
         this.startupTimers = [];
@@ -919,6 +993,8 @@ export class CliDataService implements vscode.Disposable {
         this.openListener?.dispose();
         this.activeEditorListener?.dispose();
         this.workspaceListener?.dispose();
+        this.fileOpsListener?.dispose();
+        this.fsWatcher?.dispose();
         this.listeners = [];
     }
 }
