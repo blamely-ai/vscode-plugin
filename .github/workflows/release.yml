@@ -82,7 +82,7 @@ jobs:
           ls -la *.vsix
           echo "versioned=$versioned" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to release repo
+      - name: Publish to release repo (optional)
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
           RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
@@ -91,9 +91,12 @@ jobs:
         shell: bash
         run: |
           set -e
+          # Optional: the CLI installs the extension from Open VSX (not the GitHub
+          # release repo), so this upload is only useful if you also distribute the
+          # .vsix via releases. Skip cleanly when its secrets aren't configured.
           if [ -z "$GH_TOKEN" ] || [ -z "$RELEASE_REPO" ]; then
-            echo "Missing required secrets: RELEASE_REPO and/or RELEASE_REPO_TOKEN."
-            exit 1
+            echo "RELEASE_REPO / RELEASE_REPO_TOKEN not set — skipping release-repo upload."
+            exit 0
           fi
           # Versioned release (created by whichever workflow gets there first;
           # the CLI release.yml may have already made it for this tag).
