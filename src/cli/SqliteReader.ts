@@ -2,21 +2,35 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
-import { dbPath } from './paths';
+import { dbPath, blamelyHome } from './paths';
 import { CliEditRow } from './types';
 import * as Logger from '../utils/Logger';
 
 const execFileAsync = promisify(execFile);
 
-const SQLITE_CANDIDATES = ['sqlite3', '/usr/bin/sqlite3', '/opt/homebrew/bin/sqlite3'];
+// sqlite3 binaries to try, in order. The blamely bin dir comes first because the
+// installer drops a sqlite3 there (so it works without a system install or PATH
+// changes); then a bare name (resolved via PATH by CreateProcess/exec); then the
+// well-known Unix locations. Windows has no sqlite3 by default and macOS/Linux
+// differ, so this must be platform-aware — the old hardcoded Unix list left the
+// VS Code blame reader (and thus the gutter + status bar) dead on Windows.
+function sqliteCandidates(): string[] {
+    const binDir = path.join(blamelyHome(), 'bin');
+    if (process.platform === 'win32') {
+        return [path.join(binDir, 'sqlite3.exe'), 'sqlite3.exe', 'sqlite3'];
+    }
+    return [path.join(binDir, 'sqlite3'), 'sqlite3', '/usr/bin/sqlite3', '/opt/homebrew/bin/sqlite3'];
+}
 
 type LoadMode = 'session' | 'legacy';
 
 // Returns null when the database could not be read (binary missing, locked, IO).
 async function runSqliteJson(db: string, sql: string): Promise<unknown[] | null> {
     let lastErr: unknown = null;
-    for (const bin of SQLITE_CANDIDATES) {
-        if (bin !== 'sqlite3' && !fs.existsSync(bin)) {
+    for (const bin of sqliteCandidates()) {
+        // Absolute candidates must exist on disk; bare names (sqlite3/sqlite3.exe)
+        // are left for exec to resolve via PATH.
+        if (path.isAbsolute(bin) && !fs.existsSync(bin)) {
             continue;
         }
         try {
