@@ -12,13 +12,14 @@ name: Build & Publish Release (VS Code extension)
 #   - Push a tag of the form `vX.Y.Z`.
 #   - Or kick off manually via "Run workflow" (workflow_dispatch).
 #
+# This workflow ONLY builds the .vsix and uploads it to the release repo. It
+# deliberately does NOT publish to the VS Code Marketplace or Open VSX — shipping
+# to a registry is a separate, MANUAL action (run publish-openvsx.yml by hand, or
+# publish a release artifact locally). This keeps a tag push from auto-shipping.
+#
 # Required secrets:
 #   RELEASE_REPO        owner/repo of the PUBLIC release repo (e.g. blamely-ai/blamely)
 #   RELEASE_REPO_TOKEN  fine-grained PAT with `contents: write` on RELEASE_REPO
-#
-# Optional secrets (each marketplace publish is skipped when its token is unset):
-#   VSCE_PAT   Azure DevOps PAT for the VS Code Marketplace publisher ("blamely")
-#   OVSX_PAT   Open VSX access token (Cursor / Antigravity gallery)
 #
 # Artifacts published to RELEASE_REPO:
 #   <tag> release:  blamely-<tag>.vsix
@@ -113,26 +114,8 @@ jobs:
               --verify-tag=false
           gh release upload latest --repo "$RELEASE_REPO" --clobber blamely.vsix
 
-      - name: Publish to VS Code Marketplace (optional)
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-          VERSIONED: ${{ steps.pkg.outputs.versioned }}
-        shell: bash
-        run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo "VSCE_PAT not set — skipping Marketplace publish."
-            exit 0
-          fi
-          npx @vscode/vsce publish --packagePath "$VERSIONED" --pat "$VSCE_PAT"
-
-      - name: Publish to Open VSX (optional)
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-          VERSIONED: ${{ steps.pkg.outputs.versioned }}
-        shell: bash
-        run: |
-          if [ -z "$OVSX_PAT" ]; then
-            echo "OVSX_PAT not set — skipping Open VSX publish."
-            exit 0
-          fi
-          npx ovsx publish "$VERSIONED" -p "$OVSX_PAT"
+      # NOTE: this workflow only BUILDS the .vsix and uploads it to the release
+      # repo. It does NOT publish to the VS Code Marketplace or Open VSX — those are
+      # separate, MANUAL steps (run the "Publish to Open VSX" workflow by hand, or
+      # publish the .vsix from a release with `vsce`/`ovsx` locally). This keeps a
+      # tag push from auto-shipping to end users.

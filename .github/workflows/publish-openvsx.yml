@@ -7,9 +7,10 @@ name: Publish to Open VSX
 # uploads to the GitHub release repo and VS Code Marketplace), this job only
 # publishes to Open VSX.
 #
-# Triggers:
-#   - Push a tag `vX.Y.Z` (keep it in sync with package.json "version").
-#   - Or run manually via "Run workflow" (workflow_dispatch).
+# Triggers (MANUAL ONLY — this never runs automatically on a tag push):
+#   - Run manually via "Run workflow" (workflow_dispatch). Pick the tag/branch to
+#     build from in the GitHub UI's "Use workflow from" ref selector. Build/verify
+#     the artifact with release.yml first, then run this by hand to actually ship.
 #
 # Required secret:
 #   OVSX_PAT   Open VSX access token for the "blamely" namespace
@@ -17,8 +18,6 @@ name: Publish to Open VSX
 #               must exist — `npx ovsx create-namespace blamely -p $OVSX_PAT` once)
 
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
