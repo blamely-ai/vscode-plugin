@@ -2,7 +2,7 @@
   "name": "blamely",
   "displayName": "Blamely",
   "description": "Per-line AI-vs-human code attribution in the gutter, status bar, and commit history. Runs locally — no code or telemetry leaves your machine. Requires the free Blamely CLI.",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
