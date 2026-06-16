@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { BlameMap } from '../blame/BlameMap';
 import { CliDataService } from '../cli/CliDataService';
 import { readDaemonPort, readDaemonSocket } from '../cli/paths';
-import { blameFileKey } from '../utils/WorkspacePaths';
 
 const HEARTBEAT_MS = 5_000;
 
@@ -34,12 +33,9 @@ export class StatusBar implements vscode.Disposable {
         void this.heartbeat();
         this.heartbeatTimer = setInterval(() => void this.heartbeat(), HEARTBEAT_MS);
 
+        // Session-wide total — driven by data refreshes + the heartbeat. No need
+        // to re-render on editor switch (the count is not scoped to the active file).
         this.disposables.push(cliData.onRefresh(() => void this.render()));
-        // The count is scoped to the active file, so re-render when the user
-        // switches editors (otherwise it would show the previous file's numbers).
-        this.disposables.push(
-            vscode.window.onDidChangeActiveTextEditor(() => void this.render()),
-        );
     }
 
     /** Ping /health, update the lamp, then re-render. */
@@ -54,14 +50,10 @@ export class StatusBar implements vscode.Disposable {
     }
 
     private async render(): Promise<void> {
-        // Count the ACTIVE FILE only, so the status bar matches the gutter icons
-        // in front of the user (getSummaryForFile shares getBlame's path
-        // resolution and the gutter's per-line dedup). No file editor focused
-        // (e.g. a settings tab) → empty summary rather than a stale workspace total.
-        const editor = vscode.window.activeTextEditor;
-        const summary = editor && editor.document.uri.scheme === 'file'
-            ? this.blameMap.getSummaryForFile(blameFileKey(editor.document.uri))
-            : { aiChars: 0, humanChars: 0, aiLines: 0, humanLines: 0, totalLines: 0 };
+        // Count the WHOLE SESSION — every changed file tracked this session, not
+        // just the active editor. getSummary() applies the same per-line dedup as
+        // the per-file view, so the totals reconcile with the gutter icons.
+        const summary = this.blameMap.getSummary();
         const lamp = this.daemonAlive
             ? '$(circle-filled) '
             : '$(circle-outline) ';
