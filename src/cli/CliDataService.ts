@@ -592,7 +592,6 @@ export type CliDataRefreshListener = () => void;
 export class CliDataService implements vscode.Disposable {
     private blameMap: BlameMap;
     private _repoRoot: string | null = null;
-    private repoId: string | null = null;
 
     get repoRoot(): string | null {
         return this._repoRoot;
@@ -765,106 +764,66 @@ export class CliDataService implements vscode.Disposable {
         if (this.disposed) return;
         const refreshStartMs = Date.now();
         try {
-            const folder = vscode.workspace.workspaceFolders?.[0];
-            if (!folder) {
+            const folders = vscode.workspace.workspaceFolders ?? [];
+            if (folders.length === 0) {
                 this.blameMap.clear();
                 this.notify();
                 return;
             }
-            const repoRoot = await GitUtils.getRepoRoot(folder.uri.fsPath);
-            if (!repoRoot) {
+
+            // Discover every distinct git repo across all workspace folders. A
+            // multi-root workspace can mix several independent repos (e.g. backend
+            // + frontend), each with its own .git; a single-folder workspace yields
+            // exactly one. Without this, only folder[0]'s repo got a gutter and the
+            // other folders showed no count and no decorations.
+            const repoRoots: string[] = [];
+            const seenRoots = new Set<string>();
+            for (const folder of folders) {
+                const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
+                if (!root) continue;
+                const norm = path.normalize(root);
+                if (seenRoots.has(norm)) continue;  // two folders inside one repo
+                seenRoots.add(norm);
+                repoRoots.push(root);
+            }
+
+            if (repoRoots.length === 0) {
                 this.blameMap.clear();
                 this.notify();
                 return;
             }
-            this._repoRoot = repoRoot;
-            this.repoId = await getRepoId(repoRoot);
-            if (!this.repoId) {
-                this.blameMap.clear();
-                this.notify();
-                return;
-            }
+            this._repoRoot = repoRoots[0];
 
             void this.checkDaemonHealth();
 
-            // Scope by branch-based work session, not a timestamp window. The
-            // git-diff-HEAD intersection below narrows these to uncommitted lines,
-            // so the gutter resets after commit without a fragile `ts >=` cutoff and
-            // survives cherry-pick/squash. Detached HEAD → null → only NULL rows.
-            const branchOut = await GitUtils.runGitCommand(repoRoot, 'symbolic-ref', '--quiet', '--short', 'HEAD');
-            const branch = branchOut?.trim() ? branchOut.trim() : null;
-            const headSha = (await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD'))?.trim() ?? '';
+            const merged = new Map<string, LineBlame[]>();
+            let anyUncommittedWork = false;
+            let anyReadFailure = false;
 
-            // Try the canonical repoId first, then two path-normalization fallbacks
-            // so the plugin matches whatever format blamely-cli stored (symlink vs real path).
-            let edits = await loadEditsForRepo(this.repoId, branch, headSha, repoRoot);
-            if (edits === null) {
-                // Read failure (e.g. SQLite momentarily locked by the daemon). Keep
-                // the current gutter; do NOT rebuild it as Human.
-                return;
-            }
-
-            // Flush open/dirty buffers before git diff (critical on IDE reopen).
-            await this.saveDirtyDocumentsForFiles(repoRoot, await this.pathsNeedingFlush(repoRoot, edits));
-
-            const byFile = editsToBlameMap(repoRoot, edits);
-
-            // Lines that actually differ from HEAD in the working tree (the '+'
-            // side of `git diff --unified=0 HEAD`). Empty after commit.
-            const diffOut = await GitUtils.runGitCommand(repoRoot, 'diff', '--unified=0', 'HEAD');
-            const changedByFile = parseHumanLines(diffOut ?? '');
-            const changedSets = new Map<string, Set<number>>();
-            for (const [f, lns] of changedByFile) changedSets.set(f, new Set(lns));
-
-            // Untracked (new) files aren't in `git diff HEAD`; every line is a change.
-            const untrackedFiles = new Set<string>();
-            const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
-            if (untrackedOut) {
-                for (const line of untrackedOut.split('\n')) {
-                    const f = line.trim().replace(/\\/g, '/');
-                    if (f) untrackedFiles.add(f);
+            for (const repoRoot of repoRoots) {
+                const result = await this.refreshRepo(repoRoot);
+                if (result === null) {
+                    // Transient SQLite read failure (daemon holds the lock). Defer
+                    // rather than rebuild an incomplete gutter — see below.
+                    anyReadFailure = true;
+                    continue;
+                }
+                anyUncommittedWork = anyUncommittedWork || result.hasUncommittedWork;
+                for (const [key, entries] of expandBlameMapKeys(repoRoot, result.deblanked)) {
+                    merged.set(key, entries);
                 }
             }
 
-            const affectedFiles = new Set<string>([...changedSets.keys(), ...untrackedFiles]);
+            // If any repo's SQLite read failed this pass, keep the current gutter
+            // intact rather than replacing it with a partial map.
+            if (anyReadFailure) return;
 
-            // Re-locate AI lines by content_sha before scoping to git-diff line numbers.
-            applyContentShaAttribution(repoRoot, edits, affectedFiles, byFile, untrackedFiles);
-
-            // Only uncommitted lines vs HEAD (clears gutter/status bar/Changes after commit).
-            scopeToUncommittedWorkingTree(byFile, changedSets, untrackedFiles);
-
-            const hasUncommittedWork = changedByFile.size > 0 || untrackedFiles.size > 0;
-            if (!hasUncommittedWork) {
+            // Pending-AI overlay state is global (keyed repo-relative). Only clear it
+            // once NO repo has uncommitted work, so a clean repo cannot wipe a dirty
+            // repo's pending lines. Repos with work applied their pending in refreshRepo.
+            if (!anyUncommittedWork) {
                 this.blameMap.clearAllPendingAi();
             }
-
-            // Untracked files: trust only tight AI ranges; add human for the rest.
-            for (const filePath of untrackedFiles) {
-                if (!byFile.has(filePath)) continue;
-                const existing = byFile.get(filePath)!.filter(
-                    e => e.authorType !== 'AI' || e.boundedAiRange
-                );
-                const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
-                try {
-                    const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
-                    const lineCount = content.split(/\r?\n/).length;
-                    const humanEntries: LineBlame[] = [];
-                    for (let ln = 1; ln <= lineCount; ln++) {
-                        if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
-                    }
-                    if (humanEntries.length > 0) {
-                        byFile.set(filePath, [...existing, ...humanEntries]);
-                    }
-                } catch { /* skip unreadable files */ }
-            }
-
-            if (hasUncommittedWork) {
-                this.applyPendingAi(byFile);
-            }
-
-            // Authoritative per git-diff line (overrides stale range / pending mislabels).
-            reconcileChangedLinesAttribution(repoRoot, edits, changedByFile, byFile, this.blameMap);
 
             // Only skip apply when an optimistic paint happened during THIS refresh
             // (not a stale timestamp from a prior partial run).
@@ -874,19 +833,110 @@ export class CliDataService implements vscode.Disposable {
             ) {
                 return;
             }
-
             this.blameMap.lastOptimisticPaintMs = 0;
-            // Drop blame for working-tree-blank lines BEFORE populating the map, so
-            // the status-bar summary and the gutter agree: the gutter skips blank
-            // lines visually (BlameDecorations), but getSummary has no document text
-            // and would otherwise count their entries. Keeping the map blank-free is
-            // the single source of truth for both.
-            const deblanked = stripBlankLineBlame(repoRoot, byFile);
-            this.blameMap.replaceAll(expandBlameMapKeys(repoRoot, deblanked));
+
+            this.blameMap.replaceAll(merged);
             this.notify();
         } catch (err) {
             Logger.warn(`CliDataService refresh: ${err}`);
         }
+    }
+
+    /**
+     * Build the uncommitted-work blame map (repo-relative keys) for a single git
+     * repo. Returns null only on a transient SQLite read failure, signalling the
+     * caller to keep the current gutter rather than rebuild it incomplete. A repo
+     * whose identity can't be resolved contributes an empty map (its gutter clears).
+     */
+    private async refreshRepo(
+        repoRoot: string,
+    ): Promise<{ deblanked: Map<string, LineBlame[]>; hasUncommittedWork: boolean } | null> {
+        const repoId = await getRepoId(repoRoot);
+        if (!repoId) {
+            return { deblanked: new Map(), hasUncommittedWork: false };
+        }
+
+        // Scope by branch-based work session, not a timestamp window. The
+        // git-diff-HEAD intersection below narrows these to uncommitted lines,
+        // so the gutter resets after commit without a fragile `ts >=` cutoff and
+        // survives cherry-pick/squash. Detached HEAD → null → only NULL rows.
+        const branchOut = await GitUtils.runGitCommand(repoRoot, 'symbolic-ref', '--quiet', '--short', 'HEAD');
+        const branch = branchOut?.trim() ? branchOut.trim() : null;
+        const headSha = (await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD'))?.trim() ?? '';
+
+        // Try the canonical repoId first, then two path-normalization fallbacks
+        // so the plugin matches whatever format blamely-cli stored (symlink vs real path).
+        const edits = await loadEditsForRepo(repoId, branch, headSha, repoRoot);
+        if (edits === null) {
+            return null;
+        }
+
+        // Flush open/dirty buffers before git diff (critical on IDE reopen).
+        await this.saveDirtyDocumentsForFiles(repoRoot, await this.pathsNeedingFlush(repoRoot, edits));
+
+        const byFile = editsToBlameMap(repoRoot, edits);
+
+        // Lines that actually differ from HEAD in the working tree (the '+'
+        // side of `git diff --unified=0 HEAD`). Empty after commit.
+        const diffOut = await GitUtils.runGitCommand(repoRoot, 'diff', '--unified=0', 'HEAD');
+        const changedByFile = parseHumanLines(diffOut ?? '');
+        const changedSets = new Map<string, Set<number>>();
+        for (const [f, lns] of changedByFile) changedSets.set(f, new Set(lns));
+
+        // Untracked (new) files aren't in `git diff HEAD`; every line is a change.
+        const untrackedFiles = new Set<string>();
+        const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
+        if (untrackedOut) {
+            for (const line of untrackedOut.split('\n')) {
+                const f = line.trim().replace(/\\/g, '/');
+                if (f) untrackedFiles.add(f);
+            }
+        }
+
+        const affectedFiles = new Set<string>([...changedSets.keys(), ...untrackedFiles]);
+
+        // Re-locate AI lines by content_sha before scoping to git-diff line numbers.
+        applyContentShaAttribution(repoRoot, edits, affectedFiles, byFile, untrackedFiles);
+
+        // Only uncommitted lines vs HEAD (clears gutter/status bar/Changes after commit).
+        scopeToUncommittedWorkingTree(byFile, changedSets, untrackedFiles);
+
+        const hasUncommittedWork = changedByFile.size > 0 || untrackedFiles.size > 0;
+
+        // Untracked files: trust only tight AI ranges; add human for the rest.
+        for (const filePath of untrackedFiles) {
+            if (!byFile.has(filePath)) continue;
+            const existing = byFile.get(filePath)!.filter(
+                e => e.authorType !== 'AI' || e.boundedAiRange
+            );
+            const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
+            try {
+                const content = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
+                const lineCount = content.split(/\r?\n/).length;
+                const humanEntries: LineBlame[] = [];
+                for (let ln = 1; ln <= lineCount; ln++) {
+                    if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
+                }
+                if (humanEntries.length > 0) {
+                    byFile.set(filePath, [...existing, ...humanEntries]);
+                }
+            } catch { /* skip unreadable files */ }
+        }
+
+        if (hasUncommittedWork) {
+            this.applyPendingAi(byFile);
+        }
+
+        // Authoritative per git-diff line (overrides stale range / pending mislabels).
+        reconcileChangedLinesAttribution(repoRoot, edits, changedByFile, byFile, this.blameMap);
+
+        // Drop blame for working-tree-blank lines BEFORE populating the map, so
+        // the status-bar summary and the gutter agree: the gutter skips blank
+        // lines visually (BlameDecorations), but getSummary has no document text
+        // and would otherwise count their entries. Keeping the map blank-free is
+        // the single source of truth for both.
+        const deblanked = stripBlankLineBlame(repoRoot, byFile);
+        return { deblanked, hasUncommittedWork };
     }
 
     private applyPendingAi(byFile: Map<string, LineBlame[]>): void {
