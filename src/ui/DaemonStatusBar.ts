@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as vscode from 'vscode';
 import { readDaemonPort, readDaemonSocket } from '../cli/paths';
+import * as Logger from '../utils/Logger';
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -15,6 +16,11 @@ const HEARTBEAT_INTERVAL_MS = 5_000;
 export class DaemonStatusBar implements vscode.Disposable {
     private readonly item: vscode.StatusBarItem;
     private timer: ReturnType<typeof setInterval> | null = null;
+    // Hysteresis: only turn the lamp red after several CONSECUTIVE failed pings,
+    // so a momentarily busy event loop or a daemon restart doesn't flap it.
+    private consecutiveFailures = 0;
+    private static readonly FAILURE_THRESHOLD = 3;
+    private lastAlive = false;
 
     constructor() {
         this.item = vscode.window.createStatusBarItem(
@@ -32,7 +38,13 @@ export class DaemonStatusBar implements vscode.Disposable {
     }
 
     private async ping(): Promise<void> {
-        const alive = await this.checkHealth();
+        if (await this.checkHealth()) {
+            this.consecutiveFailures = 0;
+            this.lastAlive = true;
+        } else if (++this.consecutiveFailures >= DaemonStatusBar.FAILURE_THRESHOLD) {
+            this.lastAlive = false;
+        }
+        const alive = this.lastAlive;
         if (alive) {
             this.item.text = '$(circle-filled) blamely';
             this.item.color = new vscode.ThemeColor('charts.green');
@@ -49,12 +61,22 @@ export class DaemonStatusBar implements vscode.Disposable {
         return new Promise((resolve) => {
             const sock = readDaemonSocket();
             const port = sock == null ? readDaemonPort() : null;
-            if (sock == null && port == null) { resolve(false); return; }
-            const opts: http.RequestOptions = { path: '/health', method: 'GET', timeout: 2_000 };
+            if (sock == null && port == null) {
+                Logger.debugConn('/health skipped: no daemon socket/port file');
+                resolve(false);
+                return;
+            }
+            const via = sock != null ? 'unix' : `tcp:${port}`;
+            const t0 = Date.now();
+            const done = (ok: boolean, why?: string) => {
+                Logger.debugConn(`/health ${ok ? 'ok' : 'FAIL'} via ${via} (${Date.now() - t0}ms)${why ? ' ' + why : ''} [fails=${ok ? 0 : this.consecutiveFailures + 1}]`);
+                resolve(ok);
+            };
+            const opts: http.RequestOptions = { path: '/health', method: 'GET', timeout: 3_000 };
             if (sock != null) { opts.socketPath = sock; } else { opts.host = '127.0.0.1'; opts.port = port!; }
-            const req = http.request(opts, (res) => { res.resume(); resolve(res.statusCode === 200); });
-            req.on('error', () => resolve(false));
-            req.on('timeout', () => { req.destroy(); resolve(false); });
+            const req = http.request(opts, (res) => { res.resume(); done(res.statusCode === 200, `status=${res.statusCode}`); });
+            req.on('error', (e) => done(false, e.message));
+            req.on('timeout', () => { req.destroy(); done(false, 'timeout'); });
             req.end();
         });
     }

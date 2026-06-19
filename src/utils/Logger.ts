@@ -49,6 +49,19 @@ export function debug(message: string): void {
     emit('info', `[DEBUG ${new Date().toISOString()}] ${message}`);
 }
 
+/** Logged when `blamely.debugConnection` is enabled — daemon↔plugin traffic. */
+export function debugConn(message: string): void {
+    try {
+        const vscode = require('vscode');
+        if (!vscode.workspace.getConfiguration('blamely').get('debugConnection', false)) {
+            return;
+        }
+    } catch {
+        return;
+    }
+    emit('info', `[CONN  ${new Date().toISOString()}] ${message}`);
+}
+
 export function error(message: string, err?: unknown): void {
     const suffix = err instanceof Error ? `: ${err.message}` : '';
     emit('error', `[ERROR ${new Date().toISOString()}] ${message}${suffix}`);

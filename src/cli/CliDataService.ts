@@ -108,56 +108,92 @@ function isLineAttributionCandidate(row: CliEditRow): boolean {
     return g === 'chat' || g === 'cli' || (g === 'completion' && hasBoundedRange(row));
 }
 
+// Per-edit occurrence budget. When the SAME content was recorded by several edits
+// (e.g. a chat that wrote 5 identical lines and a later completion that wrote 1),
+// each committed copy must be distributed across those edits by recorded count —
+// otherwise the nearest/newest edit claims them all and the gutter mislabels them
+// (chat lines shown as completion). Keyed `${editId}:s:${sha}` / `:n:${norm}`.
+// Mirrors the daemon's pickDriftEdit so the gutter agrees with the commit report.
+type Budget = { recorded: Map<string, number>; consumed: Map<string, number> };
+
+function shaKey(id: number, sha: string): string { return `${id}:s:${sha}`; }
+function normKey(id: number, norm: string): string { return `${id}:n:${norm}`; }
+function budgetLeft(b: Budget, key: string): boolean {
+    return (b.consumed.get(key) ?? 0) < (b.recorded.get(key) ?? 0);
+}
+function consumeBudget(b: Budget, key: string): void {
+    b.consumed.set(key, (b.consumed.get(key) ?? 0) + 1);
+}
+
+/** Build the per-edit recorded-occurrence budget for one file's attribution candidates. */
+function buildBudget(normFile: string, edits: CliEditRow[]): Budget {
+    const recorded = new Map<string, number>();
+    for (const row of edits) {
+        if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
+        if (!isLineAttributionCandidate(row)) continue;
+        if (row.content_sha) recorded.set(shaKey(row.id, row.content_sha), (recorded.get(shaKey(row.id, row.content_sha)) ?? 0) + 1);
+        if (row.content_sha_norm) recorded.set(normKey(row.id, row.content_sha_norm), (recorded.get(normKey(row.id, row.content_sha_norm)) ?? 0) + 1);
+    }
+    return { recorded, consumed: new Map() };
+}
+
+/** An AI edit that recorded THIS content at THIS exact line. Consumes one occurrence. */
+function pickExactAiEdit(filePath: string, ln: number, lineText: string, edits: CliEditRow[], b: Budget): CliEditRow | null {
+    const normFile = filePath.replace(/\\/g, '/');
+    const text = lineText.replace(/\r$/, '');
+    const hash = lineSha(text);
+    const normHash = lineShaNorm(text);
+    for (const row of edits) {
+        if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
+        if (!isLineAttributionCandidate(row)) continue;
+        if (row.start_line !== ln) continue;
+        if (row.content_sha && row.content_sha === hash) { consumeBudget(b, shaKey(row.id, hash)); return row; }
+        if (normHash && row.content_sha_norm && row.content_sha_norm === normHash) { consumeBudget(b, normKey(row.id, normHash)); return row; }
+    }
+    return null;
+}
+
 /**
- * Resolve AI for one git-diff line from SQLite (rows are newest-first).
- * Prefer the newest edit whose content_sha matches current line text so a
- * later whole-file apply does not stamp every line with the last model name.
+ * An AI edit whose content matches this line but at a DIFFERENT position (drift).
+ * Prefers an edit that still has an unconsumed occurrence (nearest among those),
+ * so identical content distributes across the edits that recorded it; falls back
+ * to the nearest match overall when every budget is spent (line still attributed).
  */
-function resolveAiEditForChangedLine(
-    filePath: string,
-    ln: number,
-    lineText: string,
-    edits: CliEditRow[],
-): CliEditRow | null {
+function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: CliEditRow[], b: Budget): CliEditRow | null {
     const normFile = filePath.replace(/\\/g, '/');
     const text = lineText.replace(/\r$/, '');
     const hash = lineSha(text);
 
-    // content_sha path: prefer exact line-number match so the copy-paste guard
-    // doesn't fire for a line that is genuinely at its recorded position.
-    // When multiple edits share the same content (e.g. `}`), exact-first prevents
-    // a newer edit at line 25 from overshadowing the real edit at line 50.
-    let bestRow: CliEditRow | null = null;
-    let bestDrift = Infinity;
+    let best: CliEditRow | null = null, bestDrift = Infinity;
+    let budgeted: CliEditRow | null = null, budgetedDrift = Infinity;
     for (const row of edits) {
         if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
         if (!isLineAttributionCandidate(row)) continue;
         if (!row.content_sha || row.content_sha !== hash) continue;
-        if (row.start_line === ln) return row;  // exact match: no drift, no copy-paste ambiguity
         const drift = Math.abs((row.start_line ?? ln) - ln);
-        if (drift < bestDrift) { bestDrift = drift; bestRow = row; }
+        if (drift < bestDrift) { bestDrift = drift; best = row; }
+        if (budgetLeft(b, shaKey(row.id, hash)) && drift < budgetedDrift) { budgetedDrift = drift; budgeted = row; }
     }
-    if (bestRow != null) return bestRow;
+    const sha = budgeted ?? best;
+    if (sha) { consumeBudget(b, shaKey(sha.id, hash)); return sha; }
 
-    // content_sha_norm fallback: an autoformatter reflowed this line's
-    // whitespace (reindent, trailing whitespace) after the AI wrote it, so its
-    // exact content_sha no longer matches but its whitespace-collapsed
-    // content_sha_norm still does.
     const normHash = lineShaNorm(text);
     if (normHash) {
-        let bestNormRow: CliEditRow | null = null;
-        let bestNormDrift = Infinity;
+        let bn: CliEditRow | null = null, bnDrift = Infinity;
+        let bnBudgeted: CliEditRow | null = null, bnBudgetedDrift = Infinity;
         for (const row of edits) {
             if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
             if (!isLineAttributionCandidate(row)) continue;
             if (!row.content_sha_norm || row.content_sha_norm !== normHash) continue;
-            if (row.start_line === ln) return row;
             const drift = Math.abs((row.start_line ?? ln) - ln);
-            if (drift < bestNormDrift) { bestNormDrift = drift; bestNormRow = row; }
+            if (drift < bnDrift) { bnDrift = drift; bn = row; }
+            if (budgetLeft(b, normKey(row.id, normHash)) && drift < bnBudgetedDrift) { bnBudgetedDrift = drift; bnBudgeted = row; }
         }
-        if (bestNormRow != null) return bestNormRow;
+        const norm = bnBudgeted ?? bn;
+        if (norm) { consumeBudget(b, normKey(norm.id, normHash)); return norm; }
     }
 
+    // Range-only edits (no content_sha) cover a line by range — no content budget.
     for (const row of edits) {
         if (row.file_path.replace(/\\/g, '/') !== normFile) continue;
         if (!isLineAttributionCandidate(row)) continue;
@@ -309,14 +345,26 @@ function reconcileChangedLinesAttribution(
         }
         const entries = [...(byFile.get(filePath) ?? [])];
         let mutated = false;
+
+        // Resolve AI attribution with a per-edit occurrence budget so identical
+        // content recorded by several edits is distributed by recorded count
+        // (matching the commit report) instead of all going to the nearest edit.
+        const budget = buildBudget(filePath.replace(/\\/g, '/'), edits);
+        const chosen = new Map<number, CliEditRow | null>();
+        // Pass 1: exact-position matches — unambiguous, and they consume their
+        // occurrence so a drifted duplicate can't steal it in pass 2.
         for (const ln of lineNums) {
             const text = lines[ln - 1];
             if (text === undefined) continue;
-            const idx = entries.findIndex(e => e.lineNumber === ln);
-            const existing = idx >= 0 ? entries[idx] : undefined;
-            const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
-
-            let aiRow = resolveAiEditForChangedLine(filePath, ln, text, edits);
+            const row = pickExactAiEdit(filePath, ln, text, edits, budget);
+            if (row) chosen.set(ln, row);
+        }
+        // Pass 2: drifted lines — budgeted nearest match, then the copy-paste guard.
+        for (const ln of lineNums) {
+            if (chosen.has(ln)) continue;
+            const text = lines[ln - 1];
+            if (text === undefined) continue;
+            let aiRow = pickDriftAiEdit(filePath, ln, text, edits, budget);
 
             // Copy-paste guard: content found at a different line than recorded.
             // If the original position still holds that content, this is a human
@@ -341,6 +389,17 @@ function reconcileChangedLinesAttribution(
                 }
                 if (origStillAtHome) aiRow = null;
             }
+            chosen.set(ln, aiRow);
+        }
+
+        for (const ln of lineNums) {
+            const text = lines[ln - 1];
+            if (text === undefined) continue;
+            const idx = entries.findIndex(e => e.lineNumber === ln);
+            const existing = idx >= 0 ? entries[idx] : undefined;
+            const pending = blameMap.pendingAiLinesFor(filePath).get(ln);
+
+            const aiRow = chosen.get(ln) ?? null;
 
             let entry: LineBlame;
             if (aiRow) {

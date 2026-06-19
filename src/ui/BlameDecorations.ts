@@ -14,6 +14,9 @@ export { blameGutterTooltipText, formatBlameChangedDate } from './BlameDecoratio
 function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
     const hoverMessage = new vscode.MarkdownString();
     hoverMessage.isTrusted = false;
+    // supportHtml lets us color the whole model value with a themed <span>; the
+    // hover renderer allows inline color styles. Off by default, so opt in.
+    hoverMessage.supportHtml = true;
     const text = blameGutterTooltipText(entry);
     for (const line of text.split('\n')) {
         if (line.startsWith('Author:')) {
@@ -21,7 +24,9 @@ function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
         } else if (line.startsWith('Tool:')) {
             hoverMessage.appendMarkdown(`- **Tool:** ${escapeMarkdown(line.slice('Tool:'.length).trim())}\n`);
         } else if (line.startsWith('Model:')) {
-            hoverMessage.appendMarkdown(`- **Model:** \`${escapeMarkdown(line.slice('Model:'.length).trim())}\`\n`);
+            // Color the full model name (themed so it adapts to light/dark).
+            const model = escapeMarkdown(line.slice('Model:'.length).trim());
+            hoverMessage.appendMarkdown(`- **Model:** <span style="color:var(--vscode-charts-purple);">${model}</span>\n`);
         } else if (line.startsWith('Change Date:')) {
             hoverMessage.appendMarkdown(`- **Updated:** ${escapeMarkdown(line.slice('Change Date:'.length).trim())}\n`);
         } else if (line.startsWith('Commit:')) {

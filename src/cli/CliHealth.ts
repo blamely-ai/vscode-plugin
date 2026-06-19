@@ -58,7 +58,7 @@ async function probeDaemon(): Promise<DaemonStatus> {
         return { running: false };
     }
     return new Promise(resolve => {
-        const opts: http.RequestOptions = { path: '/health', timeout: 800 };
+        const opts: http.RequestOptions = { path: '/health', timeout: 2_500 };
         if (sock != null) {
             opts.socketPath = sock;
         } else {

@@ -170,7 +170,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         return {
             commitHash: note.commit,
             commitMessage: note.message ?? '',
-            branch: '',
+            branch: note.branch ?? '',
             generatedAt: authorDate,
             author,
             authorDate,

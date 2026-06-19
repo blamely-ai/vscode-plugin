@@ -91,6 +91,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     disposables.push(healthNotifier);
     healthNotifier.start();
 
+    // Clicking the daemon status-bar lamp shows current health on demand. This is
+    // how the user checks status after the one-shot startup popup — the daemon
+    // lamp's `command` (blamely.showDaemonStatus) was contributed but never
+    // registered, so the click previously did nothing.
+    disposables.push(
+        vscode.commands.registerCommand('blamely.showDaemonStatus', () => {
+            void healthNotifier?.showStatusNow();
+        }),
+    );
+
     const completionEnabled = vscode.workspace
         .getConfiguration('blamely')
         .get<boolean>('detectInlineCompletion', true);

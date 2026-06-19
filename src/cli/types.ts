@@ -2,6 +2,8 @@
 export interface CliNote {
     schema: number;
     commit: string;
+    /** Branch the commit was on (recorded by the CLI note; shown in History). */
+    branch?: string;
     generated_by?: string;
     /** Full commit message (subject + body), when the note records it. */
     message?: string;

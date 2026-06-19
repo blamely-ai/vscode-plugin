@@ -137,6 +137,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log AI-edit detection to the **Blamely** output channel: every executed command id, each chat-apply/inline-accept match, and each recorded edit (tool, gen_type, line range). Use this to verify attribution and to discover the chat-apply command id your editor/version uses."
+        },
+        "blamely.debugConnection": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log daemon connection activity to the **Blamely** output channel: each `/health` ping (transport, port, result, latency) and each `/edit` POST (status, latency, error). Pair with the daemon's `BLAMELY_DEBUG=1` env var to debug daemon↔plugin connection errors from both ends."
         }
       }
     },

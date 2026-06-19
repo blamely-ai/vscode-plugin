@@ -47,10 +47,14 @@ export class DaemonClient {
             this.maybeWarn('daemon socket/port file missing (blamely daemon not running?)');
             return false;
         }
+        const via = sock != null ? 'unix' : `tcp:${port}`;
+        const t0 = Date.now();
         try {
             await this.request(sock, port, 'POST', '/edit', payload);
+            Logger.debugConn(`POST /edit ok via ${via} (${Date.now() - t0}ms) ${payload.tool}/${payload.gen_type ?? '?'} ${payload.file_path} lines=${payload.lines.length}`);
             return true;
         } catch (err) {
+            Logger.debugConn(`POST /edit FAILED via ${via} (${Date.now() - t0}ms): ${(err as Error).message}`);
             this.maybeWarn(`POST /edit failed: ${(err as Error).message}`);
             return false;
         }
@@ -87,7 +91,12 @@ export class DaemonClient {
                     'Content-Type': 'application/json',
                     'Content-Length': bodyBuf.length,
                 },
-                timeout: 1500,
+                // 4s, not 1.5s: /edit does real work (session resolve, SQLite
+                // write, snapshot) and can briefly exceed a tight timeout on
+                // Windows or while the extension-host event loop is busy. A
+                // too-short timeout aborts an edit the daemon would have stored,
+                // and skips the follow-up putSnapshot — hurting attribution.
+                timeout: 4000,
             };
             if (sock != null) {
                 opts.socketPath = sock;
