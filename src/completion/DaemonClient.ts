@@ -6,6 +6,9 @@ export interface EditRange {
     start: number;
     end: number;
     content_sha?: string;
+    // Whitespace-normalized hash — lets an AI line still match after a reformat
+    // (reindent/reflow) that changes content_sha but not the collapsed text.
+    content_sha_norm?: string;
 }
 
 // Content hashes of lines an edit DELETED (no position — deleted lines have no

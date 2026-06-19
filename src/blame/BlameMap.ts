@@ -68,10 +68,19 @@ function addEntriesToSummary(acc: BlameSummary, entries: LineBlame[]): void {
 const PENDING_AI_TTL_MS = 12_000;
 
 // How long a line stays in the neutral "detecting" state before it resolves to
-// Human by default. Matches the daemon's worst-case record lag (CliDataService's
-// refresh retry tail) so an agent apply has time to be recorded as AI; if no AI
-// record arrives within the window, the line falls back to Human.
-const DETECTING_TTL_MS = 8_000;
+// Human by default. An agent/chat apply is recorded only after the editor writes
+// its chat-session log and the daemon's watcher reads it — which can lag the
+// on-screen edit by tens of seconds. We keep the loading gutter for that whole
+// window so a chat apply resolves to AI instead of flashing Human first; if no AI
+// record arrives within it, the line falls back to Human. Each streamed chunk
+// re-arms the TTL (markDetecting is called per agent-patch change), so the window
+// effectively counts from the LAST streamed change, not the first.
+//
+// 10s: Copilot Chat is now recorded in real time by the daemon's transcript
+// watcher (GitHub.copilot-chat/transcripts), and Cursor/Copilot-CLI via hooks —
+// so the record lands within a few seconds. This window only has to bridge that
+// short watcher latency (poll + processing), not the old lazy-flush lag.
+const DETECTING_TTL_MS = 10_000;
 
 export class BlameMap {
     private map = new Map<string, LineBlame[]>();

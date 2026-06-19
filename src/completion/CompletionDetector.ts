@@ -574,7 +574,7 @@ export class CompletionDetector implements vscode.Disposable {
             for (let i = 0; i < lines.length; i++) {
                 const text = lines[i].replace(/\r$/, '');
                 if (text.trim().length === 0) { continue; }
-                lineRanges.push({ start: i + 1, end: i + 1, content_sha: lineSha(text) });
+                lineRanges.push({ start: i + 1, end: i + 1, content_sha: lineSha(text), content_sha_norm: lineShaNorm(text) });
             }
             if (lineRanges.length === 0) { continue; }
 
@@ -785,7 +785,10 @@ function buildLineRangesWithSha(
             const line = doc.lineAt(ln - 1);
             const text = line.text.replace(/\r$/, '');
             if (text.trim().length === 0) continue;
-            out.push({ start: ln, end: ln, content_sha: lineSha(text) });
+            // Record BOTH the exact hash and the whitespace-normalized hash, so an
+            // AI line still attributes to AI after the editor reformats it (reindent
+            // / reflow changes content_sha but not content_sha_norm).
+            out.push({ start: ln, end: ln, content_sha: lineSha(text), content_sha_norm: lineShaNorm(text) });
         }
     }
     return out;

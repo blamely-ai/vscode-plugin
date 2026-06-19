@@ -7,36 +7,73 @@ import {
     blameGutterTooltipText,
     escapeMarkdown,
     quotePromptForTooltip,
+    toolDisplayName,
+    formatBlameChangedDate,
 } from './BlameDecorationsTooltip';
 
 export { blameGutterTooltipText, formatBlameChangedDate } from './BlameDecorationsTooltip';
 
+const HUMAN_COLOR = 'var(--vscode-charts-green)';
+const DIM = 'var(--vscode-descriptionForeground)';
+
+// Per-tool brand colors, matching the HTML report. Chosen to read on both light
+// and dark themes (Cursor's near-white brand is swapped for a legible blue).
+const TOOL_COLORS: Record<string, string> = {
+    claude: '#d97757',
+    cursor: '#7aa2f7',
+    codex: '#10a37f',
+    copilot: '#a371f7',
+    gemini: '#4f9cf0',
+};
+function toolBrandColor(provider?: string | null): string {
+    return TOOL_COLORS[(provider ?? '').trim().toLowerCase()] ?? 'var(--vscode-charts-blue)';
+}
+
+/** Dimmed metadata footer: `$(history) <when>  ·  $(git-commit) <sha>`. */
+function metaFooter(entry: LineBlame): string {
+    const parts = [`$(history) ${escapeMarkdown(formatBlameChangedDate(entry.timestamp))}`];
+    if (entry.commitSha) {
+        parts.push(`$(git-commit) ${escapeMarkdown(entry.commitSha.slice(0, 8))}`);
+    }
+    return `<span style="color:${DIM};">${parts.join(' &nbsp;·&nbsp; ')}</span>`;
+}
+
+/** Subtle product attribution shown at the bottom of every hover. */
+function brandLine(): string {
+    return `\n\n<span style="color:${DIM};">$(shield) Provided by **Blamely**</span>`;
+}
+
+/**
+ * Gutter hover: a brand-colored title (tool, with the model as a secondary chip),
+ * the prompt as a quote, and a single dimmed metadata footer. Built directly from
+ * the entry (codicons + themed inline color), with a compact, professional layout.
+ */
 function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
-    const hoverMessage = new vscode.MarkdownString();
-    hoverMessage.isTrusted = false;
-    // supportHtml lets us color the whole model value with a themed <span>; the
-    // hover renderer allows inline color styles. Off by default, so opt in.
-    hoverMessage.supportHtml = true;
-    const text = blameGutterTooltipText(entry);
-    for (const line of text.split('\n')) {
-        if (line.startsWith('Author:')) {
-            hoverMessage.appendMarkdown(`- **Author:** ${line.slice('Author:'.length).trim()}\n`);
-        } else if (line.startsWith('Tool:')) {
-            hoverMessage.appendMarkdown(`- **Tool:** ${escapeMarkdown(line.slice('Tool:'.length).trim())}\n`);
-        } else if (line.startsWith('Model:')) {
-            // Color the full model name (themed so it adapts to light/dark).
-            const model = escapeMarkdown(line.slice('Model:'.length).trim());
-            hoverMessage.appendMarkdown(`- **Model:** <span style="color:var(--vscode-charts-purple);">${model}</span>\n`);
-        } else if (line.startsWith('Change Date:')) {
-            hoverMessage.appendMarkdown(`- **Updated:** ${escapeMarkdown(line.slice('Change Date:'.length).trim())}\n`);
-        } else if (line.startsWith('Commit:')) {
-            hoverMessage.appendMarkdown(`- **Commit:** \`${escapeMarkdown(line.slice('Commit:'.length).trim())}\`\n`);
+    const md = new vscode.MarkdownString();
+    md.isTrusted = false;
+    md.supportHtml = true;
+    md.supportThemeIcons = true;
+
+    if (entry.authorType === 'AI') {
+        const color = toolBrandColor(entry.provider);
+        const tool = entry.provider ? escapeMarkdown(toolDisplayName(entry.provider)) : 'AI';
+        let header = `<span style="color:${color};">$(sparkle) **${tool}**</span>`;
+        if (entry.model) {
+            header += ` &nbsp;<span style="color:${DIM};">${escapeMarkdown(entry.model)}</span>`;
         }
+        md.appendMarkdown(`${header}\n\n`);
+        if (entry.prompt) {
+            md.appendMarkdown(`${quotePromptForTooltip(entry.prompt)}\n\n`);
+        }
+        md.appendMarkdown(metaFooter(entry));
+        md.appendMarkdown(brandLine());
+        return md;
     }
-    if (entry.authorType === 'AI' && entry.prompt) {
-        hoverMessage.appendMarkdown(`- **Prompt:** ${quotePromptForTooltip(entry.prompt)}\n`);
-    }
-    return hoverMessage;
+
+    md.appendMarkdown(`<span style="color:${HUMAN_COLOR};">$(account) **Human**</span>\n\n`);
+    md.appendMarkdown(metaFooter(entry));
+    md.appendMarkdown(brandLine());
+    return md;
 }
 
 /** Small brain SVG for AI gutter icon (matches IntelliJ GutterBrain). */
@@ -53,7 +90,14 @@ function dataUriForSvg(svg: string): vscode.Uri {
 }
 
 /** Hover for the neutral "detecting" gutter icon. */
-const DETECTING_HOVER = new vscode.MarkdownString('- **Detecting authorship…** resolving AI vs human');
+const DETECTING_HOVER = (() => {
+    const md = new vscode.MarkdownString();
+    md.supportHtml = true;
+    md.supportThemeIcons = true;
+    md.appendMarkdown('<span style="color:var(--vscode-charts-yellow);">$(sync) **Detecting authorship…**</span>\n\n');
+    md.appendMarkdown('<span style="color:var(--vscode-descriptionForeground);">Resolving AI vs human</span>');
+    return md;
+})();
 
 /**
  * Editor line decorations: gutter icon, ruler, optional background, and hover tooltips for AI & Human.
