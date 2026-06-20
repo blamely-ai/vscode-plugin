@@ -43,28 +43,64 @@ function isIndexableLineRange(row: CliEditRow): boolean {
 /**
  * Parse `git diff --unified=0 HEAD` output into a map of relPath → added line numbers.
  * Used to populate human LineBlame entries in the BlameMap.
+ *
+ * Content-aware: a `+` line that is byte-identical to its positionally-paired
+ * `-` line is NOT counted as changed. git emits such a pair when a line gains or
+ * loses its trailing newline — the "\ No newline at end of file" transition that
+ * happens when you append a line after a file whose last line had no newline.
+ * Without this, that unchanged last line got a (Human) gutter icon the moment you
+ * pressed Enter, even though you never touched it.
  */
 function parseHumanLines(diffOutput: string): Map<string, number[]> {
     const result = new Map<string, number[]>();
     let currentFile: string | null = null;
+
+    // Per-hunk buffers. With --unified=0 git emits all `-` lines then all `+`
+    // lines for a hunk, so they pair positionally: dels[i] ↔ adds[i].
+    let dels: string[] = [];
+    let adds: Array<{ line: number; content: string }> = [];
+    let addLine = 0;
+
+    const stripCR = (s: string) => s.replace(/\r$/, '');
+
+    const flushHunk = () => {
+        if (currentFile) {
+            const lines = result.get(currentFile)!;
+            const n = Math.min(dels.length, adds.length);
+            for (let i = 0; i < adds.length; i++) {
+                // Drop a `+` line identical to its paired `-` line (newline-only change).
+                if (i < n && stripCR(adds[i].content) === stripCR(dels[i])) continue;
+                if (adds[i].line > 0) lines.push(adds[i].line);
+            }
+        }
+        dels = [];
+        adds = [];
+    };
+
     for (const line of diffOutput.split('\n')) {
         if (line.startsWith('+++ b/')) {
+            flushHunk();
             currentFile = line.slice(6).replace(/\\/g, '/').trim();
             if (!result.has(currentFile)) result.set(currentFile, []);
         } else if (line.startsWith('+++ /dev/null')) {
+            flushHunk();
             currentFile = null; // deleted file — no added lines
         } else if (line.startsWith('@@ ') && currentFile) {
+            flushHunk();
             const m = /\+(\d+)(?:,(\d+))?/.exec(line);
-            if (m) {
-                const start = parseInt(m[1]);
-                const count = m[2] !== undefined ? parseInt(m[2]) : 1;
-                const lines = result.get(currentFile)!;
-                for (let i = 0; i < count; i++) {
-                    if (start + i > 0) lines.push(start + i);
-                }
+            addLine = m ? parseInt(m[1]) : 0;
+        } else if (currentFile) {
+            if (line.startsWith('\\')) {
+                continue; // "\ No newline at end of file" — not a content line
+            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                dels.push(line.slice(1));
+            } else if (line.startsWith('+') && !line.startsWith('+++')) {
+                adds.push({ line: addLine, content: line.slice(1) });
+                addLine++;
             }
         }
     }
+    flushHunk();
     return result;
 }
 
