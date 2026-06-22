@@ -121,7 +121,7 @@ export class WorkingLogTracker implements vscode.Disposable {
         if (author.tool) args.push('--tool', author.tool);
         if (author.model) args.push('--model', author.model);
         try {
-            const child = execFile(bin, args, { env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' } }, () => {});
+            const child = execFile(bin, args, { env: { ...process.env } }, () => {});
             child.stdin?.end(content);
         } catch {
             // best-effort: deletion recording must never disrupt the editor

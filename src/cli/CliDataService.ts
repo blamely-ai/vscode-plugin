@@ -957,7 +957,7 @@ export class CliDataService implements vscode.Disposable {
     private async fetchAuthorship(bin: string, fsPath: string): Promise<WorkingLogJson | null> {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', fsPath], {
-                env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
+                env: { ...process.env },
                 timeout: 5000,
                 maxBuffer: 8 * 1024 * 1024,
             });
@@ -973,7 +973,7 @@ export class CliDataService implements vscode.Disposable {
     private async fetchAllWorkingLogs(bin: string, repoRoot: string): Promise<WorkingLogJson[]> {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', repoRoot, '--all'], {
-                env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
+                env: { ...process.env },
                 timeout: 5000,
                 maxBuffer: 32 * 1024 * 1024,
             });

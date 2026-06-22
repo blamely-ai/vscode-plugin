@@ -77,7 +77,7 @@ export class GutterV2 implements vscode.Disposable {
     private async fetch(bin: string, fsPath: string): Promise<LineBlame[] | null> {
         try {
             const { stdout } = await execFileAsync(bin, ['authorship', fsPath], {
-                env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
+                env: { ...process.env },
                 timeout: 5000,
                 maxBuffer: 8 * 1024 * 1024,
             });
