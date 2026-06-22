@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import { BlameMap, LineBlame } from '../blame/BlameMap';
+import { CliDataService } from '../cli/CliDataService';
 import { blameFileKey } from '../utils/WorkspacePaths';
 import { installedBinaryPath } from '../cli/paths';
 import { attributionV2Enabled } from './WorkingLogTracker';
@@ -24,80 +25,110 @@ interface WorkingLogJson {
 }
 
 /**
- * Attribution v2 gutter overlay (docs/attribution-v2-design.md Phase 3), gated by
- * the `blamely.attributionV2` setting. When ON, it paints the ACTIVE editor's gutter
- * from `blamely authorship <file>` — the single per-line source (committed authorship
- * seeded + uncommitted working-log edits) the commit note also flips to (invariant
- * I4). When OFF (default), it is completely inert and the v1 path owns the gutter.
+ * Attribution v2 gutter overlay (docs/attribution-v2-design.md Phase 3). When v2 is
+ * on (default), it paints the visible editors' gutters from `blamely authorship`
+ * (the single per-line source — committed authorship seeded + uncommitted working-log
+ * edits — the commit note also flips to, invariant I4).
  *
- * Known limitation while experimental: only the active editor is overlaid (the status
- * bar / sidebar still aggregate the v1 map), and a v1 timer refresh may transiently
- * repaint between overlay ticks. Repo-wide ownership is a follow-up once the flip is
- * validated in the IDE.
+ * It is the gutter's source of truth when v2 is on, so it must win against the v1
+ * CliDataService, which clears/replaces the shared BlameMap on its own timer. To
+ * avoid the "icons load then disappear / flicker to AI" race, GutterV2:
+ *   - caches the last per-file authorship and RE-ASSERTS it immediately on every v1
+ *     refresh (so a v1 refresh can never leave the gutter cleared), and
+ *   - re-fetches (debounced) on editor/visibility/save/edit changes.
  */
 export class GutterV2 implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     private debounce?: ReturnType<typeof setTimeout>;
+    private readonly cache = new Map<string, LineBlame[]>();
 
     constructor(
         private readonly blameMap: BlameMap,
         private readonly repaint: () => void,
+        private readonly cliData: CliDataService,
     ) {}
 
     activate(): void {
         this.disposables.push(
             vscode.window.onDidChangeActiveTextEditor(() => this.schedule()),
+            vscode.window.onDidChangeVisibleTextEditors(() => this.schedule()),
             vscode.workspace.onDidSaveTextDocument(() => this.schedule()),
             vscode.workspace.onDidChangeTextDocument((e) => {
-                if (e.document === vscode.window.activeTextEditor?.document) this.schedule();
+                if (vscode.window.visibleTextEditors.some((ed) => ed.document === e.document)) {
+                    this.schedule();
+                }
             }),
+            // v1 just rewrote the shared map — re-assert v2 immediately so the gutter
+            // can't be cleared/clobbered out from under us.
+            this.cliData.onRefresh(() => this.reassert()),
         );
         this.schedule();
+    }
+
+    /** Synchronously re-apply the cached v2 entries for the visible editors (no CLI
+     *  call) so a v1 refresh never wins the final paint. */
+    private reassert(): void {
+        if (!attributionV2Enabled() || this.cache.size === 0) {
+            return;
+        }
+        let any = false;
+        for (const ed of vscode.window.visibleTextEditors) {
+            if (ed.document.uri.scheme !== 'file') continue;
+            const key = blameFileKey(ed.document.uri);
+            const entries = this.cache.get(key);
+            if (entries) {
+                this.blameMap.setFileBlame(key, entries);
+                any = true;
+            }
+        }
+        if (any) this.repaint();
     }
 
     private schedule(): void {
         if (!attributionV2Enabled()) return;
         if (this.debounce) clearTimeout(this.debounce);
-        this.debounce = setTimeout(() => void this.refreshActive(), 300);
+        this.debounce = setTimeout(() => void this.refreshVisible(), 200);
     }
 
-    private async refreshActive(): Promise<void> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.uri.scheme !== 'file' || !attributionV2Enabled()) {
-            return;
-        }
+    private async refreshVisible(): Promise<void> {
+        if (!attributionV2Enabled()) return;
         const bin = installedBinaryPath();
-        if (!fs.existsSync(bin)) {
-            return;
+        if (!fs.existsSync(bin)) return;
+        let painted = false;
+        for (const ed of vscode.window.visibleTextEditors) {
+            if (ed.document.uri.scheme !== 'file') continue;
+            const entries = await this.fetch(bin, ed.document.uri.fsPath);
+            if (entries) {
+                const key = blameFileKey(ed.document.uri);
+                this.cache.set(key, entries);
+                this.blameMap.setFileBlame(key, entries);
+                painted = true;
+            }
         }
-        let wl: WorkingLogJson;
+        if (painted) this.repaint();
+    }
+
+    private async fetch(bin: string, fsPath: string): Promise<LineBlame[] | null> {
         try {
-            const { stdout } = await execFileAsync(bin, ['authorship', editor.document.uri.fsPath], {
+            const { stdout } = await execFileAsync(bin, ['authorship', fsPath], {
                 env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
                 timeout: 5000,
                 maxBuffer: 8 * 1024 * 1024,
             });
             const trimmed = stdout.trim();
-            if (!trimmed) {
-                return;
-            }
-            wl = JSON.parse(trimmed) as WorkingLogJson;
+            if (!trimmed) return null;
+            return toLineBlame(JSON.parse(trimmed) as WorkingLogJson);
         } catch (err) {
             Logger.warn(`GutterV2: authorship query failed: ${err}`);
-            return;
+            return null;
         }
-        const entries = toLineBlame(wl);
-        if (!entries.length) {
-            return;
-        }
-        this.blameMap.setFileBlame(blameFileKey(editor.document.uri), entries);
-        this.repaint();
     }
 
     dispose(): void {
         if (this.debounce) clearTimeout(this.debounce);
         this.disposables.forEach((d) => d.dispose());
         this.disposables = [];
+        this.cache.clear();
     }
 }
 

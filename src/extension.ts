@@ -45,7 +45,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Attribution v2 gutter overlay (flag-gated by blamely.attributionV2; inert when
     // off). Paints the active editor from `blamely authorship` — the same working log
     // the commit note flips to (I4).
-    const gutterV2 = new GutterV2(blameMap, () => blameDecorations?.updateDecorations());
+    const gutterV2 = new GutterV2(blameMap, () => blameDecorations?.updateDecorations(), cliData);
     gutterV2.activate();
     disposables.push(gutterV2);
 
