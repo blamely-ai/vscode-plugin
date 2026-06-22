@@ -19,7 +19,8 @@ import { FileTracker } from './tracker';
 import { save } from './store';
 
 export function attributionV2Enabled(): boolean {
-    return vscode.workspace.getConfiguration('blamely').get<boolean>('attributionV2', false);
+    // On by default (matches the package.json default); users can opt out.
+    return vscode.workspace.getConfiguration('blamely').get<boolean>('attributionV2', true);
 }
 
 interface Ctx {

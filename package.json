@@ -129,8 +129,8 @@
         },
         "blamely.attributionV2": {
           "type": "boolean",
-          "default": false,
-          "description": "Experimental: maintain the Attribution v2 working log (diff-based, no content-hash guessing) for edits made in the editor. Writes .git/blamely working-log files only; does not yet change the gutter or commit note. Off by default."
+          "default": true,
+          "description": "Attribution v2: determine each line's author from the observed edit (diff-based working log) instead of content-hash guessing. Drives the gutter and the committed note. On by default; set to false to fall back to the legacy engine."
         },
         "blamely.aiTool": {
           "type": "string",
