@@ -62,15 +62,25 @@ export function attribute(
     const newLines = splitLines(newContent);
     const matched = alignLines(oldLines, newLines);
 
+    // movedFrom[i] = old index a new line was MOVED from (relocated identical
+    // content), or -1.
+    const movedFrom = detectMoves(oldLines, newLines, matched);
+
     const perLine: Author[] = new Array(newLines.length);
     for (let i = 0; i < newLines.length; i++) {
         const j = matched[i];
-        perLine[i] = j >= 0 ? priorAuthorOr(prior, j + 1) : author;
+        if (j >= 0) {
+            perLine[i] = priorAuthorOr(prior, j + 1);
+        } else if (movedFrom[i] >= 0) {
+            perLine[i] = priorAuthorOr(prior, movedFrom[i] + 1);
+        } else {
+            perLine[i] = author;
+        }
     }
 
     // overrode[i] = the author a CHANGED line replaced, when its type differs from
     // the new author (audit marker; does not change who owns the line now).
-    const overrode = detectOverrode(prior, matched, oldLines.length, author);
+    const overrode = detectOverrode(prior, matched, movedFrom, oldLines.length, author);
 
     return {
         schema: WORKING_LOG_SCHEMA,
@@ -82,17 +92,61 @@ export function attribute(
     };
 }
 
-/** detectOverrode finds replace pairs and records the replaced author when its
- *  type differs from the new author. Walks the LCS alignment gap by gap and pairs
- *  unmatched old/new lines positionally — identical to the Go and Kotlin ports. */
+/** detectMoves pairs each unmatched NEW line with an unmatched OLD line of identical
+ *  (whitespace-normalized) content — FIFO by content. Identical to the Go and Kotlin
+ *  ports. A new line with no surviving deleted twin is a genuine add (-1). */
+function detectMoves(oldLines: string[], newLines: string[], matched: number[]): number[] {
+    const moved: number[] = new Array(newLines.length).fill(-1);
+    const oldMatched: boolean[] = new Array(oldLines.length).fill(false);
+    for (const j of matched) {
+        if (j >= 0) {
+            oldMatched[j] = true;
+        }
+    }
+    const oldN = oldLines.map(normalizeLineForMatch);
+    const newN = newLines.map(normalizeLineForMatch);
+    const queues = new Map<string, number[]>();
+    for (let oi = 0; oi < oldLines.length; oi++) {
+        if (!oldMatched[oi]) {
+            const q = queues.get(oldN[oi]);
+            if (q) {
+                q.push(oi);
+            } else {
+                queues.set(oldN[oi], [oi]);
+            }
+        }
+    }
+    for (let ni = 0; ni < newLines.length; ni++) {
+        if (matched[ni] >= 0) {
+            continue;
+        }
+        const q = queues.get(newN[ni]);
+        if (q && q.length > 0) {
+            moved[ni] = q.shift() as number;
+        }
+    }
+    return moved;
+}
+
+/** detectOverrode finds replace pairs and records the replaced author when its type
+ *  differs from the new author. Walks the LCS gap by gap and pairs, positionally,
+ *  the NEW lines that are neither matched nor moved against the OLD lines not
+ *  consumed by a move — identical to the Go and Kotlin ports. Moves never override. */
 function detectOverrode(
     prior: WorkingLog | null,
     matched: number[],
+    movedFrom: number[],
     nOld: number,
     author: Author,
 ): Array<Author | undefined> {
     const m = matched.length;
     const overrode: Array<Author | undefined> = new Array(m).fill(undefined);
+    const consumedOld: boolean[] = new Array(nOld).fill(false);
+    for (const mf of movedFrom) {
+        if (mf >= 0) {
+            consumedOld[mf] = true;
+        }
+    }
     let oldCursor = 0;
     let i = 0;
     while (i < m) {
@@ -106,10 +160,22 @@ function detectOverrode(
             gapNewEnd++;
         }
         const gapOldEnd = gapNewEnd < m ? matched[gapNewEnd] : nOld;
-        for (let k = 0; i + k < gapNewEnd && oldCursor + k < gapOldEnd; k++) {
-            const replaced = priorAuthorOr(prior, oldCursor + k + 1);
+        const newAvail: number[] = [];
+        const oldAvail: number[] = [];
+        for (let ni = i; ni < gapNewEnd; ni++) {
+            if (movedFrom[ni] < 0) {
+                newAvail.push(ni);
+            }
+        }
+        for (let oi = oldCursor; oi < gapOldEnd; oi++) {
+            if (!consumedOld[oi]) {
+                oldAvail.push(oi);
+            }
+        }
+        for (let k = 0; k < newAvail.length && k < oldAvail.length; k++) {
+            const replaced = priorAuthorOr(prior, oldAvail[k] + 1);
             if (replaced.author !== author.author) {
-                overrode[i + k] = replaced;
+                overrode[newAvail[k]] = replaced;
             }
         }
         oldCursor = gapOldEnd;

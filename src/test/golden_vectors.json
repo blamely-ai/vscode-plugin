@@ -124,6 +124,33 @@
       "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
       "expect": ["human", "ai"],
       "expect_overrode": [null, null]
+    },
+    {
+      "name": "moved-block-keeps-author",
+      "prior": [{ "start": 1, "end": 4, "author": "human" }],
+      "baseline": "a\nb\nc\nd",
+      "new": "c\nd\na\nb",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human", "human", "human"],
+      "expect_overrode": [null, null, null, null]
+    },
+    {
+      "name": "move-up-with-genuine-add",
+      "prior": [{ "start": 1, "end": 2, "author": "human" }],
+      "baseline": "keep\nmoveme",
+      "new": "moveme\nkeep\nai new",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human", "ai"],
+      "expect_overrode": [null, null, null]
+    },
+    {
+      "name": "ai-block-moved-by-human-stays-ai",
+      "prior": [{ "start": 1, "end": 2, "author": "ai", "tool": "copilot" }],
+      "baseline": "ai x\nai y",
+      "new": "spacer\nai x\nai y",
+      "author": { "author": "human", "gen_type": "human" },
+      "expect": ["human", "ai", "ai"],
+      "expect_overrode": [null, null, null]
     }
   ]
 }
