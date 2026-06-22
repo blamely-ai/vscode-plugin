@@ -927,6 +927,7 @@ export class CliDataService implements vscode.Disposable {
             repoRoots.push(root);
         }
         const merged = new Map<string, LineBlame[]>();
+        // Tracked working logs across the repo (sidebar aggregate).
         for (const repoRoot of repoRoots) {
             for (const wl of await this.fetchAllWorkingLogs(bin, repoRoot)) {
                 if (!wl.file) continue;
@@ -934,8 +935,39 @@ export class CliDataService implements vscode.Disposable {
                 merged.set(blameFileKey(vscode.Uri.file(abs)), toLineBlame(wl));
             }
         }
+        // Visible editors: seed COMMITTED + uncommitted authorship from the single-file
+        // `authorship` (it seeds from the commit notes when there's no working log),
+        // overriding the --all entry. Without this, a just-committed file — whose
+        // working log isn't re-keyed to the new HEAD yet — shows an empty gutter
+        // ("only the current change"); seeding restores the committed history.
+        for (const ed of vscode.window.visibleTextEditors) {
+            if (ed.document.uri.scheme !== 'file') continue;
+            const wl = await this.fetchAuthorship(bin, ed.document.uri.fsPath);
+            if (wl) {
+                merged.set(blameFileKey(ed.document.uri), toLineBlame(wl));
+            }
+        }
         this.blameMap.replaceAll(merged);
         this.notify();
+    }
+
+    /** Single-file v2 authorship (committed + uncommitted), which SEEDS from the
+     *  commit notes when the file has no working log — used to keep committed history
+     *  in the gutter for visible editors. */
+    private async fetchAuthorship(bin: string, fsPath: string): Promise<WorkingLogJson | null> {
+        try {
+            const { stdout } = await execFileAsyncCli(bin, ['authorship', fsPath], {
+                env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
+                timeout: 5000,
+                maxBuffer: 8 * 1024 * 1024,
+            });
+            const trimmed = stdout.trim();
+            if (!trimmed) return null;
+            return JSON.parse(trimmed) as WorkingLogJson;
+        } catch (err) {
+            Logger.warn(`CliDataService: authorship (single) failed: ${err}`);
+            return null;
+        }
     }
 
     private async fetchAllWorkingLogs(bin: string, repoRoot: string): Promise<WorkingLogJson[]> {
