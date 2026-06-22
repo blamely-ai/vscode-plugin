@@ -1,0 +1,86 @@
+{
+  "_comment": "CANONICAL shared golden vectors for the Attribution v2 engine. Go, the VS Code plugin (TS), and the IntelliJ plugin (Kotlin) all run these EXACT cases so the three implementations cannot drift. Each case applies one Attribute(prior, baseline, new, author) and asserts the per-line author type (1-based). 'prior' is the working log describing 'baseline' (null = none, defaults to human). Keep this file in sync across the three repos; it is the contract in docs/attribution-v2-design.md §6.",
+  "version": "blamely/golden/1",
+  "cases": [
+    {
+      "name": "new-file-all-ai",
+      "prior": null,
+      "baseline": "",
+      "new": "a\nb\nc",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["ai", "ai", "ai"]
+    },
+    {
+      "name": "empty-new-content",
+      "prior": [{ "start": 1, "end": 1, "author": "human" }],
+      "baseline": "x",
+      "new": "",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": []
+    },
+    {
+      "name": "type-then-ai",
+      "prior": [{ "start": 1, "end": 2, "author": "human" }],
+      "baseline": "human one\nhuman two",
+      "new": "human one\nhuman two\nai a\nai b",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human", "ai", "ai"]
+    },
+    {
+      "name": "duplicate-lines-added-copy-is-ai",
+      "prior": [{ "start": 1, "end": 2, "author": "human" }],
+      "baseline": "dup\nmid",
+      "new": "dup\nmid\ndup",
+      "author": { "author": "ai", "tool": "codex", "gen_type": "cli" },
+      "expect": ["human", "human", "ai"]
+    },
+    {
+      "name": "whole-file-rewrite-only-new-is-ai",
+      "prior": [{ "start": 1, "end": 3, "author": "human" }],
+      "baseline": "a\nb\nc",
+      "new": "a\nb\nc\nd",
+      "author": { "author": "ai", "tool": "copilot", "gen_type": "chat" },
+      "expect": ["human", "human", "human", "ai"]
+    },
+    {
+      "name": "edit-middle-line",
+      "prior": [{ "start": 1, "end": 3, "author": "human" }],
+      "baseline": "a\nb\nc",
+      "new": "a\nB\nc",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "ai", "human"]
+    },
+    {
+      "name": "delete-keeps-survivors",
+      "prior": [{ "start": 1, "end": 3, "author": "human" }],
+      "baseline": "a\nb\nc",
+      "new": "a\nc",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human"]
+    },
+    {
+      "name": "crlf-stable",
+      "prior": [{ "start": 1, "end": 2, "author": "human" }],
+      "baseline": "a\r\nb",
+      "new": "a\r\nb\r\nc",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human", "ai"]
+    },
+    {
+      "name": "human-overwrites-ai-line",
+      "prior": [{ "start": 1, "end": 2, "author": "ai" }],
+      "baseline": "ai one\nai two",
+      "new": "ai one\nhuman edit",
+      "author": { "author": "human", "gen_type": "human" },
+      "expect": ["ai", "human"]
+    },
+    {
+      "name": "insert-above-shifts-ai-down",
+      "prior": [{ "start": 1, "end": 2, "author": "ai" }],
+      "baseline": "ai one\nai two",
+      "new": "human top\nai one\nai two",
+      "author": { "author": "human", "gen_type": "human" },
+      "expect": ["human", "ai", "ai"]
+    }
+  ]
+}
