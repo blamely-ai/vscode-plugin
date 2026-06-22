@@ -127,6 +127,11 @@
           "default": true,
           "description": "Detect inline AI completion accepts (Cursor Tab, Copilot Tab) by observing document changes and post them to the blamely daemon as gen_type=completion events."
         },
+        "blamely.attributionV2": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: maintain the Attribution v2 working log (diff-based, no content-hash guessing) for edits made in the editor. Writes .git/blamely working-log files only; does not yet change the gutter or commit note. Off by default."
+        },
         "blamely.aiTool": {
           "type": "string",
           "enum": ["auto", "copilot", "cursor", "gemini"],

@@ -6,6 +6,7 @@ import { getRepoId } from '../cli/repoId';
 import { getRepoRoot, getBranchName, inProgressGitOp } from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { DaemonClient, EditPayload, EditRange, RemovedLineHash } from './DaemonClient';
+import { Author } from '../authorship/attribute';
 
 // Minimum chars used only by the clipboard-paste heuristic below.
 const MIN_COMPLETION_CHARS = 8;
@@ -65,6 +66,11 @@ export class CompletionDetector implements vscode.Disposable {
     private subs: vscode.Disposable[] = [];
     private repoRootCache = new Map<string, string | null>();
     private clipboardCache = '';
+
+    // Attribution v2: optional sink the extension wires to the WorkingLogTracker.
+    // Called for every classified document change (AI and human) with the pre-edit
+    // text as the baseline. Left unset → no-op (v2 fully disabled).
+    onEditObserved?: (doc: vscode.TextDocument, prevText: string, newText: string, author: Author) => void;
 
     // Per-document text snapshot taken BEFORE the current change, keyed by
     // uri.toString(). Used to diff old↔new and record only the lines that
@@ -271,6 +277,18 @@ export class CompletionDetector implements vscode.Disposable {
         if (singleAiInlineCompletion) {
             genType = 'completion';
         }
+
+        // Attribution v2 (flag-gated in the tracker): hand every classified change
+        // — AI (chat/completion) AND human (genType === '') — to the working-log
+        // tracker, with the pre-edit text as the exact baseline. This is the one
+        // point that sees both authors; it never affects the recording below.
+        if (this.onEditObserved) {
+            const v2Author = genType === ''
+                ? { author: 'human' as const, gen_type: 'human' }
+                : { author: 'ai' as const, tool: resolveTool(), gen_type: genType };
+            this.onEditObserved(doc, prevText ?? '', newText, v2Author);
+        }
+
         if (genType === '') {
             // Copilot/Cursor AGENT mode applies region/full-file patches via
             // applyEdit with NO chat-apply command, so we don't record them here —

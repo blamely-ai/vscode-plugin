@@ -4,6 +4,7 @@ import { CliDataService } from './cli/CliDataService';
 import { CliHealthNotifier } from './cli/CliHealthNotifier';
 import { CompletionDetector } from './completion/CompletionDetector';
 import { DaemonClient } from './completion/DaemonClient';
+import { WorkingLogTracker } from './authorship/WorkingLogTracker';
 import { StatusBar } from './ui/StatusBar';
 import { SidebarProvider } from './ui/SidebarProvider';
 import { BlameDecorations } from './ui/BlameDecorations';
@@ -107,6 +108,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (completionEnabled) {
         const daemonClient = new DaemonClient();
         completionDetector = new CompletionDetector(daemonClient, cliData);
+        // Attribution v2 (flag-gated by the blamely.attributionV2 setting inside the
+        // tracker): feed every classified change into the working-log tracker. No-op
+        // for attribution output until the Phase 3 flip; safe to wire unconditionally.
+        const workingLogTracker = new WorkingLogTracker();
+        workingLogTracker.register();
+        disposables.push(workingLogTracker);
+        completionDetector.onEditObserved = (doc, prev, next, author) =>
+            workingLogTracker.onEdit(doc, prev, next, author);
         completionDetector.register();
         disposables.push(completionDetector);
     }
