@@ -13,10 +13,13 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { execFile } from 'child_process';
+import * as fs from 'fs';
 import { getRepoRoot, getBranchName, runGitCommand } from '../git/GitUtils';
 import { Author } from './attribute';
 import { FileTracker } from './tracker';
 import { save } from './store';
+import { installedBinaryPath } from '../cli/paths';
 
 export function attributionV2Enabled(): boolean {
     // On by default (matches the package.json default); users can opt out.
@@ -39,6 +42,10 @@ interface DocState {
 // Shorter than before so an edit is persisted promptly — a Tab-accept immediately
 // followed by a commit must not lose the working log before the commit reads it.
 const FLUSH_DEBOUNCE_MS = 400;
+
+function lineCount(s: string): number {
+    return s.length === 0 ? 0 : s.split('\n').length;
+}
 
 export class WorkingLogTracker implements vscode.Disposable {
     private subs: vscode.Disposable[] = [];
@@ -91,10 +98,34 @@ export class WorkingLogTracker implements vscode.Disposable {
             this.docs.set(key, st);
         }
         st.ft.applyEdit(newText, author);
+        // An AI edit that REMOVED lines: the working log only describes surviving
+        // content, so committed deletions would default to Human. Record the deleted
+        // baseline lines (via the CLI, reusing the engine) so they attribute to the
+        // tool. Gated to AI edits that shrink the file — a human delete stays the
+        // default, and a pure AI add (more lines) never spawns the CLI.
+        if (author.author === 'ai' && lineCount(newText) < lineCount(prevText)) {
+            this.recordDeletion(doc.uri.fsPath, newText, author);
+        }
         if (st.flushTimer) {
             clearTimeout(st.flushTimer);
         }
         st.flushTimer = setTimeout(() => void this.flush(key), FLUSH_DEBOUNCE_MS);
+    }
+
+    /** Record AI-deleted baseline lines via `blamely record-deletion` (current buffer
+     *  content piped on stdin, since it may be unsaved). Best-effort, fire-and-forget. */
+    private recordDeletion(fsPath: string, content: string, author: Author): void {
+        const bin = installedBinaryPath();
+        if (!bin || !fs.existsSync(bin)) return;
+        const args = ['record-deletion', fsPath, '--gen-type', author.gen_type || 'completion'];
+        if (author.tool) args.push('--tool', author.tool);
+        if (author.model) args.push('--model', author.model);
+        try {
+            const child = execFile(bin, args, { env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' } }, () => {});
+            child.stdin?.end(content);
+        } catch {
+            // best-effort: deletion recording must never disrupt the editor
+        }
     }
 
     private async resolveCtx(fsPath: string): Promise<Ctx | null> {
