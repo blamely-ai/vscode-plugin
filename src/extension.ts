@@ -80,6 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Refresh history when HEAD changes (oobeya-cli writes git notes on commit).
     let lastHead: string | null = null;
+    let workingLogTracker: WorkingLogTracker | undefined;
     const pollHead = async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!root) return;
@@ -87,9 +88,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!repoRoot) return;
         const head = await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD');
         if (head && head !== lastHead) {
+            const wasInitial = lastHead === null;
             lastHead = head;
             void cliData?.refresh();
             void historyProvider?.refresh();
+            // A real commit (not the first observation at startup) → the trackers'
+            // in-memory edits are now history; drop them so the next edit re-baselines
+            // against the committed content instead of a stale baseline.
+            if (!wasInitial) workingLogTracker?.onHeadChanged();
         }
     };
     disposables.push(vscode.workspace.onDidSaveTextDocument(() => void pollHead()));
@@ -119,11 +125,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Attribution v2 (flag-gated by the blamely.attributionV2 setting inside the
         // tracker): feed every classified change into the working-log tracker. No-op
         // for attribution output until the Phase 3 flip; safe to wire unconditionally.
-        const workingLogTracker = new WorkingLogTracker();
-        workingLogTracker.register();
-        disposables.push(workingLogTracker);
+        const tracker = new WorkingLogTracker();
+        workingLogTracker = tracker;
+        tracker.register();
+        disposables.push(tracker);
         completionDetector.onEditObserved = (doc, prev, next, author) =>
-            workingLogTracker.onEdit(doc, prev, next, author);
+            tracker.onEdit(doc, prev, next, author);
         completionDetector.register();
         disposables.push(completionDetector);
     }

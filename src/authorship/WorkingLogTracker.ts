@@ -32,11 +32,13 @@ interface Ctx {
 
 interface DocState {
     ft: FileTracker;
-    ctx: Promise<Ctx | null>;
+    fsPath: string;
     flushTimer?: ReturnType<typeof setTimeout>;
 }
 
-const FLUSH_DEBOUNCE_MS = 1200;
+// Shorter than before so an edit is persisted promptly — a Tab-accept immediately
+// followed by a commit must not lose the working log before the commit reads it.
+const FLUSH_DEBOUNCE_MS = 400;
 
 export class WorkingLogTracker implements vscode.Disposable {
     private subs: vscode.Disposable[] = [];
@@ -49,7 +51,27 @@ export class WorkingLogTracker implements vscode.Disposable {
                 void this.flush(d.uri.toString());
                 this.docs.delete(d.uri.toString());
             }),
+            // Focus-loss flush (Decision B): the user leaving the IDE usually means a
+            // commit/terminal action is next, so persist pending edits NOW — before a
+            // commit reads the working log.
+            vscode.window.onDidChangeWindowState((e) => {
+                if (!e.focused) void this.flushAll();
+            }),
         );
+    }
+
+    /** Flush every tracked document immediately (e.g. on focus loss, before a commit). */
+    private async flushAll(): Promise<void> {
+        for (const key of [...this.docs.keys()]) {
+            await this.flush(key);
+        }
+    }
+
+    /** Called when HEAD changes (a commit happened): the just-committed edits are now
+     *  history, so drop the in-memory trackers — the next edit re-baselines against the
+     *  new committed content rather than accumulating against a stale baseline. */
+    onHeadChanged(): void {
+        this.docs.clear();
     }
 
     /**
@@ -65,7 +87,7 @@ export class WorkingLogTracker implements vscode.Disposable {
         const key = doc.uri.toString();
         let st = this.docs.get(key);
         if (!st) {
-            st = { ft: new FileTracker(prevText, null), ctx: this.resolveCtx(doc.uri.fsPath) };
+            st = { ft: new FileTracker(prevText, null), fsPath: doc.uri.fsPath };
             this.docs.set(key, st);
         }
         st.ft.applyEdit(newText, author);
@@ -95,7 +117,10 @@ export class WorkingLogTracker implements vscode.Disposable {
             clearTimeout(st.flushTimer);
             st.flushTimer = undefined;
         }
-        const ctx = await st.ctx;
+        // Re-resolve against the CURRENT HEAD on every flush: if a commit moved HEAD
+        // since the doc was first edited, the working log must be keyed to the new base
+        // (the next commit's parent), not the stale base from first edit.
+        const ctx = await this.resolveCtx(st.fsPath);
         const wl = st.ft.current();
         if (!ctx || !wl) {
             return;
