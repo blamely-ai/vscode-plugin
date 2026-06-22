@@ -81,6 +81,30 @@
       "new": "human top\nai one\nai two",
       "author": { "author": "human", "gen_type": "human" },
       "expect": ["human", "ai", "ai"]
+    },
+    {
+      "name": "reflow-reindent-keeps-author",
+      "prior": [{ "start": 1, "end": 2, "author": "human" }],
+      "baseline": "func() {\n  body()",
+      "new": "func() {\n        body()",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "human"]
+    },
+    {
+      "name": "reflow-trailing-and-internal-whitespace-keeps-author",
+      "prior": [{ "start": 1, "end": 1, "author": "ai", "tool": "codex" }],
+      "baseline": "a = b + c",
+      "new": "a = b + c   ",
+      "author": { "author": "human", "gen_type": "human" },
+      "expect": ["ai"]
+    },
+    {
+      "name": "substantive-change-is-not-reflow",
+      "prior": [{ "start": 1, "end": 1, "author": "human" }],
+      "baseline": "total = 1",
+      "new": "total = 2",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["ai"]
     }
   ]
 }

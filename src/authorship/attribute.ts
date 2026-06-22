@@ -101,6 +101,21 @@ function splitLines(s: string): string[] {
 
 /** alignLines: for each NEW line, the OLD line index it is unchanged from (LCS
  *  match) or -1. Standard LCS DP + backtrack; identical to the Go implementation. */
+// normalizeLineForMatch collapses a line to its whitespace-insensitive form: trim
+// ends + collapse internal whitespace runs to a single space. MUST match the Go and
+// Kotlin ports exactly (the golden vectors enforce it) so reflow is detected the
+// same way everywhere. Empty after trim → "".
+function normalizeLineForMatch(s: string): string {
+    const trimmed = s.trim();
+    if (trimmed === '') {
+        return '';
+    }
+    return trimmed.split(/\s+/).join(' ');
+}
+
+// alignLines compares lines WHITESPACE-NORMALIZED (Phase 4 reflow): a line that
+// changed only in indentation / trailing or collapsed whitespace counts as
+// unchanged and keeps its prior author. A genuine content change still mismatches.
 function alignLines(oldLines: string[], newLines: string[]): number[] {
     const n = oldLines.length;
     const m = newLines.length;
@@ -108,10 +123,12 @@ function alignLines(oldLines: string[], newLines: string[]): number[] {
     if (n === 0 || m === 0) {
         return matched;
     }
+    const oldN = oldLines.map(normalizeLineForMatch);
+    const newN = newLines.map(normalizeLineForMatch);
     const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
     for (let i = n - 1; i >= 0; i--) {
         for (let j = m - 1; j >= 0; j--) {
-            if (oldLines[i] === newLines[j]) {
+            if (oldN[i] === newN[j]) {
                 dp[i][j] = dp[i + 1][j + 1] + 1;
             } else if (dp[i + 1][j] >= dp[i][j + 1]) {
                 dp[i][j] = dp[i + 1][j];
@@ -123,7 +140,7 @@ function alignLines(oldLines: string[], newLines: string[]): number[] {
     let i = 0;
     let j = 0;
     while (i < n && j < m) {
-        if (oldLines[i] === newLines[j]) {
+        if (oldN[i] === newN[j]) {
             matched[j] = i;
             i++;
             j++;
