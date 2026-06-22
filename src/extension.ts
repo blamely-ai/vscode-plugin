@@ -150,6 +150,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void statusBar?.renderAfterRefresh();
     void historyProvider.refresh();
 
+    // Blamely can't attribute anything without Git. If the opened folder isn't a
+    // repo yet, offer to `git init` it (one-shot, dismissible per folder).
+    void maybePromptGitInit(context, () => void cliData?.refresh());
+
     disposables.push(
         vscode.window.onDidChangeWindowState((e) => {
             if (e.focused) {
@@ -160,6 +164,49 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     for (const d of disposables) {
         context.subscriptions.push(d);
+    }
+}
+
+/**
+ * Notify the user when an opened workspace folder isn't a Git repository and
+ * offer to initialize one — Blamely attributes lines via Git, so it's inert
+ * until a repo exists. Honors the `blamely.promptGitInit` setting and a
+ * per-folder "Don't Ask Again" choice persisted in workspaceState.
+ */
+async function maybePromptGitInit(
+    context: vscode.ExtensionContext,
+    onInitialized: () => void,
+): Promise<void> {
+    if (!vscode.workspace.getConfiguration('blamely').get<boolean>('promptGitInit', true)) {
+        return;
+    }
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        const fsPath = folder.uri.fsPath;
+        const dismissKey = `blamely.gitInitDismissed:${fsPath}`;
+        if (context.workspaceState.get<boolean>(dismissKey)) continue;
+        // Already inside a repo (this folder or a parent) → nothing to do.
+        if (await GitUtils.getRepoRoot(fsPath)) continue;
+
+        const choice = await vscode.window.showInformationMessage(
+            `Blamely: "${folder.name}" isn't a Git repository yet. Blamely needs Git to track who wrote each line.`,
+            'Initialize Git',
+            "Don't Ask Again",
+        );
+        if (choice === 'Initialize Git') {
+            const out = await GitUtils.runGitCommand(fsPath, 'init');
+            if (out === null) {
+                void vscode.window.showErrorMessage(
+                    `Blamely: failed to initialize a Git repository in "${folder.name}". Is Git installed and on PATH?`,
+                );
+            } else {
+                void vscode.window.showInformationMessage(
+                    `Blamely: initialized a Git repository in "${folder.name}".`,
+                );
+                onInitialized();
+            }
+        } else if (choice === "Don't Ask Again") {
+            void context.workspaceState.update(dismissKey, true);
+        }
     }
 }
 

@@ -2,7 +2,7 @@
   "name": "blamely",
   "displayName": "Blamely",
   "description": "Per-line AI-vs-human code attribution in the gutter, status bar, and commit history. Runs locally — no code or telemetry leaves your machine. Requires the free Blamely CLI.",
-  "version": "1.6.3-beta.12",
+  "version": "1.6.3",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -121,6 +121,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show attribution gutter icons and hovers in the editor (from oobeya-cli runtime data)"
+        },
+        "blamely.promptGitInit": {
+          "type": "boolean",
+          "default": true,
+          "description": "When you open a folder that is not a Git repository, prompt to initialize one. Blamely needs Git to attribute changes. Disable to never show this prompt."
         },
         "blamely.detectInlineCompletion": {
           "type": "boolean",

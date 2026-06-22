@@ -77,8 +77,8 @@ export class StatusBar implements vscode.Disposable {
         const humanPercent = totalLines === 0 ? 0 : 100 - aiPercent;
 
         this.item.text =
-            `${lamp}🤖 AI: ${summary.aiLines} ${StatusBar.ICON_LINES} ${aiPercent}% | ` +
-            `👤 Human: ${summary.humanLines} ${StatusBar.ICON_LINES} ${humanPercent}%`;
+            `${lamp}🤖 AI: ${aiPercent}% ${StatusBar.ICON_LINES} ${summary.aiLines} | ` +
+            `👤 Human: ${humanPercent}% ${StatusBar.ICON_LINES} ${summary.humanLines}`;
         this.item.color = lampColor;
         this.item.tooltip = this.daemonAlive
             ? `Blamely daemon running — click for Changes`

@@ -1139,9 +1139,11 @@ export class CliDataService implements vscode.Disposable {
         const hasUncommittedWork = changedByFile.size > 0 || untrackedFiles.size > 0;
 
         // Untracked files: trust only tight AI ranges; add human for the rest.
+        // A brand-new file with no SQLite edits has no byFile entry yet, but it's
+        // still all-human work that must show in the gutter (matching the behavior
+        // once `git add` makes it appear in `git diff HEAD`), so default to [].
         for (const filePath of untrackedFiles) {
-            if (!byFile.has(filePath)) continue;
-            const existing = byFile.get(filePath)!.filter(
+            const existing = (byFile.get(filePath) ?? []).filter(
                 e => e.authorType !== 'AI' || e.boundedAiRange
             );
             const aiLineSet = new Set(existing.filter(e => e.authorType === 'AI').map(e => e.lineNumber));
@@ -1152,7 +1154,7 @@ export class CliDataService implements vscode.Disposable {
                 for (let ln = 1; ln <= lineCount; ln++) {
                     if (!aiLineSet.has(ln)) humanEntries.push(buildHumanLineBlame(ln));
                 }
-                if (humanEntries.length > 0) {
+                if (humanEntries.length > 0 || existing.length > 0) {
                     byFile.set(filePath, [...existing, ...humanEntries]);
                 }
             } catch { /* skip unreadable files */ }
