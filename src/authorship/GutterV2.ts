@@ -18,17 +18,14 @@ const execFileAsync = promisify(execFile);
  * (the single per-line source — committed authorship seeded + uncommitted working-log
  * edits — the commit note also flips to, invariant I4).
  *
- * It is the gutter's source of truth when v2 is on, so it must win against the v1
- * CliDataService, which clears/replaces the shared BlameMap on its own timer. To
- * avoid the "icons load then disappear / flicker to AI" race, GutterV2:
- *   - caches the last per-file authorship and RE-ASSERTS it immediately on every v1
- *     refresh (so a v1 refresh can never leave the gutter cleared), and
- *   - re-fetches (debounced) on editor/visibility/save/edit changes.
+ * It re-fetches (debounced) on editor/visibility/save/edit changes AND on each
+ * CliDataService refresh (which includes the 3s HEAD poll, so a commit re-queries and
+ * the gutter clears once the file has no uncommitted changes). `authorship` returns
+ * only the changed lines, so the gutter marks changes and clears at commit.
  */
 export class GutterV2 implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     private debounce?: ReturnType<typeof setTimeout>;
-    private readonly cache = new Map<string, LineBlame[]>();
 
     constructor(
         private readonly blameMap: BlameMap,
@@ -46,30 +43,12 @@ export class GutterV2 implements vscode.Disposable {
                     this.schedule();
                 }
             }),
-            // v1 just rewrote the shared map — re-assert v2 immediately so the gutter
-            // can't be cleared/clobbered out from under us.
-            this.cliData.onRefresh(() => this.reassert()),
+            // On any refresh (incl. the 3s HEAD poll firing after a commit) RE-FETCH,
+            // so the gutter reflects the current state — e.g. a committed file now has
+            // no uncommitted changes and clears, rather than re-asserting stale icons.
+            this.cliData.onRefresh(() => this.schedule()),
         );
         this.schedule();
-    }
-
-    /** Synchronously re-apply the cached v2 entries for the visible editors (no CLI
-     *  call) so a v1 refresh never wins the final paint. */
-    private reassert(): void {
-        if (!attributionV2Enabled() || this.cache.size === 0) {
-            return;
-        }
-        let any = false;
-        for (const ed of vscode.window.visibleTextEditors) {
-            if (ed.document.uri.scheme !== 'file') continue;
-            const key = blameFileKey(ed.document.uri);
-            const entries = this.cache.get(key);
-            if (entries) {
-                this.blameMap.setFileBlame(key, entries);
-                any = true;
-            }
-        }
-        if (any) this.repaint();
     }
 
     private schedule(): void {
@@ -88,7 +67,6 @@ export class GutterV2 implements vscode.Disposable {
             const entries = await this.fetch(bin, ed.document.uri.fsPath);
             if (entries) {
                 const key = blameFileKey(ed.document.uri);
-                this.cache.set(key, entries);
                 this.blameMap.setFileBlame(key, entries);
                 painted = true;
             }
@@ -116,6 +94,5 @@ export class GutterV2 implements vscode.Disposable {
         if (this.debounce) clearTimeout(this.debounce);
         this.disposables.forEach((d) => d.dispose());
         this.disposables = [];
-        this.cache.clear();
     }
 }
