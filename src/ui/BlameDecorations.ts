@@ -77,7 +77,7 @@ function blameGutterHoverMessage(entry: LineBlame): vscode.MarkdownString {
 }
 
 /** Small brain SVG for AI gutter icon (matches IntelliJ GutterBrain). */
-const GUTTER_AI_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/></svg>';
+const GUTTER_AI_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5C5.5 1.5 4.8 2 4.5 2.5C3.8 2.2 3 2.5 2.7 3.2C2.2 3.5 1.8 4.2 2 5C1.5 5.5 1.5 6.3 2 7C1.8 7.7 2 8.5 2.7 9C3 9.5 3.5 9.8 4.2 9.8C4.5 10.5 5.2 11 6 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 1.5C7.5 1.5 8.2 2 8.5 2.5C9.2 2.2 10 2.5 10.3 3.2C10.8 3.5 11.2 4.2 11 5C11.5 5.5 11.5 6.3 11 7C11.2 7.7 11 8.5 10.3 9C10 9.5 9.5 9.8 8.8 9.8C8.5 10.5 7.8 11 7 11.2V7" stroke="#4d9de0" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 5C5 5.5 5.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/><path d="M8.5 5C8 5.5 7.5 6 6.5 6.5" stroke="#4d9de0" stroke-width="0.7" stroke-linecap="round"/></svg>';
 /** Human (person) SVG for gutter icon (matches IntelliJ GutterHuman). */
 const GUTTER_HUMAN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4" r="2.5" stroke="#56a064" stroke-width="1.2" fill="none"/><path d="M3 13c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="#56a064" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>';
 /** Neutral "detecting" SVG: a three-quarter amber ring (a static spinner) shown
@@ -122,7 +122,7 @@ export class BlameDecorations implements vscode.Disposable {
             overviewRulerLane: vscode.OverviewRulerLane.Right,
             isWholeLine: true,
             gutterIconPath: dataUriForSvg(GUTTER_AI_SVG),
-            gutterIconSize: 'contain',
+            gutterIconSize: 'auto',
         });
 
         this.humanDecorationType = vscode.window.createTextEditorDecorationType({
@@ -130,7 +130,7 @@ export class BlameDecorations implements vscode.Disposable {
             overviewRulerLane: vscode.OverviewRulerLane.Right,
             isWholeLine: true,
             gutterIconPath: dataUriForSvg(GUTTER_HUMAN_SVG),
-            gutterIconSize: 'contain',
+            gutterIconSize: 'auto',
         });
 
         this.pendingDecorationType = vscode.window.createTextEditorDecorationType({
@@ -138,7 +138,7 @@ export class BlameDecorations implements vscode.Disposable {
             overviewRulerLane: vscode.OverviewRulerLane.Right,
             isWholeLine: true,
             gutterIconPath: dataUriForSvg(GUTTER_PENDING_SVG),
-            gutterIconSize: 'contain',
+            gutterIconSize: 'auto',
         });
 
         const editorChange = vscode.window.onDidChangeActiveTextEditor(() => this.updateDecorations());

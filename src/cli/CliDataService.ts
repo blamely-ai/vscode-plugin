@@ -194,8 +194,15 @@ function pickExactAiEdit(filePath: string, ln: number, lineText: string, edits: 
  * Prefers an edit that still has an unconsumed occurrence (nearest among those),
  * so identical content distributes across the edits that recorded it; falls back
  * to the nearest match overall when every budget is spent (line still attributed).
+ *
+ * Returns `budgeted: true` when the match consumed a real, unconsumed recorded
+ * occurrence — i.e. the AI genuinely wrote this many copies of the content — and
+ * `budgeted: false` when every occurrence was already spent and we fell back to
+ * the nearest match (a candidate for the copy-paste guard). Range-only matches
+ * (no content_sha) report `budgeted: true` since they're covered by range, not
+ * by a content budget the guard reasons about.
  */
-function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: CliEditRow[], b: Budget): CliEditRow | null {
+function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: CliEditRow[], b: Budget): { row: CliEditRow; budgeted: boolean } | null {
     const normFile = filePath.replace(/\\/g, '/');
     const text = lineText.replace(/\r$/, '');
     const hash = lineSha(text);
@@ -210,8 +217,8 @@ function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: 
         if (drift < bestDrift) { bestDrift = drift; best = row; }
         if (budgetLeft(b, shaKey(row.id, hash)) && drift < budgetedDrift) { budgetedDrift = drift; budgeted = row; }
     }
-    const sha = budgeted ?? best;
-    if (sha) { consumeBudget(b, shaKey(sha.id, hash)); return sha; }
+    if (budgeted) { consumeBudget(b, shaKey(budgeted.id, hash)); return { row: budgeted, budgeted: true }; }
+    if (best) { consumeBudget(b, shaKey(best.id, hash)); return { row: best, budgeted: false }; }
 
     const normHash = lineShaNorm(text);
     if (normHash) {
@@ -225,8 +232,8 @@ function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: 
             if (drift < bnDrift) { bnDrift = drift; bn = row; }
             if (budgetLeft(b, normKey(row.id, normHash)) && drift < bnBudgetedDrift) { bnBudgetedDrift = drift; bnBudgeted = row; }
         }
-        const norm = bnBudgeted ?? bn;
-        if (norm) { consumeBudget(b, normKey(norm.id, normHash)); return norm; }
+        if (bnBudgeted) { consumeBudget(b, normKey(bnBudgeted.id, normHash)); return { row: bnBudgeted, budgeted: true }; }
+        if (bn) { consumeBudget(b, normKey(bn.id, normHash)); return { row: bn, budgeted: false }; }
     }
 
     // Range-only edits (no content_sha) cover a line by range — no content budget.
@@ -236,7 +243,7 @@ function pickDriftAiEdit(filePath: string, ln: number, lineText: string, edits: 
         if (row.content_sha) continue;
         if (!rowCoversLine(row, ln)) continue;
         if (!isIndexableLineRange(row)) continue;
-        return row;
+        return { row, budgeted: true };
     }
     return null;
 }
@@ -258,7 +265,7 @@ const MAX_CONTENT_SHA_DRIFT = 200;
  * This handles "press Enter → all AI lines below shift by 1 → show Human" without
  * reintroducing copy-paste false positives.
  */
-function applyContentShaAttribution(
+export function applyContentShaAttribution(
     repoRoot: string,
     edits: CliEditRow[],
     filePaths: Iterable<string>,
@@ -298,6 +305,14 @@ function applyContentShaAttribution(
             continue;
         }
         const entries = [...(byFile.get(norm) ?? [])];
+        // Per-content occurrence budget: how many times each content_sha has been
+        // attributed so far (exact + drift). The AI recorded a fixed number of
+        // copies of a given line; while that budget lasts, a shifted duplicate is a
+        // REAL drifted AI line, so the copy-paste guard must not reject it. Only
+        // copies BEYOND the recorded count are human copies. Without this, a run of
+        // identical AI lines partly shifted by a human insert (e.g. 5 lines pushed
+        // down 2) splits into AI + Human — disagreeing with the commit note.
+        const shaConsumed = new Map<string, number>();
         let mutated = false;
         for (let ln = 1; ln <= lines.length; ln++) {
             const text = lines[ln - 1];
@@ -309,6 +324,7 @@ function applyContentShaAttribution(
             let row: CliEditRow | undefined;
             if (exactRow && sha === exactRow.content_sha) {
                 row = exactRow;
+                shaConsumed.set(sha, (shaConsumed.get(sha) ?? 0) + 1);
             } else if (exactRow?.content_sha_norm && lineShaNorm(text.replace(/\r$/, '')) === exactRow.content_sha_norm) {
                 // Autoformatter reflowed this line's whitespace (reindent,
                 // trailing whitespace) after the AI wrote it: exact content_sha
@@ -329,13 +345,27 @@ function applyContentShaAttribution(
                         if (d < closest) { closest = d; driftRow = c; }
                     }
                     if (driftRow && closest <= MAX_CONTENT_SHA_DRIFT) {
-                        // originalStillAtHome: if the recorded position still holds
-                        // the same content, this line is a human copy, not a drift.
-                        const origIdx = driftRow.start_line - 1;
-                        const origStillAtHome =
-                            origIdx >= 0 && origIdx < lines.length &&
-                            lineSha(lines[origIdx].replace(/\r$/, '')) === sha;
-                        if (!origStillAtHome) row = driftRow;
+                        const used = shaConsumed.get(sha) ?? 0;
+                        if (used < candidates.length) {
+                            // A genuine recorded occurrence, just shifted — attribute
+                            // it and skip the copy-paste guard (which would wrongly
+                            // reject a real duplicate whose recorded home still holds
+                            // an AI copy).
+                            row = driftRow;
+                            shaConsumed.set(sha, used + 1);
+                        } else {
+                            // Budget exhausted: this is a copy beyond what the AI
+                            // recorded. If the recorded position still holds the
+                            // content, it's a human copy, not a drift → leave Human.
+                            const origIdx = driftRow.start_line - 1;
+                            const origStillAtHome =
+                                origIdx >= 0 && origIdx < lines.length &&
+                                lineSha(lines[origIdx].replace(/\r$/, '')) === sha;
+                            if (!origStillAtHome) {
+                                row = driftRow;
+                                shaConsumed.set(sha, used + 1);
+                            }
+                        }
                     }
                 }
             }
@@ -365,7 +395,7 @@ function applyContentShaAttribution(
  * match an AI edit's content_sha → AI; otherwise → Human.
  * (Chat accept then delete/retype must not keep stale AI on the human line.)
  */
-function reconcileChangedLinesAttribution(
+export function reconcileChangedLinesAttribution(
     repoRoot: string,
     edits: CliEditRow[],
     changedByFile: Map<string, number[]>,
@@ -400,16 +430,26 @@ function reconcileChangedLinesAttribution(
             if (chosen.has(ln)) continue;
             const text = lines[ln - 1];
             if (text === undefined) continue;
-            let aiRow = pickDriftAiEdit(filePath, ln, text, edits, budget);
+            const drift = pickDriftAiEdit(filePath, ln, text, edits, budget);
+            let aiRow = drift?.row ?? null;
 
             // Copy-paste guard: content found at a different line than recorded.
             // If the original position still holds that content, this is a human
             // copy — not the AI line drifting. Clear aiRow so it shows Human.
+            //
+            // Skip the guard when the match was a BUDGETED occurrence: the AI
+            // genuinely recorded this many copies of the content (e.g. it wrote 5
+            // identical lines), so a duplicate that shifted is a real AI line, not
+            // a human copy. Firing the guard there splits a run of identical AI
+            // lines into AI+Human and disagrees with the commit note (which rations
+            // the same drift budget). The guard is only for copies BEYOND the
+            // recorded count — when every occurrence is spent and we fell back to
+            // the nearest match (drift.budgeted === false).
             // matchedByNorm distinguishes a content_sha_norm drift match (e.g. an
             // autoformatter-reflowed AI line whose shape was duplicated elsewhere)
             // from a content_sha exact drift match, so the guard re-checks the
             // recorded position with the SAME hash that produced the match.
-            if (aiRow && (aiRow.start_line ?? ln) !== ln) {
+            if (aiRow && drift && !drift.budgeted && (aiRow.start_line ?? ln) !== ln) {
                 const lineHash = lineSha(text.replace(/\r$/, ''));
                 const lineNormHash = lineShaNorm(text.replace(/\r$/, ''));
                 const matchedByNorm = aiRow.content_sha !== lineHash && aiRow.content_sha_norm === lineNormHash;

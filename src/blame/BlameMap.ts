@@ -76,11 +76,11 @@ const PENDING_AI_TTL_MS = 12_000;
 // re-arms the TTL (markDetecting is called per agent-patch change), so the window
 // effectively counts from the LAST streamed change, not the first.
 //
-// 10s: Copilot Chat is now recorded in real time by the daemon's transcript
+// 5s: Copilot Chat is now recorded in real time by the daemon's transcript
 // watcher (GitHub.copilot-chat/transcripts), and Cursor/Copilot-CLI via hooks —
 // so the record lands within a few seconds. This window only has to bridge that
 // short watcher latency (poll + processing), not the old lazy-flush lag.
-const DETECTING_TTL_MS = 10_000;
+const DETECTING_TTL_MS = 5_000;
 
 export class BlameMap {
     private map = new Map<string, LineBlame[]>();

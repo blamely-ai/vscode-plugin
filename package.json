@@ -53,7 +53,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "pretest": "npm run compile",
-    "test": "mocha --require ts-node/register 'src/test/**/*.test.ts' --timeout 10000"
+    "test": "mocha --require ./src/test/vscodeStub.js --require ts-node/register 'src/test/**/*.test.ts' --timeout 10000"
   },
   "contributes": {
     "commands": [
