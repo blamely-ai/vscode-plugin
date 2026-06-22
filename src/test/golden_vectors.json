@@ -108,6 +108,14 @@
       "expect": ["ai"]
     },
     {
+      "name": "reflow-operator-spacing-keeps-author",
+      "prior": [{ "start": 1, "end": 1, "author": "human" }],
+      "baseline": "x=1",
+      "new": "x = 1",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human"]
+    },
+    {
       "name": "human-rewrite-records-overrode-ai",
       "prior": [{ "start": 1, "end": 2, "author": "ai" }],
       "baseline": "ai a\nai b",

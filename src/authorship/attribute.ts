@@ -210,16 +210,12 @@ function splitLines(s: string): string[] {
 
 /** alignLines: for each NEW line, the OLD line index it is unchanged from (LCS
  *  match) or -1. Standard LCS DP + backtrack; identical to the Go implementation. */
-// normalizeLineForMatch collapses a line to its whitespace-insensitive form: trim
-// ends + collapse internal whitespace runs to a single space. MUST match the Go and
-// Kotlin ports exactly (the golden vectors enforce it) so reflow is detected the
-// same way everywhere. Empty after trim → "".
+// normalizeLineForMatch reduces a line to its whitespace-insensitive form by
+// REMOVING all whitespace (git diff -w semantics) — indentation, trailing, and
+// operator spacing (`x=1` ↔ `x = 1`) all read as reflow and keep the prior author.
+// MUST match the Go and Kotlin ports exactly (the golden vectors enforce it).
 function normalizeLineForMatch(s: string): string {
-    const trimmed = s.trim();
-    if (trimmed === '') {
-        return '';
-    }
-    return trimmed.split(/\s+/).join(' ');
+    return s.replace(/\s/g, '');
 }
 
 // alignLines compares lines WHITESPACE-NORMALIZED (Phase 4 reflow): a line that
