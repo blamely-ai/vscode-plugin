@@ -7,22 +7,10 @@ import { CliDataService } from '../cli/CliDataService';
 import { blameFileKey } from '../utils/WorkspacePaths';
 import { installedBinaryPath } from '../cli/paths';
 import { attributionV2Enabled } from './WorkingLogTracker';
+import { WorkingLogJson, toLineBlame } from './workingLogBlame';
 import * as Logger from '../utils/Logger';
 
 const execFileAsync = promisify(execFile);
-
-interface WlLine {
-    start: number;
-    end: number;
-    author: 'ai' | 'human';
-    tool?: string;
-    model?: string;
-    gen_type?: string;
-}
-interface WorkingLogJson {
-    file?: string;
-    lines?: WlLine[];
-}
 
 /**
  * Attribution v2 gutter overlay (docs/attribution-v2-design.md Phase 3). When v2 is
@@ -130,29 +118,4 @@ export class GutterV2 implements vscode.Disposable {
         this.disposables = [];
         this.cache.clear();
     }
-}
-
-/** Expands the working log's per-range authors into the per-line LineBlame the gutter
- *  renderer consumes (one entry per line; AI → AI icon, else Human). */
-function toLineBlame(wl: WorkingLogJson): LineBlame[] {
-    const out: LineBlame[] = [];
-    for (const r of wl.lines ?? []) {
-        const ai = r.author === 'ai';
-        for (let ln = r.start; ln <= r.end; ln++) {
-            out.push({
-                lineNumber: ln,
-                authorType: ai ? 'AI' : 'HUMAN',
-                timestamp: '',
-                aiChars: ai ? 1 : 0,
-                humanChars: ai ? 0 : 1,
-                changeType: 'ADD',
-                codingType: 'TYPING',
-                provider: ai ? r.tool ?? null : null,
-                model: ai ? r.model ?? null : null,
-                interactionType: ai ? r.gen_type ?? null : null,
-                boundedAiRange: true,
-            });
-        }
-    }
-    return out;
 }

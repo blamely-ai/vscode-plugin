@@ -9,6 +9,13 @@ import { checkCliHealth } from './CliHealth';
 import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
 import { attributionV2Enabled } from '../authorship/WorkingLogTracker';
+import { WorkingLogJson, toLineBlame } from '../authorship/workingLogBlame';
+import { installedBinaryPath } from './paths';
+import { blameFileKey } from '../utils/WorkspacePaths';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsyncCli = promisify(execFile);
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
 import { isBlankLine, stripBlankLineBlame } from '../utils/BlankLines';
@@ -899,14 +906,63 @@ export class CliDataService implements vscode.Disposable {
         this.notify();
     }
 
+    /** Attribution v2 repo-wide refresh: rebuild the whole BlameMap from every
+     *  tracked file's working log (`blamely authorship --all`) so the gutter, status
+     *  bar, and sidebar all derive from the same v2 source. */
+    private async refreshV2(): Promise<void> {
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        const bin = installedBinaryPath();
+        if (folders.length === 0 || !fs.existsSync(bin)) {
+            this.notify();
+            return;
+        }
+        const seen = new Set<string>();
+        const repoRoots: string[] = [];
+        for (const folder of folders) {
+            const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
+            if (!root) continue;
+            const norm = path.normalize(root);
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            repoRoots.push(root);
+        }
+        const merged = new Map<string, LineBlame[]>();
+        for (const repoRoot of repoRoots) {
+            for (const wl of await this.fetchAllWorkingLogs(bin, repoRoot)) {
+                if (!wl.file) continue;
+                const abs = path.join(repoRoot, wl.file);
+                merged.set(blameFileKey(vscode.Uri.file(abs)), toLineBlame(wl));
+            }
+        }
+        this.blameMap.replaceAll(merged);
+        this.notify();
+    }
+
+    private async fetchAllWorkingLogs(bin: string, repoRoot: string): Promise<WorkingLogJson[]> {
+        try {
+            const { stdout } = await execFileAsyncCli(bin, ['authorship', repoRoot, '--all'], {
+                env: { ...process.env, BLAMELY_ATTRIBUTION_V2: '1' },
+                timeout: 5000,
+                maxBuffer: 32 * 1024 * 1024,
+            });
+            const trimmed = stdout.trim();
+            if (!trimmed) return [];
+            const parsed = JSON.parse(trimmed) as { files?: WorkingLogJson[] };
+            return parsed.files ?? [];
+        } catch (err) {
+            Logger.warn(`CliDataService: authorship --all failed: ${err}`);
+            return [];
+        }
+    }
+
     async refresh(): Promise<void> {
         if (this.disposed) return;
-        // Attribution v2 owns the gutter (GutterV2). Don't clear/replace the shared
-        // BlameMap here — that timer-driven clobber is what made the v2 gutter load
-        // the previous-commit icons and then vanish after a few seconds. Still notify
-        // so GutterV2 re-asserts and the status bar re-reads the current map.
+        // Attribution v2 owns the gutter/status bar/sidebar — populate the map
+        // repo-wide from the working logs (one v2 source, I4) instead of the v1
+        // SQLite scan. This both fixes the previous-commit-then-vanish gutter race
+        // (no v1 clobber) and keeps the workspace aggregate complete.
         if (attributionV2Enabled()) {
-            this.notify();
+            await this.refreshV2();
             return;
         }
         const refreshStartMs = Date.now();
