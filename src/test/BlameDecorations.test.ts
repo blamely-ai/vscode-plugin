@@ -53,4 +53,21 @@ describe('BlameDecorations', () => {
         assert.ok(text.includes('Model: gpt-4'), text);
         assert.ok(!text.includes('Interaction:'), text);
     });
+
+    it('blameGutterTooltipText omits Change Date when timestamp is blank', () => {
+        const entry: LineBlame = {
+            lineNumber: 3,
+            authorType: 'AI',
+            provider: 'copilot',
+            timestamp: '',
+            aiChars: 10,
+            humanChars: 0,
+            changeType: 'ADD',
+            codingType: 'TYPING',
+        };
+        const text = blameGutterTooltipText(entry);
+        assert.ok(text.includes('Author: AI'), text);
+        assert.ok(!text.includes('Change Date'), text);
+        assert.ok(!text.includes('Unknown'), text);
+    });
 });

@@ -16,15 +16,18 @@ export function toolDisplayName(provider: string): string {
 }
 
 export function blameGutterTooltipText(entry: LineBlame): string {
-    const changed = formatBlameChangedDate(entry.timestamp);
+    // Only show the change date when we actually have one — an empty timestamp
+    // would otherwise render a noisy "Change Date: Unknown" line.
+    const changed = entry.timestamp?.trim() ? formatBlameChangedDate(entry.timestamp) : '';
     if (entry.authorType === 'AI') {
         const lines = ['Author: AI'];
         if (entry.provider) lines.push(`Tool: ${toolDisplayName(entry.provider)}`);
         if (entry.model) lines.push(`Model: ${entry.model}`);
-        lines.push(`Change Date: ${changed}`);
+        if (changed) lines.push(`Change Date: ${changed}`);
         return lines.join('\n');
     }
-    const lines = ['Author: Human', `Change Date: ${changed}`];
+    const lines = ['Author: Human'];
+    if (changed) lines.push(`Change Date: ${changed}`);
     if (entry.commitSha) lines.push(`Commit: ${entry.commitSha.slice(0, 8)}`);
     return lines.join('\n');
 }

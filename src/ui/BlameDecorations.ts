@@ -31,10 +31,16 @@ function toolBrandColor(provider?: string | null): string {
 
 /** Dimmed metadata footer: `$(history) <when>  ·  $(git-commit) <sha>`. */
 function metaFooter(entry: LineBlame): string {
-    const parts = [`$(history) ${escapeMarkdown(formatBlameChangedDate(entry.timestamp))}`];
+    const parts: string[] = [];
+    // Omit the date entirely when unknown (empty timestamp) rather than showing
+    // a "$(history) Unknown" footer.
+    if (entry.timestamp?.trim()) {
+        parts.push(`$(history) ${escapeMarkdown(formatBlameChangedDate(entry.timestamp))}`);
+    }
     if (entry.commitSha) {
         parts.push(`$(git-commit) ${escapeMarkdown(entry.commitSha.slice(0, 8))}`);
     }
+    if (parts.length === 0) return '';
     return `<span style="color:${DIM};">${parts.join(' &nbsp;·&nbsp; ')}</span>`;
 }
 
