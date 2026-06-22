@@ -72,7 +72,8 @@
       "baseline": "ai one\nai two",
       "new": "ai one\nhuman edit",
       "author": { "author": "human", "gen_type": "human" },
-      "expect": ["ai", "human"]
+      "expect": ["ai", "human"],
+      "expect_overrode": [null, "ai"]
     },
     {
       "name": "insert-above-shifts-ai-down",
@@ -105,6 +106,24 @@
       "new": "total = 2",
       "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
       "expect": ["ai"]
+    },
+    {
+      "name": "human-rewrite-records-overrode-ai",
+      "prior": [{ "start": 1, "end": 2, "author": "ai" }],
+      "baseline": "ai a\nai b",
+      "new": "human a\nhuman b",
+      "author": { "author": "human", "gen_type": "human" },
+      "expect": ["human", "human"],
+      "expect_overrode": ["ai", "ai"]
+    },
+    {
+      "name": "pure-insert-has-no-overrode",
+      "prior": [{ "start": 1, "end": 1, "author": "human" }],
+      "baseline": "keep",
+      "new": "keep\nai added",
+      "author": { "author": "ai", "tool": "claude", "gen_type": "chat" },
+      "expect": ["human", "ai"],
+      "expect_overrode": [null, null]
     }
   ]
 }

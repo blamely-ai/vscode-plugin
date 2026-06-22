@@ -26,6 +26,9 @@ export interface LineAttribution {
     model?: string;
     gen_type?: string;
     session?: string;
+    // overrode records the author a changed line replaced (audit marker); absent
+    // when the line was not an override.
+    overrode?: Author;
 }
 
 export interface WorkingLog {
@@ -65,14 +68,54 @@ export function attribute(
         perLine[i] = j >= 0 ? priorAuthorOr(prior, j + 1) : author;
     }
 
+    // overrode[i] = the author a CHANGED line replaced, when its type differs from
+    // the new author (audit marker; does not change who owns the line now).
+    const overrode = detectOverrode(prior, matched, oldLines.length, author);
+
     return {
         schema: WORKING_LOG_SCHEMA,
         file: prior?.file,
         base_sha: prior?.base_sha,
         blob_sha: undefined, // sha set by the storage layer, not needed for the engine
         updated_ms: nowMs || Date.now(),
-        lines: coalesce(perLine),
+        lines: coalesce(perLine, overrode),
     };
+}
+
+/** detectOverrode finds replace pairs and records the replaced author when its
+ *  type differs from the new author. Walks the LCS alignment gap by gap and pairs
+ *  unmatched old/new lines positionally — identical to the Go and Kotlin ports. */
+function detectOverrode(
+    prior: WorkingLog | null,
+    matched: number[],
+    nOld: number,
+    author: Author,
+): Array<Author | undefined> {
+    const m = matched.length;
+    const overrode: Array<Author | undefined> = new Array(m).fill(undefined);
+    let oldCursor = 0;
+    let i = 0;
+    while (i < m) {
+        if (matched[i] >= 0) {
+            oldCursor = matched[i] + 1;
+            i++;
+            continue;
+        }
+        let gapNewEnd = i;
+        while (gapNewEnd < m && matched[gapNewEnd] < 0) {
+            gapNewEnd++;
+        }
+        const gapOldEnd = gapNewEnd < m ? matched[gapNewEnd] : nOld;
+        for (let k = 0; i + k < gapNewEnd && oldCursor + k < gapOldEnd; k++) {
+            const replaced = priorAuthorOr(prior, oldCursor + k + 1);
+            if (replaced.author !== author.author) {
+                overrode[i + k] = replaced;
+            }
+        }
+        oldCursor = gapOldEnd;
+        i = gapNewEnd;
+    }
+    return overrode;
 }
 
 function priorAuthorOr(prior: WorkingLog | null, line: number): Author {
@@ -153,22 +196,32 @@ function alignLines(oldLines: string[], newLines: string[]): number[] {
     return matched;
 }
 
-function coalesce(perLine: Author[]): LineAttribution[] {
+function coalesce(perLine: Author[], overrode: Array<Author | undefined>): LineAttribution[] {
     const out: LineAttribution[] = [];
     for (let i = 0; i < perLine.length; i++) {
         const ln = i + 1;
         const a = perLine[i];
+        const ov = overrode[i];
         const last = out[out.length - 1];
         if (
             last && last.end === ln - 1 &&
             last.author === a.author && (last.tool ?? '') === (a.tool ?? '') &&
             (last.model ?? '') === (a.model ?? '') && (last.gen_type ?? '') === (a.gen_type ?? '') &&
-            (last.session ?? '') === (a.session ?? '')
+            (last.session ?? '') === (a.session ?? '') && overrodeEqual(last.overrode, ov)
         ) {
             last.end = ln;
             continue;
         }
-        out.push({ start: ln, end: ln, author: a.author, tool: a.tool, model: a.model, gen_type: a.gen_type, session: a.session });
+        out.push({ start: ln, end: ln, author: a.author, tool: a.tool, model: a.model, gen_type: a.gen_type, session: a.session, overrode: ov });
     }
     return out;
+}
+
+function overrodeEqual(a: Author | undefined, b: Author | undefined): boolean {
+    if (!a || !b) {
+        return !a && !b;
+    }
+    return a.author === b.author && (a.tool ?? '') === (b.tool ?? '') &&
+        (a.model ?? '') === (b.model ?? '') && (a.gen_type ?? '') === (b.gen_type ?? '') &&
+        (a.session ?? '') === (b.session ?? '');
 }

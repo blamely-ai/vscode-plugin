@@ -14,6 +14,7 @@ interface GoldenCase {
     new: string;
     author: { author: AuthorType; tool?: string; gen_type?: string };
     expect: AuthorType[];
+    expect_overrode?: (AuthorType | null)[];
 }
 
 function typesByLine(wl: WorkingLog, n: number): AuthorType[] {
@@ -21,6 +22,19 @@ function typesByLine(wl: WorkingLog, n: number): AuthorType[] {
     for (const r of wl.lines) {
         for (let ln = r.start; ln <= r.end && ln <= n; ln++) {
             out[ln - 1] = r.author;
+        }
+    }
+    return out;
+}
+
+function overrodeTypesByLine(wl: WorkingLog, n: number): (AuthorType | null)[] {
+    const out: (AuthorType | null)[] = new Array(n).fill(null);
+    for (const r of wl.lines) {
+        if (!r.overrode) {
+            continue;
+        }
+        for (let ln = r.start; ln <= r.end && ln <= n; ln++) {
+            out[ln - 1] = r.overrode.author;
         }
     }
     return out;
@@ -45,6 +59,14 @@ describe('Attribution v2 golden vectors (TS)', () => {
             assert.equal(got.length, c.expect.length, `${c.name}: line count`);
             for (let i = 0; i < c.expect.length; i++) {
                 assert.equal(got[i], c.expect[i], `${c.name}: line ${i + 1} — got ${got[i]}, want ${c.expect[i]}`);
+            }
+
+            if (c.expect_overrode) {
+                const ov = overrodeTypesByLine(wl, c.expect_overrode.length);
+                for (let i = 0; i < c.expect_overrode.length; i++) {
+                    assert.equal(ov[i] ?? null, c.expect_overrode[i] ?? null,
+                        `${c.name}: line ${i + 1} overrode — got ${ov[i]}, want ${c.expect_overrode[i]}`);
+                }
             }
         });
     }
