@@ -8,6 +8,7 @@ import { getRepoId } from './repoId';
 import { checkCliHealth } from './CliHealth';
 import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
+import { attributionV2Enabled } from '../authorship/WorkingLogTracker';
 import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
 import { isBlankLine, stripBlankLineBlame } from '../utils/BlankLines';
@@ -869,6 +870,9 @@ export class CliDataService implements vscode.Disposable {
         tool: string,
         genType: string,
     ): void {
+        // Attribution v2 owns the gutter (GutterV2 paints from the working log);
+        // this v1 optimistic paint would fight it, so skip when v2 is on.
+        if (attributionV2Enabled()) return;
         const existing = [...(this.blameMap.getBlame(relPath))];
         const now = new Date().toISOString();
         for (let ln = startLine; ln <= endLine; ln++) {
@@ -897,6 +901,14 @@ export class CliDataService implements vscode.Disposable {
 
     async refresh(): Promise<void> {
         if (this.disposed) return;
+        // Attribution v2 owns the gutter (GutterV2). Don't clear/replace the shared
+        // BlameMap here — that timer-driven clobber is what made the v2 gutter load
+        // the previous-commit icons and then vanish after a few seconds. Still notify
+        // so GutterV2 re-asserts and the status bar re-reads the current map.
+        if (attributionV2Enabled()) {
+            this.notify();
+            return;
+        }
         const refreshStartMs = Date.now();
         try {
             const folders = vscode.workspace.workspaceFolders ?? [];
