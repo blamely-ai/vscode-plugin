@@ -20,6 +20,29 @@ import * as Logger from '../utils/Logger';
 import { normalizePath } from '../utils/Platform';
 import { isBlankLine, stripBlankLineBlame } from '../utils/BlankLines';
 
+/**
+ * Render a child_process.execFile rejection with the fields that explain WHY it failed
+ * — `${err}` alone yields only "Command failed: <cmd>", which can't distinguish a
+ * timeout-kill from a non-zero exit. A timeout sets `killed`/`signal`; a real failure
+ * sets a numeric `code` and usually `stderr`.
+ */
+function describeExecError(err: unknown): string {
+    const e = err as { message?: string; killed?: boolean; signal?: string; code?: number | string; stderr?: string } | null;
+    if (!e || typeof e !== 'object') return String(err);
+    const parts: string[] = [];
+    if (e.killed) {
+        parts.push(`TIMED OUT (killed${e.signal ? `, signal=${e.signal}` : ''})`);
+    } else if (typeof e.code === 'number') {
+        parts.push(`exit code ${e.code}`);
+    } else if (e.code) {
+        parts.push(`spawn error ${e.code}`);
+    }
+    const stderr = (e.stderr ?? '').toString().trim();
+    if (stderr) parts.push(`stderr: ${stderr.slice(0, 500)}`);
+    const base = e.message ?? String(err);
+    return parts.length ? `${base} — ${parts.join(' · ')}` : base;
+}
+
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
 function normalizedGenType(genType: string | null | undefined): string {
@@ -740,6 +763,13 @@ export class CliDataService implements vscode.Disposable {
         return this._repoRoot;
     }
     private refreshTimers: NodeJS.Timeout[] = [];
+    // Serializes refresh(): true while one refresh is running, so overlapping
+    // triggers (the 5s periodic tick + editor/file/workspace events) don't each
+    // spawn their own `blamely authorship` child processes. Without this the CLI
+    // processes pile up on Windows — where a single refresh can outlast the 5s
+    // interval — and all contend, slowing each other (a feedback loop).
+    private refreshing = false;
+    private refreshPending = false;
     // True while the initial fast (200ms) refresh is already queued. Prevents
     // burst events from resetting the initial fast refresh — so a 5-second chat
     // apply with 100 change events still shows the gutter update after 200ms, not
@@ -958,14 +988,17 @@ export class CliDataService implements vscode.Disposable {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', fsPath], {
                 env: { ...process.env },
-                timeout: 5000,
+                // First seed of a file runs `git blame` + note reads; on Windows/large
+                // history that can take several seconds. 20s avoids killing it mid-seed
+                // (subsequent calls are fast once the working log is cached).
+                timeout: 20000,
                 maxBuffer: 8 * 1024 * 1024,
             });
             const trimmed = stdout.trim();
             if (!trimmed) return null;
             return JSON.parse(trimmed) as WorkingLogJson;
         } catch (err) {
-            Logger.warn(`CliDataService: authorship (single) failed: ${err}`);
+            Logger.warn(`CliDataService: authorship (single) failed for ${fsPath}: ${describeExecError(err)}`);
             return null;
         }
     }
@@ -974,7 +1007,7 @@ export class CliDataService implements vscode.Disposable {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', repoRoot, '--all'], {
                 env: { ...process.env },
-                timeout: 5000,
+                timeout: 15000,
                 maxBuffer: 32 * 1024 * 1024,
             });
             const trimmed = stdout.trim();
@@ -982,12 +1015,35 @@ export class CliDataService implements vscode.Disposable {
             const parsed = JSON.parse(trimmed) as { files?: WorkingLogJson[] };
             return parsed.files ?? [];
         } catch (err) {
-            Logger.warn(`CliDataService: authorship --all failed: ${err}`);
+            Logger.warn(`CliDataService: authorship --all failed: ${describeExecError(err)}`);
             return [];
         }
     }
 
     async refresh(): Promise<void> {
+        if (this.disposed) return;
+        // Run at most one refresh at a time. Each refresh spawns `blamely authorship`
+        // child processes; on Windows one refresh can outlast the 5s periodic tick, so
+        // without this guard the ticks overlap and the CLI processes pile up (observed
+        // as many concurrent blamely.exe), all contending and slowing each other. If
+        // more refreshes are requested while one runs, do exactly one more pass after
+        // so the latest state is still picked up.
+        if (this.refreshing) {
+            this.refreshPending = true;
+            return;
+        }
+        this.refreshing = true;
+        try {
+            do {
+                this.refreshPending = false;
+                await this.refreshOnce();
+            } while (this.refreshPending && !this.disposed);
+        } finally {
+            this.refreshing = false;
+        }
+    }
+
+    private async refreshOnce(): Promise<void> {
         if (this.disposed) return;
         // Attribution v2 owns the gutter/status bar/sidebar — populate the map
         // repo-wide from the working logs (one v2 source, I4) instead of the v1
