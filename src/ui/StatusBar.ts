@@ -8,13 +8,17 @@ import * as Logger from '../utils/Logger';
 const HEARTBEAT_MS = 5_000;
 
 /**
- * Blamely status bar item — shows AI/Human attribution percentages and a
- * daemon connection lamp that updates every 5 seconds via a /health heartbeat.
+ * Blamely status bar — shows AI/Human attribution percentages and a daemon
+ * connection lamp that updates every 5 seconds via a /health heartbeat.
  *
- * 🟢 $(circle-filled) = daemon reachable   🔴 $(circle-filled) = daemon offline
+ * Rendered as TWO adjacent items so each side can carry its own color: on dark
+ * (and high-contrast) themes AI is blue and Human is green for a colorful bar;
+ * on light themes both fall back to the default foreground (a colored item there
+ * washed out). 🟢/🔴 emoji lamp signals daemon reachability in any theme.
  */
 export class StatusBar implements vscode.Disposable {
-    private item: vscode.StatusBarItem;
+    private aiItem: vscode.StatusBarItem;
+    private humanItem: vscode.StatusBarItem;
     private blameMap: BlameMap;
     private cliData: CliDataService;
     private disposables: vscode.Disposable[] = [];
@@ -31,9 +35,13 @@ export class StatusBar implements vscode.Disposable {
     constructor(blameMap: BlameMap, cliData: CliDataService) {
         this.blameMap = blameMap;
         this.cliData = cliData;
-        this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        this.item.command = 'blamelySidebar.focus';
-        this.item.show();
+        // Higher priority renders further left, so AI sits left of Human.
+        this.aiItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        this.humanItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+        for (const item of [this.aiItem, this.humanItem]) {
+            item.command = 'blamelySidebar.focus';
+            item.show();
+        }
 
         // Immediate first render + heartbeat loop.
         void this.heartbeat();
@@ -42,6 +50,8 @@ export class StatusBar implements vscode.Disposable {
         // Session-wide total — driven by data refreshes + the heartbeat. No need
         // to re-render on editor switch (the count is not scoped to the active file).
         this.disposables.push(cliData.onRefresh(() => void this.render()));
+        // Re-color when the user switches between light and dark themes.
+        this.disposables.push(vscode.window.onDidChangeActiveColorTheme(() => void this.render()));
     }
 
     /** Ping /health, update the lamp, then re-render. */
@@ -65,24 +75,30 @@ export class StatusBar implements vscode.Disposable {
         // just the active editor. getSummary() applies the same per-line dedup as
         // the per-file view, so the totals reconcile with the gutter icons.
         const summary = this.blameMap.getSummary();
-        const lamp = this.daemonAlive
-            ? '$(circle-filled) '
-            : '$(circle-outline) ';
-        const lampColor = this.daemonAlive
-            ? new vscode.ThemeColor('charts.green')
-            : new vscode.ThemeColor('charts.red');
+        // Colored emoji lamp keeps its own color in any theme.
+        const lamp = this.daemonAlive ? '🟢 ' : '🔴 ';
 
         const totalLines = summary.aiLines + summary.humanLines;
         const aiPercent = totalLines === 0 ? 0 : Math.round((summary.aiLines / totalLines) * 100);
         const humanPercent = totalLines === 0 ? 0 : 100 - aiPercent;
 
-        this.item.text =
-            `${lamp}🤖 AI: ${aiPercent}% ${StatusBar.ICON_LINES} ${summary.aiLines} | ` +
-            `👤 Human: ${humanPercent}% ${StatusBar.ICON_LINES} ${summary.humanLines}`;
-        this.item.color = lampColor;
-        this.item.tooltip = this.daemonAlive
+        const lineLabel = (n: number) => `${StatusBar.ICON_LINES} ${n} ${n === 1 ? 'line' : 'lines'}`;
+        this.aiItem.text = `${lamp}🤖 AI: ${aiPercent}% ${lineLabel(summary.aiLines)}`;
+        this.humanItem.text = `👤 Human: ${humanPercent}% ${lineLabel(summary.humanLines)}`;
+
+        // Colorful on dark / high-contrast themes (AI blue, Human green). On light
+        // themes a tinted status-bar item washes out, so fall back to the default
+        // foreground there — the emoji still carry color.
+        const kind = vscode.window.activeColorTheme.kind;
+        const dark = kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
+        this.aiItem.color = dark ? new vscode.ThemeColor('charts.blue') : undefined;
+        this.humanItem.color = dark ? new vscode.ThemeColor('charts.green') : undefined;
+
+        const tooltip = this.daemonAlive
             ? `Blamely daemon running — click for Changes`
             : `Blamely daemon offline — run: blamely daemon`;
+        this.aiItem.tooltip = tooltip;
+        this.humanItem.tooltip = tooltip;
     }
 
     private pingHealth(): Promise<boolean> {
@@ -111,6 +127,7 @@ export class StatusBar implements vscode.Disposable {
             this.heartbeatTimer = null;
         }
         for (const d of this.disposables) d.dispose();
-        this.item.dispose();
+        this.aiItem.dispose();
+        this.humanItem.dispose();
     }
 }

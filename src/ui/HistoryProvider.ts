@@ -238,6 +238,23 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
   --sans: var(--vscode-font-family, -apple-system, 'Inter', system-ui, sans-serif);
 }
 
+/* The translucent overlays above only read well on dark themes — on a light
+   background white-alpha is invisible. VS Code tags the webview body with
+   vscode-light / vscode-high-contrast-light, so remap to dark-alpha overlays and
+   higher-contrast accents there. Dark stays the default above. */
+body.vscode-light, body.vscode-high-contrast-light {
+  --ai:#2f6fd0; --ai-soft:rgba(47,111,208,.12);
+  --human:#2f7d47; --human-soft:rgba(47,125,71,.12);
+  --txt-3: rgba(60,62,65,.62);
+  --surface:    rgba(0,0,0,.022);
+  --surface-2:  rgba(0,0,0,.045);
+  --surface-h:  rgba(0,0,0,.07);
+  --line:       rgba(0,0,0,.10);
+  --line-soft:  rgba(0,0,0,.06);
+  --shadow:     0 1px 2px rgba(0,0,0,.06), 0 14px 32px -18px rgba(0,0,0,.18);
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
