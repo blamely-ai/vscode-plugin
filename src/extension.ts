@@ -5,7 +5,6 @@ import { CliHealthNotifier } from './cli/CliHealthNotifier';
 import { CompletionDetector } from './completion/CompletionDetector';
 import { DaemonClient } from './completion/DaemonClient';
 import { WorkingLogTracker } from './authorship/WorkingLogTracker';
-import { GutterV2 } from './authorship/GutterV2';
 import { StatusBar } from './ui/StatusBar';
 import { SidebarProvider } from './ui/SidebarProvider';
 import { BlameDecorations } from './ui/BlameDecorations';
@@ -42,12 +41,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     blameDecorations = new BlameDecorations(blameMap, cliData);
     disposables.push(blameDecorations);
 
-    // Attribution v2 gutter overlay (flag-gated by blamely.attributionV2; inert when
-    // off). Paints the active editor from `blamely authorship` — the same working log
-    // the commit note flips to (I4).
-    const gutterV2 = new GutterV2(blameMap, () => blameDecorations?.updateDecorations(), cliData);
-    gutterV2.activate();
-    disposables.push(gutterV2);
+    // (Attribution v2 gutter is painted by BlameDecorations from blameMap, which
+    // CliDataService.refreshV2 fills via `blamely authorship`. The former GutterV2
+    // re-fetched the SAME per-visible authorship and re-painted on every refresh —
+    // pure duplication of BlameDecorations + refreshV2 — so it was removed.)
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
     historyProvider = new HistoryProvider(workspaceRoot);

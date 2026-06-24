@@ -781,6 +781,7 @@ export class CliDataService implements vscode.Disposable {
     private openListener?: vscode.Disposable;
     private changeListener?: vscode.Disposable;
     private activeEditorListener?: vscode.Disposable;
+    private visibleEditorsListener?: vscode.Disposable;
     private workspaceListener?: vscode.Disposable;
     private fileOpsListener?: vscode.Disposable;
     private fsWatcher?: vscode.FileSystemWatcher;
@@ -831,6 +832,11 @@ export class CliDataService implements vscode.Disposable {
             if (doc.uri.scheme === 'file') this.scheduleRefresh();
         });
         this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
+        // refreshV2 fetches authorship for every VISIBLE editor, so a split/peek that
+        // makes a new editor visible without changing the active one must refresh too
+        // (this used to be covered by GutterV2). BlameDecorations repaints on the same
+        // event; this provides the data it paints.
+        this.visibleEditorsListener = vscode.window.onDidChangeVisibleTextEditors(() => this.scheduleRefresh());
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
         // Chat "add file" / agent edits create, delete or rename files without a
         // document-change event, so the gutter + status bar would otherwise wait
@@ -943,8 +949,9 @@ export class CliDataService implements vscode.Disposable {
         tool: string,
         genType: string,
     ): void {
-        // Attribution v2 owns the gutter (GutterV2 paints from the working log);
-        // this v1 optimistic paint would fight it, so skip when v2 is on.
+        // Attribution v2 owns the gutter (BlameDecorations paints from the working
+        // log via the BlameMap); this v1 optimistic paint would fight it, so skip
+        // when v2 is on.
         if (attributionV2Enabled()) return;
         const existing = [...(this.blameMap.getBlame(relPath))];
         const now = new Date().toISOString();
@@ -1371,6 +1378,7 @@ export class CliDataService implements vscode.Disposable {
         this.changeListener?.dispose();
         this.openListener?.dispose();
         this.activeEditorListener?.dispose();
+        this.visibleEditorsListener?.dispose();
         this.workspaceListener?.dispose();
         this.fileOpsListener?.dispose();
         this.fsWatcher?.dispose();

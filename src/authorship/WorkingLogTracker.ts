@@ -7,9 +7,10 @@
 // Flag-gated by the `blamely.attributionV2` setting (default off): until the Phase 3
 // flip, this only writes working-log files; the note/gutter are unaffected.
 //
-// Known v1 limitation: cross-reopen continuity isn't loaded (a reopened file seeds
-// from its current content); within a session attribution is exact. Loading the
-// prior working log on seed is a follow-up.
+// On first edit of a document the tracker seeds from the on-disk working log (see
+// seed()), so attribution authored outside this editor session — an agent Write the
+// keystroke tracker never observed — is preserved rather than defaulted to Human.
+// Within a session attribution is exact.
 
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -18,7 +19,7 @@ import * as fs from 'fs';
 import { getRepoRoot, getBranchName, runGitCommand } from '../git/GitUtils';
 import { Author } from './attribute';
 import { FileTracker } from './tracker';
-import { save } from './store';
+import { save, loadWorkingLog, loadBaseline, baselinePath } from './store';
 import { installedBinaryPath } from '../cli/paths';
 
 export function attributionV2Enabled(): boolean {
@@ -34,8 +35,13 @@ interface Ctx {
 }
 
 interface DocState {
-    ft: FileTracker;
+    // undefined until the on-disk working log has been loaded (the async seed).
+    ft?: FileTracker;
     fsPath: string;
+    // Edits observed before the seed completes, replayed onto the seeded tracker
+    // in order. Empty once seeded.
+    pending: Array<{ next: string; author: Author }>;
+    seeding?: Promise<void>;
     flushTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -94,10 +100,20 @@ export class WorkingLogTracker implements vscode.Disposable {
         const key = doc.uri.toString();
         let st = this.docs.get(key);
         if (!st) {
-            st = { ft: new FileTracker(prevText, null), fsPath: doc.uri.fsPath };
+            // Seed asynchronously from the on-disk working log so attribution authored
+            // OUTSIDE this editor session (an agent Write the keystroke tracker never
+            // saw — e.g. Claude Code creating the file) is preserved. Until the seed
+            // resolves, queue edits; without this the first in-editor edit rebuilds
+            // from null and defaults every untouched AI line to Human, clobbering it.
+            st = { fsPath: doc.uri.fsPath, pending: [] };
             this.docs.set(key, st);
+            st.seeding = this.seed(key, prevText);
         }
-        st.ft.applyEdit(newText, author);
+        if (!st.ft) {
+            st.pending.push({ next: newText, author });
+        } else {
+            st.ft.applyEdit(newText, author);
+        }
         // An AI edit that REMOVED lines: the working log only describes surviving
         // content, so committed deletions would default to Human. Record the deleted
         // baseline lines (via the CLI, reusing the engine) so they attribute to the
@@ -110,6 +126,47 @@ export class WorkingLogTracker implements vscode.Disposable {
             clearTimeout(st.flushTimer);
         }
         st.flushTimer = setTimeout(() => void this.flush(key), FLUSH_DEBOUNCE_MS);
+    }
+
+    /**
+     * seed builds the document's FileTracker from the on-disk working log + baseline
+     * (written by the CLI/daemon for edits this editor never saw, e.g. an agent Write),
+     * then replays any edits queued while the load was in flight. firstPrev is the
+     * editor's pre-edit content, used only when there is no stored baseline to align
+     * the prior log against (a brand-new, never-recorded file). Best-effort: on any
+     * failure the tracker still seeds from firstPrev so live tracking keeps working.
+     */
+    private async seed(key: string, firstPrev: string): Promise<void> {
+        const st = this.docs.get(key);
+        if (!st) {
+            return;
+        }
+        let priorLog = null;
+        let baseline = firstPrev;
+        try {
+            const ctx = await this.resolveCtx(st.fsPath);
+            if (ctx) {
+                const log = await loadWorkingLog(ctx.repoRoot, ctx.branch, ctx.baseSha, ctx.rel);
+                const stored = await loadBaseline(baselinePath(ctx.repoRoot, ctx.branch, ctx.baseSha, ctx.rel));
+                // The prior log's line numbers describe the STORED baseline content;
+                // only adopt the log when that baseline is present, so the diff aligns.
+                if (log && stored !== null) {
+                    priorLog = log;
+                    baseline = stored;
+                }
+            }
+        } catch {
+            // best-effort: fall back to a fresh seed from firstPrev
+        }
+        // The doc may have been dropped (close/HEAD change) while seeding.
+        if (this.docs.get(key) !== st) {
+            return;
+        }
+        st.ft = new FileTracker(baseline, priorLog);
+        for (const e of st.pending) {
+            st.ft.applyEdit(e.next, e.author);
+        }
+        st.pending = [];
     }
 
     /** Record AI-deleted baseline lines via `blamely record-deletion` (current buffer
@@ -141,7 +198,15 @@ export class WorkingLogTracker implements vscode.Disposable {
 
     private async flush(key: string): Promise<void> {
         const st = this.docs.get(key);
-        if (!st || !st.ft.isDirty()) {
+        if (!st) {
+            return;
+        }
+        // A flush can fire (debounce/save/focus-loss) before the async seed resolves;
+        // wait for it so we never read a half-built tracker or save over the prior log.
+        if (st.seeding) {
+            await st.seeding;
+        }
+        if (!st.ft || !st.ft.isDirty()) {
             return;
         }
         if (st.flushTimer) {

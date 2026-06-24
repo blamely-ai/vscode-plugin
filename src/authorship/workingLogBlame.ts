@@ -1,9 +1,8 @@
 import { LineBlame } from '../blame/BlameMap';
 
 // Shared shape + converter for Attribution v2 working logs (`blamely authorship`
-// output), used by both GutterV2 (active editor) and CliDataService (repo-wide), so
-// they paint the gutter from one source. Kept in its own module to avoid a cycle
-// (CliDataService ↔ GutterV2).
+// output), consumed by CliDataService to fill the BlameMap (which BlameDecorations
+// paints). Kept in its own module to keep the converter dependency-light.
 
 export interface WlLine {
     start: number;
