@@ -784,6 +784,12 @@ export class CliDataService implements vscode.Disposable {
     private workspaceListener?: vscode.Disposable;
     private fileOpsListener?: vscode.Disposable;
     private fsWatcher?: vscode.FileSystemWatcher;
+    // Event-driven triggers that replace the per-edit retry ladder: a watcher on
+    // each repo's working-log dir fires WHEN the daemon/hook actually writes the
+    // attribution (the real "data ready" signal), and one on .git/HEAD catches
+    // commits / branch switches. With these, a refresh happens once when data
+    // lands instead of blind-polling 7× after every keystroke.
+    private dataWatchers: vscode.FileSystemWatcher[] = [];
     private startupTimers: NodeJS.Timeout[] = [];
     private periodicTimer?: NodeJS.Timeout;
     private listeners: CliDataRefreshListener[] = [];
@@ -809,7 +815,9 @@ export class CliDataService implements vscode.Disposable {
     async start(): Promise<void> {
         // Initial load when the IDE opens (git index / daemon / SQLite may not be ready yet).
         await this.refresh();
-        for (const delay of [500, 1500, 4000, 8000, 15000]) {
+        // A short ladder only to cover the daemon coming up AFTER the IDE; steady
+        // state is event-driven (the data + HEAD watchers below), not polled.
+        for (const delay of [800, 3000]) {
             this.startupTimers.push(setTimeout(() => void this.refresh(), delay));
         }
         // Save (manual or autosave) flushes buffers so `git diff HEAD` matches disk.
@@ -841,8 +849,44 @@ export class CliDataService implements vscode.Disposable {
         this.fsWatcher.onDidCreate(() => this.scheduleRefresh());
         this.fsWatcher.onDidChange(() => this.scheduleRefresh());
         this.fsWatcher.onDidDelete(() => this.scheduleRefresh());
-        // Safety-net poll: anything the events above miss surfaces within 5s.
-        this.periodicTimer = setInterval(() => void this.refresh(), 5000);
+        // The precise "attribution is ready" signal: watch each repo's working-log
+        // dir (written by the daemon/hooks) and .git/HEAD. These let us drop the
+        // per-edit retry ladder — the refresh fires when the data actually lands.
+        await this.setupDataWatchers();
+        // Safety-net poll only — a coarse backstop for events the watchers miss
+        // (bursts, remote/`.git` watch gaps), not the primary mechanism. 30s, not
+        // 5s, because the watchers now carry steady-state freshness.
+        this.periodicTimer = setInterval(() => void this.refresh(), 30000);
+    }
+
+    /** Watch each repo's working-log directory (the daemon/hooks write attribution
+     *  there) and .git/HEAD, so a refresh fires when data is actually ready rather
+     *  than blind-polling after every edit. Explicit RelativePattern watchers see
+     *  paths inside .git that the default '**\/*' watcher excludes. */
+    private async setupDataWatchers(): Promise<void> {
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        const seen = new Set<string>();
+        for (const folder of folders) {
+            const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
+            if (!root) continue;
+            const norm = path.normalize(root);
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            // Working logs land under <repo>/.git/blamely/working_logs/<branch>/<base>/…
+            const logs = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(root, '.git/blamely/working_logs/**'),
+            );
+            logs.onDidCreate(() => this.scheduleRefresh());
+            logs.onDidChange(() => this.scheduleRefresh());
+            logs.onDidDelete(() => this.scheduleRefresh());
+            // HEAD moves on commit / checkout / branch switch.
+            const head = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(root, '.git/HEAD'),
+            );
+            head.onDidChange(() => this.scheduleRefresh());
+            head.onDidCreate(() => this.scheduleRefresh());
+            this.dataWatchers.push(logs, head);
+        }
     }
 
     /** Coalesce bursts into one fast refresh, then retry for late-arriving data. */
@@ -861,24 +905,16 @@ export class CliDataService implements vscode.Disposable {
             }, 200));
         }
 
-        // Always reset the retry tail from "now" (the end of the current edit
-        // burst) so late-arriving watcher edits are still picked up even though
-        // the fast refresh fired before the DB was updated.
-        //
-        // The tail must outlast the DAEMON's recording lag, not just the plugin's.
-        // A Copilot chat apply paints text in the editor (the change events that
-        // drive this schedule) SECONDS before Copilot finalizes its chat JSONL —
-        // and only then does the daemon's chat watcher poll and record the edit.
-        // With a short [1200, 3500] tail, all retries fire before the daemon
-        // writes, so the gutter waits for the 5s safety poll (the "~5s delay").
-        // These points keep refreshing for ~8s after editing stops, so the gutter
-        // updates within ~1s of whenever the daemon records.
+        // One short cushion only. The daemon's recording lag (a chat apply paints
+        // the editor SECONDS before the daemon finalizes and writes the working
+        // log) used to require a 6-step [1000..8000] tail of blind polls. Now the
+        // working-log watcher (setupDataWatchers) fires a refresh WHEN the daemon
+        // writes, so the long tail is gone — this single retry just smooths over
+        // watcher latency / the rare missed event before the 30s backstop.
         const retryTimers = this.refreshTimers.filter((_, i) => i > 0);
         for (const t of retryTimers) clearTimeout(t);
         this.refreshTimers = this.refreshTimers.slice(0, 1);  // keep fast timer only
-        for (const delay of [1000, 2000, 3200, 4500, 6000, 8000]) {
-            this.refreshTimers.push(setTimeout(() => void this.refresh(), delay));
-        }
+        this.refreshTimers.push(setTimeout(() => void this.refresh(), 2000));
     }
 
     /**
@@ -1338,6 +1374,8 @@ export class CliDataService implements vscode.Disposable {
         this.workspaceListener?.dispose();
         this.fileOpsListener?.dispose();
         this.fsWatcher?.dispose();
+        for (const w of this.dataWatchers) w.dispose();
+        this.dataWatchers = [];
         this.listeners = [];
     }
 }

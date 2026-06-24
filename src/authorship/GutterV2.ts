@@ -38,14 +38,16 @@ export class GutterV2 implements vscode.Disposable {
             vscode.window.onDidChangeActiveTextEditor(() => this.schedule()),
             vscode.window.onDidChangeVisibleTextEditors(() => this.schedule()),
             vscode.workspace.onDidSaveTextDocument(() => this.schedule()),
-            vscode.workspace.onDidChangeTextDocument((e) => {
-                if (vscode.window.visibleTextEditors.some((ed) => ed.document === e.document)) {
-                    this.schedule();
-                }
-            }),
-            // On any refresh (incl. the 3s HEAD poll firing after a commit) RE-FETCH,
-            // so the gutter reflects the current state — e.g. a committed file now has
-            // no uncommitted changes and clears, rather than re-asserting stale icons.
+            // No per-keystroke onDidChangeTextDocument trigger: typing doesn't change
+            // authorship until the daemon records it, and VS Code shifts existing
+            // decorations with edits automatically. The attribution change arrives via
+            // onRefresh below, which CliDataService now fires from its working-log
+            // watcher (when the daemon actually writes) — so re-fetching on every
+            // keystroke was redundant spawns of `blamely authorship`.
+            //
+            // On any refresh (incl. a commit moving HEAD) RE-FETCH, so the gutter
+            // reflects the current state — e.g. a committed file now has no
+            // uncommitted changes and clears, rather than re-asserting stale icons.
             this.cliData.onRefresh(() => this.schedule()),
         );
         this.schedule();
