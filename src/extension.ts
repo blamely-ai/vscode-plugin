@@ -10,6 +10,7 @@ import { SidebarProvider } from './ui/SidebarProvider';
 import { BlameDecorations } from './ui/BlameDecorations';
 import { HistoryProvider } from './ui/HistoryProvider';
 import * as GitUtils from './git/GitUtils';
+import { gitOpState } from './git/GitOpState';
 import * as Logger from './utils/Logger';
 
 let cliData: CliDataService | undefined;
@@ -84,6 +85,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!root) return;
         const repoRoot = await GitUtils.getRepoRoot(root);
         if (!repoRoot) return;
+        // Refresh the cached git-op / stash-window state the working-log tracker
+        // consults synchronously on every change (see GitOpState).
+        await gitOpState.poll(repoRoot);
         const head = await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD');
         const branch = (await GitUtils.getBranchName(repoRoot)) ?? 'DETACHED';
         if (head && head !== lastHead) {

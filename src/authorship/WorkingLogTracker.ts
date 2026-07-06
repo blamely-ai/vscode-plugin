@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import { getRepoRoot, getBranchName, runGitCommand } from '../git/GitUtils';
+import { gitOpState } from '../git/GitOpState';
 import { Author } from './attribute';
 import { FileTracker } from './tracker';
 import { save, loadWorkingLog, loadBaseline, baselinePath } from './store';
@@ -98,6 +99,20 @@ export class WorkingLogTracker implements vscode.Disposable {
         void this.flushAll(true);
     }
 
+    /** Drop ONE document's in-memory tracker WITHOUT flushing — used when a
+     *  replay (git op / stash pop / external reload) rewrote the buffer: the
+     *  in-flight state may already be poisoned, so it is discarded and the next
+     *  real edit re-seeds from the on-disk working log + baseline. A pending
+     *  debounced flush for the doc is disarmed by the delete (flush() no-ops on
+     *  a missing key). */
+    resetDocument(key: string): void {
+        const st = this.docs.get(key);
+        if (st?.flushTimer) {
+            clearTimeout(st.flushTimer);
+        }
+        this.docs.delete(key);
+    }
+
     /**
      * onEdit folds one classified change into the document's working log. prevText
      * is the content BEFORE this change (CompletionDetector's shadow) — used as the
@@ -106,6 +121,22 @@ export class WorkingLogTracker implements vscode.Disposable {
      */
     onEdit(doc: vscode.TextDocument, prevText: string, newText: string, author: Author): void {
         if (!attributionV2Enabled() || doc.uri.scheme !== 'file' || newText === prevText) {
+            return;
+        }
+        // Replayed content is NOT fresh authorship — folding it would poison the
+        // working log as Human typing. Two replay signals:
+        //   • gitOpState.isActive(): a cherry-pick/rebase/merge/revert is in
+        //     progress, or a stash was created/applied within the stash window.
+        //   • !doc.isDirty right after a change: typing always leaves the buffer
+        //     dirty; a clean buffer means the editor RELOADED it from disk (git
+        //     rewrote the file underneath — checkout/stash pop/revert).
+        // In both cases: skip the fold AND drop the doc's in-memory tracker, so
+        // the next real edit re-seeds from the on-disk working log + baseline
+        // (the pre-op truth). Un-flushed edits made during the op window are
+        // discarded by design; the CLI's commit-time reconcile recovers anything
+        // the editor got wrong here.
+        if (gitOpState.isActive() || !doc.isDirty) {
+            this.resetDocument(doc.uri.toString());
             return;
         }
         const key = doc.uri.toString();
