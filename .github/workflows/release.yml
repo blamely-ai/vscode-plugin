@@ -73,10 +73,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Same pipeline as CI: release compile + JS obfuscation, then package
-          # with no TypeScript/source in the bundle (.vscodeignore governs that).
+          # Same pipeline as CI: release compile, then package with no
+          # TypeScript/source in the bundle (.vscodeignore governs that).
           npm run compile:release
-          npm run obfuscate
           versioned="blamely-${{ steps.tag.outputs.tag }}.vsix"
           npx @vscode/vsce package --no-dependencies --allow-missing-repository -o "$versioned"
           cp "$versioned" blamely.vsix   # stable name the CLI installer downloads

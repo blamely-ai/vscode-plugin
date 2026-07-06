@@ -73,10 +73,12 @@ export class WorkingLogTracker implements vscode.Disposable {
         );
     }
 
-    /** Flush every tracked document immediately (e.g. on focus loss, before a commit). */
-    private async flushAll(): Promise<void> {
+    /** Flush every tracked document immediately (e.g. on focus loss, before a commit).
+     *  With force=true, re-persist even non-dirty trackers — used on a same-SHA branch
+     *  switch so each doc's working log exists under the NEW branch's dir. */
+    private async flushAll(force = false): Promise<void> {
         for (const key of [...this.docs.keys()]) {
-            await this.flush(key);
+            await this.flush(key, force);
         }
     }
 
@@ -85,6 +87,15 @@ export class WorkingLogTracker implements vscode.Disposable {
      *  new committed content rather than accumulating against a stale baseline. */
     onHeadChanged(): void {
         this.docs.clear();
+    }
+
+    /** Called on a same-SHA branch switch (`git checkout -b feature`): the in-memory
+     *  edits are still uncommitted work, but their on-disk log currently lives only
+     *  under the OLD branch's dir. flush() re-resolves ctx per call, so a forced flush
+     *  re-writes each doc's log under the new branch/base before a commit there reads
+     *  it. Keeps the trackers (unlike onHeadChanged) since nothing was committed. */
+    onBranchChanged(): void {
+        void this.flushAll(true);
     }
 
     /**
@@ -196,7 +207,7 @@ export class WorkingLogTracker implements vscode.Disposable {
         return { repoRoot, branch, baseSha: head, rel };
     }
 
-    private async flush(key: string): Promise<void> {
+    private async flush(key: string, force = false): Promise<void> {
         const st = this.docs.get(key);
         if (!st) {
             return;
@@ -206,7 +217,8 @@ export class WorkingLogTracker implements vscode.Disposable {
         if (st.seeding) {
             await st.seeding;
         }
-        if (!st.ft || !st.ft.isDirty()) {
+        // force re-persists a clean tracker under a (possibly new) branch/base dir.
+        if (!st.ft || (!force && !st.ft.isDirty())) {
             return;
         }
         if (st.flushTimer) {

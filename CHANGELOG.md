@@ -4,6 +4,14 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-07-06
+
+### Fixed
+
+- **The gutter only highlights lines you've actually changed.** Attribution now reflects your uncommitted changes, so old edits from a previous branch no longer linger on lines that already match your latest commit.
+- **Switching branches keeps your attribution intact.** Creating or switching to a branch no longer loses track of your in-progress changes.
+- **Files deleted by the Cursor agent on Windows are credited to AI** (requires the 1.6.7 CLI).
+
 ## [1.6.0] - 2026-06-15
 
 ### Added

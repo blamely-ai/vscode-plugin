@@ -61,10 +61,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Same release pipeline as CI: release compile + JS obfuscation, then
-          # package with no TypeScript/source in the bundle (.vscodeignore governs).
+          # Same release pipeline as CI: release compile, then package with no
+          # TypeScript/source in the bundle (.vscodeignore governs).
           npm run compile:release
-          npm run obfuscate
           version="$(node -p "require('./package.json').version")"
           vsix="blamely-${version}.vsix"
           npx @vscode/vsce package --no-dependencies --allow-missing-repository -o "$vsix"

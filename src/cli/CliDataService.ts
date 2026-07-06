@@ -555,11 +555,45 @@ export function reconcileChangedLinesAttribution(
     }
 }
 
+/** The working tree's diff-vs-HEAD state for one repo: which lines changed per
+ *  file, and which files are untracked. Used to scope both the v1 (SQLite) and v2
+ *  (working-log) blame maps down to only the current uncommitted changes. */
+export interface WorkingTreeState {
+    /** repo-relative path -> '+'-side line numbers that differ from HEAD. */
+    changedSets: Map<string, Set<number>>;
+    /** repo-relative untracked-not-ignored paths (all lines are changes). */
+    untrackedFiles: Set<string>;
+}
+
+/**
+ * Resolve a repo's uncommitted-vs-HEAD state with one `git diff --unified=0 HEAD`
+ * and one `git ls-files --others --exclude-standard`. Shared by the v1 refreshRepo
+ * scan and the v2 refreshV2 scan so both scope identically. On an unborn HEAD the
+ * diff fails and yields empty changed sets; every file is untracked, so the
+ * untracked pass keeps new files fully visible.
+ */
+export async function collectWorkingTreeState(repoRoot: string): Promise<WorkingTreeState> {
+    const diffOut = await GitUtils.runGitCommand(repoRoot, 'diff', '--unified=0', 'HEAD');
+    const changedByFile = parseHumanLines(diffOut ?? '');
+    const changedSets = new Map<string, Set<number>>();
+    for (const [f, lns] of changedByFile) changedSets.set(f, new Set(lns));
+
+    const untrackedFiles = new Set<string>();
+    const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
+    if (untrackedOut) {
+        for (const line of untrackedOut.split('\n')) {
+            const f = line.trim().replace(/\\/g, '/');
+            if (f) untrackedFiles.add(f);
+        }
+    }
+    return { changedSets, untrackedFiles };
+}
+
 /**
  * Keep only lines that differ from HEAD (or whole untracked files). Drops stale
  * SQLite rows so gutter/status bar/Changes reset after commit.
  */
-function scopeToUncommittedWorkingTree(
+export function scopeToUncommittedWorkingTree(
     byFile: Map<string, LineBlame[]>,
     changedSets: Map<string, Set<number>>,
     untrackedFiles: Set<string>,
@@ -1000,12 +1034,27 @@ export class CliDataService implements vscode.Disposable {
             repoRoots.push(root);
         }
         const merged = new Map<string, LineBlame[]>();
-        // Tracked working logs across the repo (sidebar aggregate).
+        // Per-repo working-tree state, cached so the visible-editor pass reuses it.
+        const repoStates = new Map<string, WorkingTreeState>();
+        // Tracked working logs across the repo (sidebar aggregate). Scope each repo's
+        // logs to its uncommitted-vs-HEAD changes BEFORE key conversion — a working
+        // log orphaned under an old branch/base (e.g. after `checkout -b` + commit on
+        // another branch) describes lines now identical to HEAD, so it must not paint.
+        // This mirrors the v1 refreshRepo safety net that refreshV2 previously lacked.
         for (const repoRoot of repoRoots) {
-            for (const wl of await this.fetchAllWorkingLogs(bin, repoRoot)) {
+            const [state, wls] = await Promise.all([
+                collectWorkingTreeState(repoRoot),
+                this.fetchAllWorkingLogs(bin, repoRoot),
+            ]);
+            repoStates.set(path.normalize(repoRoot), state);
+            const byFile = new Map<string, LineBlame[]>();
+            for (const wl of wls) {
                 if (!wl.file) continue;
-                const abs = path.join(repoRoot, wl.file);
-                merged.set(blameFileKey(vscode.Uri.file(abs)), toLineBlame(wl));
+                byFile.set(wl.file.replace(/\\/g, '/'), toLineBlame(wl));
+            }
+            scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
+            for (const [rel, entries] of byFile) {
+                merged.set(blameFileKey(vscode.Uri.file(path.join(repoRoot, rel))), entries);
             }
         }
         // Visible editors: seed COMMITTED + uncommitted authorship from the single-file
@@ -1016,12 +1065,39 @@ export class CliDataService implements vscode.Disposable {
         for (const ed of vscode.window.visibleTextEditors) {
             if (ed.document.uri.scheme !== 'file') continue;
             const wl = await this.fetchAuthorship(bin, ed.document.uri.fsPath);
-            if (wl) {
-                merged.set(blameFileKey(ed.document.uri), toLineBlame(wl));
-            }
+            if (!wl) continue;
+            merged.set(blameFileKey(ed.document.uri), this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates));
         }
         this.blameMap.replaceAll(merged);
         this.notify();
+    }
+
+    /** Scope one visible editor's authorship to its repo's uncommitted-vs-HEAD state,
+     *  so a file that's clean vs HEAD paints nothing even if the CLI returned a log.
+     *  Falls back to the unscoped conversion when the file's repo wasn't discovered
+     *  (nested repo outside the workspace folders) — never worse than before. */
+    private scopeVisibleEditor(
+        fsPath: string,
+        wl: WorkingLogJson,
+        repoRoots: string[],
+        repoStates: Map<string, WorkingTreeState>,
+    ): LineBlame[] {
+        const entries = toLineBlame(wl);
+        // Longest-prefix match: the repo whose root is the deepest ancestor of fsPath.
+        let bestRoot: string | null = null;
+        for (const root of repoRoots) {
+            if ((fsPath === root || fsPath.startsWith(root + path.sep)) &&
+                (bestRoot === null || root.length > bestRoot.length)) {
+                bestRoot = root;
+            }
+        }
+        if (!bestRoot) return entries;
+        const state = repoStates.get(path.normalize(bestRoot));
+        if (!state) return entries;
+        const rel = path.relative(bestRoot, fsPath).replace(/\\/g, '/');
+        const byFile = new Map<string, LineBlame[]>([[rel, entries]]);
+        scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
+        return byFile.get(rel) ?? [];
     }
 
     /** Single-file v2 authorship (committed + uncommitted), which SEEDS from the
@@ -1210,22 +1286,9 @@ export class CliDataService implements vscode.Disposable {
 
         const byFile = editsToBlameMap(repoRoot, edits);
 
-        // Lines that actually differ from HEAD in the working tree (the '+'
-        // side of `git diff --unified=0 HEAD`). Empty after commit.
-        const diffOut = await GitUtils.runGitCommand(repoRoot, 'diff', '--unified=0', 'HEAD');
-        const changedByFile = parseHumanLines(diffOut ?? '');
-        const changedSets = new Map<string, Set<number>>();
-        for (const [f, lns] of changedByFile) changedSets.set(f, new Set(lns));
-
-        // Untracked (new) files aren't in `git diff HEAD`; every line is a change.
-        const untrackedFiles = new Set<string>();
-        const untrackedOut = await GitUtils.runGitCommand(repoRoot, 'ls-files', '--others', '--exclude-standard');
-        if (untrackedOut) {
-            for (const line of untrackedOut.split('\n')) {
-                const f = line.trim().replace(/\\/g, '/');
-                if (f) untrackedFiles.add(f);
-            }
-        }
+        // Lines that actually differ from HEAD in the working tree (the '+' side of
+        // `git diff --unified=0 HEAD`) plus untracked files. Empty after commit.
+        const { changedSets, untrackedFiles } = await collectWorkingTreeState(repoRoot);
 
         const affectedFiles = new Set<string>([...changedSets.keys(), ...untrackedFiles]);
 
@@ -1235,7 +1298,7 @@ export class CliDataService implements vscode.Disposable {
         // Only uncommitted lines vs HEAD (clears gutter/status bar/Changes after commit).
         scopeToUncommittedWorkingTree(byFile, changedSets, untrackedFiles);
 
-        const hasUncommittedWork = changedByFile.size > 0 || untrackedFiles.size > 0;
+        const hasUncommittedWork = changedSets.size > 0 || untrackedFiles.size > 0;
 
         // Untracked files: trust only tight AI ranges; add human for the rest.
         // A brand-new file with no SQLite edits has no byFile entry yet, but it's
@@ -1264,6 +1327,8 @@ export class CliDataService implements vscode.Disposable {
         }
 
         // Authoritative per git-diff line (overrides stale range / pending mislabels).
+        const changedByFile = new Map<string, number[]>();
+        for (const [f, lns] of changedSets) changedByFile.set(f, [...lns]);
         reconcileChangedLinesAttribution(repoRoot, edits, changedByFile, byFile, this.blameMap);
 
         // Drop blame for working-tree-blank lines BEFORE populating the map, so

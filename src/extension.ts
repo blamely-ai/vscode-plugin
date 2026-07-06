@@ -77,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Refresh history when HEAD changes (oobeya-cli writes git notes on commit).
     let lastHead: string | null = null;
+    let lastBranch: string | null = null;
     let workingLogTracker: WorkingLogTracker | undefined;
     const pollHead = async () => {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -84,15 +85,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const repoRoot = await GitUtils.getRepoRoot(root);
         if (!repoRoot) return;
         const head = await GitUtils.runGitCommand(repoRoot, 'rev-parse', 'HEAD');
+        const branch = (await GitUtils.getBranchName(repoRoot)) ?? 'DETACHED';
         if (head && head !== lastHead) {
             const wasInitial = lastHead === null;
             lastHead = head;
+            lastBranch = branch;
             void cliData?.refresh();
             void historyProvider?.refresh();
             // A real commit (not the first observation at startup) → the trackers'
             // in-memory edits are now history; drop them so the next edit re-baselines
             // against the committed content instead of a stale baseline.
             if (!wasInitial) workingLogTracker?.onHeadChanged();
+        } else if (head && lastBranch !== null && branch !== lastBranch) {
+            // Same HEAD SHA, different branch — `git checkout -b feature` (or switching
+            // to an existing branch at the same tip). No commit happened, so the
+            // in-memory edits are still live; re-persist them under the NEW branch's
+            // working-log dir before any commit there reads it, and refresh so the
+            // gutter re-scopes to the current branch.
+            lastBranch = branch;
+            workingLogTracker?.onBranchChanged();
+            void cliData?.refresh();
         }
     };
     disposables.push(vscode.workspace.onDidSaveTextDocument(() => void pollHead()));

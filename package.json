@@ -2,7 +2,7 @@
   "name": "blamely",
   "displayName": "Blamely",
   "description": "Per-line AI-vs-human code attribution in the gutter, status bar, and commit history. Runs locally — no code or telemetry leaves your machine. Requires the free Blamely CLI.",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -45,7 +45,7 @@
   "main": "./out/extension.js",
   "scripts": {
     "clean:out": "node -e \"require('fs').rmSync('out',{recursive:true,force:true});\"",
-    "vscode:prepublish": "npm run clean:out && npm run compile:release && npm run obfuscate",
+    "vscode:prepublish": "npm run clean:out && npm run compile:release",
     "compile": "tsc -p ./",
     "compile:release": "tsc -p ./tsconfig.release.json",
     "obfuscate": "node scripts/obfuscate-out.cjs",
