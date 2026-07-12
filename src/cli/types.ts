@@ -54,8 +54,16 @@ export interface CliNoteFile {
     type?: string;
     renamed_from?: string;
     copied_from?: string;
-    added: number;
-    deleted: number;
+    added_lines?: number;
+    deleted_lines?: number;
+    /** Per-file AI/Human split of added_lines/deleted_lines (same keys as totals); omitted when 0. */
+    ai_added_lines?: number;
+    human_added_lines?: number;
+    ai_deleted_lines?: number;
+    human_deleted_lines?: number;
+    /** legacy (pre-1.x notes): superseded by added_lines / deleted_lines */
+    added?: number;
+    deleted?: number;
     lines: CliNoteLine[];
 }
 

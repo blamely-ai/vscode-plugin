@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { AuthorType, WorkingLog, humanAuthor } from '../authorship/attribute';
-import { update, loadWorkingLog, workingLogPath } from '../authorship/store';
+import { update, loadWorkingLog, workingLogPath, sanitizeComponent } from '../authorship/store';
 
 function typesByLine(wl: WorkingLog, n: number): AuthorType[] {
     const out: AuthorType[] = new Array(n);
@@ -43,5 +43,15 @@ describe('Attribution v2 store (TS)', () => {
         const p = workingLogPath('/tmp/repo', 'feature/login', 'abc', 'pages/login page.html');
         assert.ok(!p.includes('feature/login') && !p.includes('feature\\login'), `branch slash not sanitized: ${p}`);
         assert.ok(p.includes('login page.html.json'), `spaced filename not preserved: ${p}`);
+    });
+
+    it('sanitizeComponent matches the Go/Kotlin charset (controls replaced, space and hyphen kept)', () => {
+        // Same rule as Go sanitizeComponent (store.go) and Kotlin Store.sanitizeComponent:
+        // / \ : * ? " < > | and every char below 0x20 become '-'; nothing else changes.
+        const tab = String.fromCharCode(0x09);
+        const ctl = String.fromCharCode(0x01);
+        const probe = 'a/b\\c:d*e?f"g<h>i|j k-l' + tab + ctl + 'z';
+        assert.equal(sanitizeComponent(probe), 'a-b-c-d-e-f-g-h-i-j k-l--z');
+        assert.equal(sanitizeComponent(''), '_');
     });
 });

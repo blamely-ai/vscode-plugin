@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { BlameMap, LineBlame } from '../blame/BlameMap';
+import { BlameMap, LineBlame, DETECTING_TTL_MS } from '../blame/BlameMap';
 import { loadEditsForRepo } from './SqliteReader';
 import { getRepoId } from './repoId';
 import { checkCliHealth } from './CliHealth';
@@ -720,6 +720,7 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
     const assigned = new Map<string, Map<number, CliEditRow>>();          // range-based: file → line → edit
     const fileLineCounts = new Map<string, number | null>();
     const MAX_LINES_PER_EDIT = 10000; // guard against huge ranges
+    const MAX_END_LINE = 50000; // absolute end-line clamp, same as the IntelliJ plugin's hardMax
 
     function fileLineCount(repoRoot: string, filePath: string): number | null {
         try {
@@ -758,6 +759,7 @@ function editsToBlameMap(repoRoot: string, edits: CliEditRow[]): Map<string, Lin
         if (!isInlineCompletionType(row.gen_type) && fileLines !== null) {
             end = Math.min(end, fileLines);
         }
+        end = Math.min(end, MAX_END_LINE);
         if (end - start + 1 > MAX_LINES_PER_EDIT) end = start + MAX_LINES_PER_EDIT - 1;
         for (let ln = start; ln <= end; ln++) {
             if (!byLine.has(ln)) byLine.set(ln, row);
@@ -967,9 +969,10 @@ export class CliDataService implements vscode.Disposable {
         if (this.disposed) return;
         this.blameMap.markDetecting(relPath, startLine, endLine);
         this.notify();
+        // Fire just after the detecting TTL expires so the pruned state repaints.
         const t = setTimeout(() => {
             if (!this.disposed) this.notify();
-        }, 8200);
+        }, DETECTING_TTL_MS + 200);
         this.detectingTimers.push(t);
     }
 

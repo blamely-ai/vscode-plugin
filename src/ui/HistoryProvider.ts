@@ -4,6 +4,18 @@ import { parseCliNote, genTypesFromNote, modelsFromNote } from '../cli/NoteParse
 import { CliNote } from '../cli/types';
 import * as Logger from '../utils/Logger';
 
+/** Per-file AI/Human line split from a note's files[] entry. */
+interface FileSplit {
+    path: string;
+    changeType: string;
+    added: number;
+    deleted: number;
+    aiAdded: number;
+    humanAdded: number;
+    aiDeleted: number;
+    humanDeleted: number;
+}
+
 interface CommitReport {
     commitHash: string;
     commitMessage: string;
@@ -25,6 +37,7 @@ interface CommitReport {
     firstStartCodingTime: string;
     codingTimeMs: number;
     modelCount: number;
+    files: FileSplit[];
 }
 
 interface ModelDetail {
@@ -188,6 +201,22 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
             firstStartCodingTime: '',
             codingTimeMs: Math.round((note.coding_time_nanos ?? 0) / 1e6),
             modelCount: models.length,
+            files: (note.files ?? []).map(f => {
+                // Notes written before the per-file split carry only the totals
+                // (and pre-1.x ones the bare added/deleted keys): fall back to
+                // ai=0 / human=total so the row still renders.
+                const added = f.added_lines ?? f.added ?? 0;
+                const deleted = f.deleted_lines ?? f.deleted ?? 0;
+                const aiAdded = Math.min(f.ai_added_lines ?? 0, added);
+                const aiDeleted = Math.min(f.ai_deleted_lines ?? 0, deleted);
+                return {
+                    path: f.path,
+                    changeType: f.type ?? '',
+                    added, deleted, aiAdded, aiDeleted,
+                    humanAdded: f.human_added_lines ?? (added - aiAdded),
+                    humanDeleted: f.human_deleted_lines ?? (deleted - aiDeleted),
+                };
+            }),
         };
     }
 
@@ -477,6 +506,30 @@ body {
 .idbar .d-h { background: var(--del); }
 .ov-divider { height: 1px; background: var(--line-soft); margin: 3px 0; }
 
+/* ── per-file AI/Human split (latest commit) ── */
+.file-list { display: flex; flex-direction: column; gap: 7px; }
+.file-row {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-sm); box-shadow: var(--shadow-sm);
+  padding: 8px 11px; display: flex; flex-direction: column; gap: 6px;
+}
+.file-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.file-name { font-family: var(--mono); font-size: 11px; font-weight: 620; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; flex: 1; min-width: 0; }
+.file-kind { font-family: var(--mono); font-size: 8.5px; font-weight: 650; letter-spacing: .05em; border-radius: 999px; padding: 1px 6px; flex-shrink: 0; text-transform: uppercase; }
+.file-kind.k-added { color: var(--human); background: var(--human-soft); border: 1px solid rgba(95,181,107,.25); }
+.file-kind.k-deleted { color: var(--del); background: rgba(232,112,122,.13); border: 1px solid rgba(232,112,122,.25); }
+.file-kind.k-other { color: var(--txt-3); background: var(--surface-2); border: 1px solid var(--line); }
+.file-counts { font-family: var(--mono); font-size: 10px; color: var(--txt-2); flex-shrink: 0; display: flex; gap: 7px; }
+.file-counts .fa { color: var(--ai); }
+.file-counts .fh { color: var(--human); }
+.file-counts .fd { color: var(--del); }
+.file-bar { display: flex; height: 4px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.file-bar .f-ai { background: linear-gradient(90deg, #4a93ec, #8cc0ff); }
+.file-bar .f-human { background: linear-gradient(90deg, #4ea75c, #82d48d); }
+.file-bar .f-del-ai { background: rgba(90,162,240,.45); }
+.file-bar .f-del-h { background: rgba(232,112,122,.55); }
+.file-more { font-size: 10.5px; color: var(--txt-3); font-family: var(--mono); padding: 2px 2px 0; }
+
 /* ── commits table (mirrors IntelliJ columns) ── */
 .table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-sm); overflow-x: auto; }
 .ctable { border-collapse: collapse; width: 100%; font-size: 11.5px; }
@@ -631,6 +684,46 @@ body {
                 h += `<div class="model-bar-track"><div class="model-bar-fill" style="width:${pct}%"></div></div>`;
                 h += `</div>`;
             });
+            h += `</div>`;
+        }
+
+        // ── Files (latest commit) — per-file AI/Human split from the note ──
+        if (latest.files.length > 0) {
+            const MAX_FILE_ROWS = 8;
+            // Most-changed files first so the interesting rows survive the cap.
+            const sorted = [...latest.files].sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+            const shown = sorted.slice(0, MAX_FILE_ROWS);
+            h += `<div class="section-label">Files <span class="count-pill">latest &middot; ${latest.files.length}</span></div>`;
+            h += `<div class="file-list">`;
+            for (const f of shown) {
+                const kind = f.changeType === 'ADDED' ? 'k-added' : f.changeType === 'DELETED' ? 'k-deleted' : 'k-other';
+                const kindLabel = f.changeType ? this.esc(f.changeType.toLowerCase()) : '';
+                // One stacked bar over all changed lines: AI-added, human-added,
+                // AI-deleted (faded blue), human-deleted (faded red).
+                const tot = f.added + f.deleted;
+                const w = (n: number) => tot > 0 ? (100.0 * n / tot).toFixed(1) : '0';
+                h += `<div class="file-row" title="${this.esc(f.path)}">`;
+                h += `<div class="file-top">`;
+                h += `<span class="file-name">&lrm;${this.esc(f.path)}&lrm;</span>`;
+                if (kindLabel) { h += `<span class="file-kind ${kind}">${kindLabel}</span>`; }
+                h += `<span class="file-counts">`;
+                h += `<span class="fa" title="AI-added lines">${f.aiAdded} AI</span>`;
+                h += `<span class="fh" title="Human-added lines">${f.humanAdded} Human</span>`;
+                if (f.deleted > 0) { h += `<span class="fd" title="Deleted lines: AI −${f.aiDeleted} · Human −${f.humanDeleted}">&minus;${f.deleted}</span>`; }
+                h += `</span></div>`;
+                if (tot > 0) {
+                    h += `<div class="file-bar">`;
+                    h += `<span class="f-ai" style="width:${w(f.aiAdded)}%"></span>`;
+                    h += `<span class="f-human" style="width:${w(f.humanAdded)}%"></span>`;
+                    h += `<span class="f-del-ai" style="width:${w(f.aiDeleted)}%"></span>`;
+                    h += `<span class="f-del-h" style="width:${w(f.humanDeleted)}%"></span>`;
+                    h += `</div>`;
+                }
+                h += `</div>`;
+            }
+            if (sorted.length > MAX_FILE_ROWS) {
+                h += `<div class="file-more">+${sorted.length - MAX_FILE_ROWS} more files</div>`;
+            }
             h += `</div>`;
         }
 
