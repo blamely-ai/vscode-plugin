@@ -1,4 +1,4 @@
-# VSIX: ship only package.json "files" globs + compiled obfuscated JS (no TypeScript source).
+# VSIX: ship only the compiled JS under out/ (plain tsc output, unobfuscated).
 .vscode/**
 .idea/**
 .vscode-test/**

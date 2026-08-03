@@ -4,6 +4,27 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-03
+
+### Added
+
+- **A setting for when the AI/Human breakdown doesn't show up.** On very large repositories, or on slow and company-managed machines, Blamely could give up reading your history before it finished, leaving the gutter and sidebar empty. It now waits up to a minute instead of a few seconds, and you can raise that further with the new **Blamely: Authorship Timeout Ms** setting.
+
+### Changed
+
+- **The extension ships fully readable.** All code-scrambling was removed — the published extension is exactly the public source, so your security team can verify what runs in your editor.
+
+## [1.6.9] - 2026-07-27
+
+### Added
+
+- **Attribution survives cherry-pick, squash, and stash.** Cherry-picking a commit, squashing commits together, or stashing and re-applying your work keeps the AI-vs-human credit on each line instead of resetting it to Human.
+- **Per-file AI vs. human split in History.** Past commits now break down line counts per file, not just per commit.
+
+### Fixed
+
+- **More accurate per-file line counts.** The AI-vs-human breakdown on each file no longer drops lines in edge cases.
+
 ## [1.6.7] - 2026-07-06
 
 ### Fixed

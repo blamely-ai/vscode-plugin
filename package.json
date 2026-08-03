@@ -2,7 +2,7 @@
   "name": "blamely",
   "displayName": "Blamely",
   "description": "Per-line AI-vs-human code attribution in the gutter, status bar, and commit history. Runs locally — no code or telemetry leaves your machine. Requires the free Blamely CLI.",
-  "version": "1.6.9",
+  "version": "1.7.0",
   "license": "MIT",
   "icon": "images/icon.png",
   "publisher": "blamely",
@@ -48,7 +48,6 @@
     "vscode:prepublish": "npm run clean:out && npm run compile:release",
     "compile": "tsc -p ./",
     "compile:release": "tsc -p ./tsconfig.release.json",
-    "obfuscate": "node scripts/obfuscate-out.cjs",
     "vsix": "npm run vscode:prepublish && npx @vscode/vsce package --no-dependencies",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
@@ -139,7 +138,12 @@
         },
         "blamely.aiTool": {
           "type": "string",
-          "enum": ["auto", "copilot", "cursor", "gemini"],
+          "enum": [
+            "auto",
+            "copilot",
+            "cursor",
+            "gemini"
+          ],
           "default": "auto",
           "markdownDescription": "Which AI tool to credit for edits this extension detects. `auto` infers from the host editor (VS Code with the GitHub Copilot extension → Copilot; Cursor → Cursor; Antigravity → Gemini). Set this explicitly when you run **GitHub Copilot inside Cursor** (or another assistant inside a host whose default differs) so chat applies and inline completions are attributed to the right tool. Each tool is tracked independently."
         },
@@ -152,6 +156,12 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log daemon connection activity to the **Blamely** output channel: each `/health` ping (transport, port, result, latency) and each `/edit` POST (status, latency, error). Pair with the daemon's `BLAMELY_DEBUG=1` env var to debug daemon↔plugin connection errors from both ends."
+        },
+        "blamely.authorshipTimeoutMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 1000,
+          "markdownDescription": "Timeout in milliseconds for the `blamely authorship` CLI calls that feed the gutter and sidebar (single-file and repo-wide `--all`). Raise it if large repos or slow disks log `authorship … TIMED OUT` in the Blamely output channel. The `BLAMELY_AUTHORSHIP_TIMEOUT_MS` environment variable overrides this setting."
         }
       }
     },
@@ -181,7 +191,6 @@
     "eslint": "^8.56.0",
     "mocha": "^10.2.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3",
-    "javascript-obfuscator": "^4.1.1"
+    "typescript": "^5.3.3"
   }
 }

@@ -96,6 +96,7 @@ Settings use the `blamely.*` prefix.
 | `blamely.autoInstallHook` | `true` | Install the Git hook when activating in a Git repo. |
 | `blamely.reportOnSave` | `true` | Regenerate reports when you save a file. |
 | `blamely.showGutterDecorations` | `true` | Show gutter icons and hovers. |
+| `blamely.authorshipTimeoutMs` | `60000` | Timeout (ms) for the `blamely authorship` CLI calls that feed the gutter/sidebar. The `BLAMELY_AUTHORSHIP_TIMEOUT_MS` env var overrides it. |
 
 ---
 

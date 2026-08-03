@@ -43,6 +43,22 @@ function describeExecError(err: unknown): string {
     return parts.length ? `${base} — ${parts.join(' · ')}` : base;
 }
 
+/** Timeout for `blamely authorship` CLI calls (single-file seed and repo-wide
+ *  --all). The first seed runs `git blame` + note reads and large repos on slow
+ *  Windows disks were exceeding the old 15–20s caps mid-run, so the default is
+ *  60s. Override order: BLAMELY_AUTHORSHIP_TIMEOUT_MS env var → the
+ *  blamely.authorshipTimeoutMs setting → 60000. */
+const DEFAULT_AUTHORSHIP_TIMEOUT_MS = 60_000;
+
+function authorshipTimeoutMs(): number {
+    const env = Number(process.env.BLAMELY_AUTHORSHIP_TIMEOUT_MS);
+    if (Number.isFinite(env) && env > 0) return env;
+    const cfg = vscode.workspace
+        .getConfiguration('blamely')
+        .get<number>('authorshipTimeoutMs', DEFAULT_AUTHORSHIP_TIMEOUT_MS);
+    return Number.isFinite(cfg) && cfg > 0 ? cfg : DEFAULT_AUTHORSHIP_TIMEOUT_MS;
+}
+
 const AI_TOOLS = new Set(['claude', 'cursor', 'codex', 'copilot', 'gemini']);
 
 function normalizedGenType(genType: string | null | undefined): string {
@@ -1110,10 +1126,7 @@ export class CliDataService implements vscode.Disposable {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', fsPath], {
                 env: { ...process.env },
-                // First seed of a file runs `git blame` + note reads; on Windows/large
-                // history that can take several seconds. 20s avoids killing it mid-seed
-                // (subsequent calls are fast once the working log is cached).
-                timeout: 20000,
+                timeout: authorshipTimeoutMs(),
                 maxBuffer: 8 * 1024 * 1024,
             });
             const trimmed = stdout.trim();
@@ -1129,7 +1142,7 @@ export class CliDataService implements vscode.Disposable {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', repoRoot, '--all'], {
                 env: { ...process.env },
-                timeout: 15000,
+                timeout: authorshipTimeoutMs(),
                 maxBuffer: 32 * 1024 * 1024,
             });
             const trimmed = stdout.trim();

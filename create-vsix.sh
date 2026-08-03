@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "Building VSIX: clean out/, release compile (no sourcemaps), obfuscate JS, package via .vscodeignore (no TypeScript in bundle)."
+echo "Building VSIX: clean out/, release compile (no sourcemaps), package via .vscodeignore (plain compiled JS — Blamely ships unobfuscated)."
 npm run vsix
 
 VSIX=$(ls -t *.vsix 2>/dev/null | head -1)
