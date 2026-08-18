@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { debug, promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dbPath, blamelyHome } from './paths';

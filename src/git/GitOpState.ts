@@ -1,4 +1,4 @@
-// Cached in-progress git-op state, polled alongside the 3s HEAD poll.
+// Cached in-progress git-op state, refreshed alongside the HEAD check.
 //
 // Purpose: the working-log tracker (WorkingLogTracker.onEdit) must not fold
 // REPLAYED content — a cherry-pick/rebase/merge/revert rewriting open buffers,
@@ -23,27 +23,43 @@ const OP_MARKERS = ['CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REVERT_HEAD', 'rebase-mer
 // commit-time reconcile recovers anything mis-folded either way).
 const STASH_WINDOW_MS = 10_000;
 
-export class GitOpState {
-    private gitDir: string | null = null;
-    private gitDirResolvedFor: string | null = null;
-    private markerActive = false;
-    private stashWindowUntilMs = 0;
-    private lastStashMtimeMs: number | null = null;
+/** Per-repository slice of the cached state. A workspace can hold several repos
+ *  (a multi-root workspace, or one folder opened above sibling clones), and a
+ *  rebase in ONE of them replays buffers just the same — so each is tracked
+ *  separately instead of the previous single "current repo". */
+interface RepoOpState {
+    gitDir: string | null;
+    markerActive: boolean;
+    stashWindowUntilMs: number;
+    lastStashMtimeMs: number | null;
     // True once the stash reflog has been observed at least once — the FIRST
     // poll only records the baseline (a pre-existing stash isn't activity).
-    private stashObserved = false;
+    stashObserved: boolean;
+}
 
-    /** Refresh the cached state for repoRoot. Called from the HEAD poll (3s)
-     *  and on document save — never per keystroke. */
-    async poll(repoRoot: string): Promise<void> {
-        if (!this.gitDir || this.gitDirResolvedFor !== repoRoot) {
-            const out = await runGitCommand(repoRoot, 'rev-parse', '--path-format=absolute', '--git-dir');
-            this.gitDir = out?.trim() || null;
-            this.gitDirResolvedFor = repoRoot;
-            if (!this.gitDir) return;
+export class GitOpState {
+    private readonly repos = new Map<string, RepoOpState>();
+
+    /** Refresh the cached state for repoRoot. Driven by GitDirWatcher (so a stash
+     *  apply/pop opens the window as it happens rather than up to 3s later) and by
+     *  document save — never per keystroke. Pass `knownGitDir` when the caller has
+     *  already resolved it to skip the one-time `rev-parse` spawn. */
+    async poll(repoRoot: string, knownGitDir?: string): Promise<void> {
+        let st = this.repos.get(repoRoot);
+        if (!st) {
+            st = {
+                gitDir: null, markerActive: false, stashWindowUntilMs: 0,
+                lastStashMtimeMs: null, stashObserved: false,
+            };
+            this.repos.set(repoRoot, st);
         }
-        const g = this.gitDir;
-        this.markerActive = OP_MARKERS.some((m) => fs.existsSync(path.join(g, m)));
+        if (!st.gitDir) {
+            const out = knownGitDir ?? (await runGitCommand(repoRoot, 'rev-parse', '--path-format=absolute', '--git-dir'));
+            st.gitDir = out?.trim() || null;
+            if (!st.gitDir) return;
+        }
+        const g = st.gitDir;
+        st.markerActive = OP_MARKERS.some((m) => fs.existsSync(path.join(g, m)));
 
         let mtime: number | null = null;
         try {
@@ -54,21 +70,26 @@ export class GitOpState {
         // Any TRANSITION of the stash reflog is stash activity: touched (stash/
         // apply), created (first stash), or DELETED (popping the last stash
         // removes the reflog file entirely — mtime goes null, not newer).
-        const changed = this.stashObserved && (
-            (mtime !== null && this.lastStashMtimeMs !== null && mtime !== this.lastStashMtimeMs) ||
-            (mtime !== null && this.lastStashMtimeMs === null) ||
-            (mtime === null && this.lastStashMtimeMs !== null)
+        const changed = st.stashObserved && (
+            (mtime !== null && st.lastStashMtimeMs !== null && mtime !== st.lastStashMtimeMs) ||
+            (mtime !== null && st.lastStashMtimeMs === null) ||
+            (mtime === null && st.lastStashMtimeMs !== null)
         );
         if (changed) {
-            this.stashWindowUntilMs = Date.now() + STASH_WINDOW_MS;
+            st.stashWindowUntilMs = Date.now() + STASH_WINDOW_MS;
         }
-        this.lastStashMtimeMs = mtime;
-        this.stashObserved = true;
+        st.lastStashMtimeMs = mtime;
+        st.stashObserved = true;
     }
 
-    /** True while a marker op is in progress or within the stash window. */
+    /** True while a marker op is in progress, or within the stash window, in ANY
+     *  polled repo — the tracker suppresses per workspace, not per repo. */
     isActive(): boolean {
-        return this.markerActive || Date.now() < this.stashWindowUntilMs;
+        const now = Date.now();
+        for (const st of this.repos.values()) {
+            if (st.markerActive || now < st.stashWindowUntilMs) return true;
+        }
+        return false;
     }
 }
 

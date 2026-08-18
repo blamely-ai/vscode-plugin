@@ -50,6 +50,12 @@ function describeExecError(err: unknown): string {
  *  blamely.authorshipTimeoutMs setting → 60000. */
 const DEFAULT_AUTHORSHIP_TIMEOUT_MS = 60_000;
 
+/** Minimum idle gap between consecutive refresh passes (see refresh()). */
+const REFRESH_COOLDOWN_MS = 750;
+
+/** Whether a refresh must recompute the repo-wide half or only the visible editors. */
+export type RefreshKind = 'data' | 'navigation';
+
 function authorshipTimeoutMs(): number {
     const env = Number(process.env.BLAMELY_AUTHORSHIP_TIMEOUT_MS);
     if (Number.isFinite(env) && env > 0) return env;
@@ -85,6 +91,14 @@ function isIndexableLineRange(row: CliEditRow): boolean {
     const start = Math.max(1, row.start_line ?? 1);
     const end = row.end_line ?? start;
     return end >= start && end - start <= MAX_AI_LINE_INDEX_SPAN;
+}
+
+/** Every distinct repo in the open workspace — one per folder normally, and one
+ *  per nested clone when a folder is opened above its repos (see
+ *  GitUtils.discoverRepoRoots). */
+function workspaceRepoRoots(): Promise<string[]> {
+    const folders = (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
+    return GitUtils.repoRootsForFolders(folders);
 }
 
 /**
@@ -848,6 +862,17 @@ export class CliDataService implements vscode.Disposable {
     private listeners: CliDataRefreshListener[] = [];
     private lastDaemonStatus: DaemonStatus = { running: false };
     private disposed = false;
+    // Set by every trigger that can change the repo-wide picture (an edit landing on
+    // disk, a save, a commit, a file created/deleted). Editor NAVIGATION — switching
+    // tabs, splitting, peeking — leaves it false: it changes which files need the
+    // cheap per-editor pass, not the repo-wide working logs. See refreshV2.
+    private dataDirty = true;
+    // Last repo-wide result, reused while dataDirty is false. BlameMap.replaceAll
+    // copies the arrays it is handed, so nothing downstream can mutate this.
+    private repoWideCache: {
+        entries: Map<string, LineBlame[]>;
+        repoStates: Map<string, WorkingTreeState>;
+    } | null = null;
 
     constructor(blameMap: BlameMap) {
         this.blameMap = blameMap;
@@ -875,20 +900,41 @@ export class CliDataService implements vscode.Disposable {
         }
         // Save (manual or autosave) flushes buffers so `git diff HEAD` matches disk.
         this.saveListener = vscode.workspace.onDidSaveTextDocument(() => this.scheduleRefresh());
-        // AI agents write via workspace.applyEdit() without saving — catch those changes too.
+        // A document change is not itself an attribution signal under v2, and treating
+        // it as one was expensive: a refresh spawns `blamely authorship --all` plus one
+        // call per visible editor, so refreshing per keystroke kept those running
+        // back to back for as long as the user typed.
+        //
+        // What the v2 gutter renders is the working log, and there is a precise signal
+        // for when that lands: WorkingLogTracker flushes 400ms after the last edit —
+        // including the applyEdit writes AI agents make without saving, which is what
+        // this listener was originally here for — and setupDataWatchers below watches
+        // the working-log dir. Agent writes that bypass the editor entirely are covered
+        // by the '**/*' watcher, and disk-state changes (`git diff HEAD`, which scopes
+        // the gutter) can only follow a save.
+        //
+        // v1 has no equivalent signal — its data lands in SQLite, which nothing watches
+        // — so there the change-driven refresh is still the only prompt path.
         this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
-            if (e.document.uri.scheme === 'file') this.scheduleRefresh();
+            if (e.document.uri.scheme !== 'file' || attributionV2Enabled()) return;
+            this.scheduleRefresh();
         });
-        // Re-load when editors open or become active (unsaved buffers are flushed in refresh).
+        // Re-load when editors open or become active (unsaved buffers are flushed in
+        // refresh). Navigation: opening or focusing a file changes which editors need
+        // the per-file authorship call, but not the repo-wide working logs.
         this.openListener = vscode.workspace.onDidOpenTextDocument((doc) => {
-            if (doc.uri.scheme === 'file') this.scheduleRefresh();
+            if (doc.uri.scheme === 'file') this.scheduleRefresh('navigation');
         });
-        this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => this.scheduleRefresh());
+        this.activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() =>
+            this.scheduleRefresh('navigation'),
+        );
         // refreshV2 fetches authorship for every VISIBLE editor, so a split/peek that
         // makes a new editor visible without changing the active one must refresh too
         // (this used to be covered by GutterV2). BlameDecorations repaints on the same
         // event; this provides the data it paints.
-        this.visibleEditorsListener = vscode.window.onDidChangeVisibleTextEditors(() => this.scheduleRefresh());
+        this.visibleEditorsListener = vscode.window.onDidChangeVisibleTextEditors(() =>
+            this.scheduleRefresh('navigation'),
+        );
         this.workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(() => void this.refresh());
         // Chat "add file" / agent edits create, delete or rename files without a
         // document-change event, so the gutter + status bar would otherwise wait
@@ -922,14 +968,7 @@ export class CliDataService implements vscode.Disposable {
      *  than blind-polling after every edit. Explicit RelativePattern watchers see
      *  paths inside .git that the default '**\/*' watcher excludes. */
     private async setupDataWatchers(): Promise<void> {
-        const folders = vscode.workspace.workspaceFolders ?? [];
-        const seen = new Set<string>();
-        for (const folder of folders) {
-            const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
-            if (!root) continue;
-            const norm = path.normalize(root);
-            if (seen.has(norm)) continue;
-            seen.add(norm);
+        for (const root of await workspaceRepoRoots()) {
             // Working logs land under <repo>/.git/blamely/working_logs/<branch>/<base>/…
             const logs = vscode.workspace.createFileSystemWatcher(
                 new vscode.RelativePattern(root, '.git/blamely/working_logs/**'),
@@ -947,9 +986,14 @@ export class CliDataService implements vscode.Disposable {
         }
     }
 
-    /** Coalesce bursts into one fast refresh, then retry for late-arriving data. */
-    scheduleRefresh(): void {
+    /** Coalesce bursts into one fast refresh, then retry for late-arriving data.
+     *
+     *  `kind` says whether the repo-wide half has to be recomputed: 'data' for
+     *  anything that can change the working logs or the working tree, 'navigation'
+     *  for editor moves that only change which files need the per-editor pass. */
+    scheduleRefresh(kind: RefreshKind = 'data'): void {
         if (this.disposed) return;
+        if (kind === 'data') this.dataDirty = true;
 
         // Fire the first (fast) refresh immediately unless one is already queued.
         // Do NOT reset this timer on repeated events — that is what causes a
@@ -1042,24 +1086,50 @@ export class CliDataService implements vscode.Disposable {
             this.notify();
             return;
         }
-        const seen = new Set<string>();
-        const repoRoots: string[] = [];
-        for (const folder of folders) {
-            const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
-            if (!root) continue;
-            const norm = path.normalize(root);
-            if (seen.has(norm)) continue;
-            seen.add(norm);
-            repoRoots.push(root);
+        const repoRoots = await workspaceRepoRoots();
+        // The repo-wide pass is the expensive half: per repo it runs `blamely
+        // authorship --all` plus `git diff HEAD` / `ls-files`. Its inputs are the
+        // working logs and the on-disk working tree, neither of which can change by
+        // switching tabs — so on a navigation-only refresh, reuse the last result and
+        // run only the per-visible-editor calls below.
+        if (this.dataDirty || !this.repoWideCache) {
+            this.dataDirty = false;
+            this.repoWideCache = await this.collectRepoWide(bin, repoRoots);
         }
-        const merged = new Map<string, LineBlame[]>();
-        // Per-repo working-tree state, cached so the visible-editor pass reuses it.
+        const { entries: repoWide, repoStates } = this.repoWideCache;
+        // Copy: the visible-editor pass overrides entries, and those overrides must
+        // not leak into the cached repo-wide result.
+        const merged = new Map(repoWide);
+        // Visible editors: seed COMMITTED + uncommitted authorship from the single-file
+        // `authorship` (it seeds from the commit notes when there's no working log),
+        // overriding the --all entry. Without this, a just-committed file — whose
+        // working log isn't re-keyed to the new HEAD yet — shows an empty gutter
+        // ("only the current change"); seeding restores the committed history.
+        // In parallel: these are independent CLI calls, and running them in sequence
+        // made a refresh cost (visible editors × one process) end to end — with a
+        // split view or a few peeks open that dominated the whole refresh.
+        const visible = vscode.window.visibleTextEditors.filter((ed) => ed.document.uri.scheme === 'file');
+        const fetched = await Promise.all(visible.map((ed) => this.fetchAuthorship(bin, ed.document.uri.fsPath)));
+        visible.forEach((ed, i) => {
+            const wl = fetched[i];
+            if (!wl) return;
+            merged.set(blameFileKey(ed.document.uri), this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates));
+        });
+        this.blameMap.replaceAll(merged);
+        this.notify();
+    }
+
+    /** Every repo's tracked working logs (the sidebar aggregate), scoped to that
+     *  repo's uncommitted-vs-HEAD changes BEFORE key conversion — a working log
+     *  orphaned under an old branch/base (e.g. after `checkout -b` + commit on another
+     *  branch) describes lines now identical to HEAD, so it must not paint. This
+     *  mirrors the v1 refreshRepo safety net that refreshV2 previously lacked. */
+    private async collectRepoWide(
+        bin: string,
+        repoRoots: string[],
+    ): Promise<{ entries: Map<string, LineBlame[]>; repoStates: Map<string, WorkingTreeState> }> {
+        const entries = new Map<string, LineBlame[]>();
         const repoStates = new Map<string, WorkingTreeState>();
-        // Tracked working logs across the repo (sidebar aggregate). Scope each repo's
-        // logs to its uncommitted-vs-HEAD changes BEFORE key conversion — a working
-        // log orphaned under an old branch/base (e.g. after `checkout -b` + commit on
-        // another branch) describes lines now identical to HEAD, so it must not paint.
-        // This mirrors the v1 refreshRepo safety net that refreshV2 previously lacked.
         for (const repoRoot of repoRoots) {
             const [state, wls] = await Promise.all([
                 collectWorkingTreeState(repoRoot),
@@ -1072,23 +1142,11 @@ export class CliDataService implements vscode.Disposable {
                 byFile.set(wl.file.replace(/\\/g, '/'), toLineBlame(wl));
             }
             scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
-            for (const [rel, entries] of byFile) {
-                merged.set(blameFileKey(vscode.Uri.file(path.join(repoRoot, rel))), entries);
+            for (const [rel, blame] of byFile) {
+                entries.set(blameFileKey(vscode.Uri.file(path.join(repoRoot, rel))), blame);
             }
         }
-        // Visible editors: seed COMMITTED + uncommitted authorship from the single-file
-        // `authorship` (it seeds from the commit notes when there's no working log),
-        // overriding the --all entry. Without this, a just-committed file — whose
-        // working log isn't re-keyed to the new HEAD yet — shows an empty gutter
-        // ("only the current change"); seeding restores the committed history.
-        for (const ed of vscode.window.visibleTextEditors) {
-            if (ed.document.uri.scheme !== 'file') continue;
-            const wl = await this.fetchAuthorship(bin, ed.document.uri.fsPath);
-            if (!wl) continue;
-            merged.set(blameFileKey(ed.document.uri), this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates));
-        }
-        this.blameMap.replaceAll(merged);
-        this.notify();
+        return { entries, repoStates };
     }
 
     /** Scope one visible editor's authorship to its repo's uncommitted-vs-HEAD state,
@@ -1155,8 +1213,9 @@ export class CliDataService implements vscode.Disposable {
         }
     }
 
-    async refresh(): Promise<void> {
+    async refresh(kind: RefreshKind = 'data'): Promise<void> {
         if (this.disposed) return;
+        if (kind === 'data') this.dataDirty = true;
         // Run at most one refresh at a time. Each refresh spawns `blamely authorship`
         // child processes; on Windows one refresh can outlast the 5s periodic tick, so
         // without this guard the ticks overlap and the CLI processes pile up (observed
@@ -1172,6 +1231,14 @@ export class CliDataService implements vscode.Disposable {
             do {
                 this.refreshPending = false;
                 await this.refreshOnce();
+                // A refresh spawns `blamely authorship` per repo plus one per visible
+                // editor. Events that arrive DURING a pass (every keystroke fires one)
+                // immediately queue the next, so without a floor between passes the
+                // service runs those spawns back to back for as long as the user keeps
+                // typing — a CLI process every few hundred ms and a saturated core.
+                if (this.refreshPending && !this.disposed) {
+                    await new Promise((r) => setTimeout(r, REFRESH_COOLDOWN_MS));
+                }
             } while (this.refreshPending && !this.disposed);
         } finally {
             this.refreshing = false;
@@ -1200,18 +1267,10 @@ export class CliDataService implements vscode.Disposable {
             // Discover every distinct git repo across all workspace folders. A
             // multi-root workspace can mix several independent repos (e.g. backend
             // + frontend), each with its own .git; a single-folder workspace yields
-            // exactly one. Without this, only folder[0]'s repo got a gutter and the
+            // exactly one — or, when that folder is opened ABOVE its clones, one per
+            // clone. Without this, only folder[0]'s repo got a gutter and the
             // other folders showed no count and no decorations.
-            const repoRoots: string[] = [];
-            const seenRoots = new Set<string>();
-            for (const folder of folders) {
-                const root = await GitUtils.getRepoRoot(folder.uri.fsPath);
-                if (!root) continue;
-                const norm = path.normalize(root);
-                if (seenRoots.has(norm)) continue;  // two folders inside one repo
-                seenRoots.add(norm);
-                repoRoots.push(root);
-            }
+            const repoRoots = await workspaceRepoRoots();
 
             if (repoRoots.length === 0) {
                 this.blameMap.clear();

@@ -103,18 +103,31 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
             allInteractionTypes: new Set(), totalCodingTimeMs: 0,
         };
 
-        const cwd = await GitUtils.getRepoRoot(this.workspaceRoot);
-        if (!cwd) return empty;
+        // Every repo the workspace covers — itself, or each clone nested beneath it
+        // when the folder was opened above them (see GitUtils.discoverRepoRoots).
+        const repos = await GitUtils.discoverRepoRoots(this.workspaceRoot);
+        if (repos.length === 0) return empty;
 
-        const logOut = await GitUtils.runGitCommand(cwd, 'log', '--format=%H%n%aN%n%ar', '--max-count=50');
-        if (!logOut) return empty;
-        const logLines = logOut.split('\n').filter(l => l.trim());
-
-        interface GitCommitInfo { sha: string; author: string; date: string; }
+        interface GitCommitInfo { repo: string; sha: string; author: string; date: string; ts: number; }
         const gitInfos: GitCommitInfo[] = [];
-        for (let i = 0; i + 2 < logLines.length; i += 3) {
-            gitInfos.push({ sha: logLines[i], author: logLines[i + 1], date: logLines[i + 2] });
+        for (const repo of repos) {
+            // %ct alongside %ar so commits from sibling repos interleave in real
+            // chronological order rather than repo by repo.
+            const logOut = await GitUtils.runGitCommand(repo, 'log', '--format=%H%n%aN%n%ar%n%ct', '--max-count=50');
+            if (!logOut) continue;
+            const logLines = logOut.split('\n').filter(l => l.trim());
+            for (let i = 0; i + 3 < logLines.length; i += 4) {
+                gitInfos.push({
+                    repo,
+                    sha: logLines[i],
+                    author: logLines[i + 1],
+                    date: logLines[i + 2],
+                    ts: Number(logLines[i + 3]) || 0,
+                });
+            }
         }
+        gitInfos.sort((a, b) => b.ts - a.ts);
+        gitInfos.splice(50); // same window as before, now across all repos
 
         const commits: CommitReport[] = [];
         const globalModelDetails = new Map<string, ModelDetail>();
@@ -122,7 +135,7 @@ export class HistoryProvider implements vscode.WebviewViewProvider {
         let totalAi = 0, totalHuman = 0, totalDel = 0, totalFiles = 0, totalEdits = 0, totalWait = 0, totalCoding = 0;
 
         for (const info of gitInfos) {
-            const note = await GitUtils.getNoteContent(cwd, info.sha);
+            const note = await GitUtils.getNoteContent(info.repo, info.sha);
             if (!note) continue;
             const report = this.parseReport(note, info.author, info.date, info.sha);
             if (!report) continue;

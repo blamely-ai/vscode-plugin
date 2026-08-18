@@ -43,19 +43,19 @@ export async function getWorkingTreeDirtyBlameKeys(): Promise<Set<string> | null
     const seenRepos = new Set<string>();
     let anyGit = false;
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        const repoRoot = await GitUtils.getRepoRoot(folder.uri.fsPath);
-        if (!repoRoot) {
-            continue;
-        }
-        anyGit = true;
-        const normRoot = path.normalize(repoRoot);
-        if (seenRepos.has(normRoot)) {
-            continue;
-        }
-        seenRepos.add(normRoot);
-        const dirty = await GitUtils.getWorkingTreeChangedFiles(repoRoot);
-        for (const rel of dirty) {
-            keys.add(blameFileKey(vscode.Uri.file(path.join(repoRoot, rel))));
+        // Every repo the folder covers: itself, or — when the folder is opened
+        // above sibling clones — each repo nested beneath it.
+        for (const repoRoot of await GitUtils.discoverRepoRoots(folder.uri.fsPath)) {
+            anyGit = true;
+            const normRoot = path.normalize(repoRoot);
+            if (seenRepos.has(normRoot)) {
+                continue;
+            }
+            seenRepos.add(normRoot);
+            const dirty = await GitUtils.getWorkingTreeChangedFiles(repoRoot);
+            for (const rel of dirty) {
+                keys.add(blameFileKey(vscode.Uri.file(path.join(repoRoot, rel))));
+            }
         }
     }
     return anyGit ? keys : null;

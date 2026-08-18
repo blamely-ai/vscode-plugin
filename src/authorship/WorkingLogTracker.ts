@@ -16,12 +16,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
-import { getRepoRoot, getBranchName, runGitCommand } from '../git/GitUtils';
+import { getBranchName, runGitCommand, locateRepo, readHeadState } from '../git/GitUtils';
 import { gitOpState } from '../git/GitOpState';
 import { Author } from './attribute';
 import { FileTracker } from './tracker';
 import { save, loadWorkingLog, loadBaseline, baselinePath } from './store';
 import { installedBinaryPath } from '../cli/paths';
+import * as Logger from '../utils/Logger';
 
 export function attributionV2Enabled(): boolean {
     // On by default (matches the package.json default); users can opt out.
@@ -50,6 +51,11 @@ interface DocState {
 // followed by a commit must not lose the working log before the commit reads it.
 const FLUSH_DEBOUNCE_MS = 400;
 
+// Ceilings for the fire-and-forget `blamely record-deletion` children (see
+// recordDeletion) — nothing awaits them, so they need their own bounds.
+const RECORD_DELETION_TIMEOUT_MS = 10_000;
+const MAX_INFLIGHT_DELETIONS = 4;
+
 function lineCount(s: string): number {
     return s.length === 0 ? 0 : s.split('\n').length;
 }
@@ -57,6 +63,7 @@ function lineCount(s: string): number {
 export class WorkingLogTracker implements vscode.Disposable {
     private subs: vscode.Disposable[] = [];
     private docs = new Map<string, DocState>();
+    private inFlightDeletions = 0;
 
     register(): void {
         this.subs.push(
@@ -212,30 +219,73 @@ export class WorkingLogTracker implements vscode.Disposable {
     }
 
     /** Record AI-deleted baseline lines via `blamely record-deletion` (current buffer
-     *  content piped on stdin, since it may be unsaved). Best-effort, fire-and-forget. */
+     *  content piped on stdin, since it may be unsaved). Best-effort, fire-and-forget.
+     *
+     *  Bounded on both axes, because nothing here awaits the child: without a timeout
+     *  one that blocks (SQLite lock, unreachable daemon) lives forever, and without a
+     *  cap a burst of AI deletes can spawn unboundedly many at once. */
     private recordDeletion(fsPath: string, content: string, author: Author): void {
         const bin = installedBinaryPath();
         if (!bin || !fs.existsSync(bin)) return;
+        if (this.inFlightDeletions >= MAX_INFLIGHT_DELETIONS) {
+            Logger.warn('WorkingLogTracker: record-deletion saturated, dropping one deletion record');
+            return;
+        }
         const args = ['record-deletion', fsPath, '--gen-type', author.gen_type || 'completion'];
         if (author.tool) args.push('--tool', author.tool);
         if (author.model) args.push('--model', author.model);
         try {
-            const child = execFile(bin, args, { env: { ...process.env } }, () => {});
+            this.inFlightDeletions++;
+            const child = execFile(
+                bin,
+                args,
+                {
+                    env: { ...process.env },
+                    timeout: RECORD_DELETION_TIMEOUT_MS,
+                    // SIGTERM leaves a child that's ignoring signals or stopped in the
+                    // process table; SIGKILL is what actually reaps it.
+                    killSignal: 'SIGKILL',
+                },
+                () => {
+                    this.inFlightDeletions--;
+                },
+            );
             child.stdin?.end(content);
         } catch {
+            this.inFlightDeletions--;
             // best-effort: deletion recording must never disrupt the editor
         }
     }
 
+    /**
+     * The working log's key (repo, branch, base commit, relative path).
+     *
+     * Called on every seed AND every debounced flush — i.e. every ~400ms while the
+     * user types, per document. It used to spawn `git rev-parse --show-toplevel`,
+     * `git symbolic-ref` and `git rev-parse HEAD`, each through a shell: six
+     * processes per flush, purely to re-read values sitting in two small files.
+     * Now repoRoot/gitDir come from a cache and branch/HEAD are read directly out
+     * of the git dir; git is spawned only if HEAD itself is unreadable.
+     */
     private async resolveCtx(fsPath: string): Promise<Ctx | null> {
-        const repoRoot = await getRepoRoot(fsPath);
-        if (!repoRoot) {
+        const loc = await locateRepo(fsPath);
+        if (!loc) {
             return null; // not in a work tree → nothing to key the working log on
         }
-        const branch = (await getBranchName(repoRoot)) || 'DETACHED';
-        const head = (await runGitCommand(repoRoot, 'rev-parse', 'HEAD'))?.trim() || 'INITIAL';
-        const rel = path.relative(repoRoot, fsPath).split(path.sep).join('/');
-        return { repoRoot, branch, baseSha: head, rel };
+        const rel = path.relative(loc.repoRoot, fsPath).split(path.sep).join('/');
+        const head = readHeadState(loc.gitDir);
+        if (head) {
+            // Same defaults as the git path: detached HEAD → DETACHED, unborn → INITIAL.
+            return {
+                repoRoot: loc.repoRoot,
+                branch: head.branch || 'DETACHED',
+                baseSha: head.sha || 'INITIAL',
+                rel,
+            };
+        }
+        const branch = (await getBranchName(loc.repoRoot)) || 'DETACHED';
+        const sha = (await runGitCommand(loc.repoRoot, 'rev-parse', 'HEAD'))?.trim() || 'INITIAL';
+        return { repoRoot: loc.repoRoot, branch, baseSha: sha, rel };
     }
 
     private async flush(key: string, force = false): Promise<void> {
