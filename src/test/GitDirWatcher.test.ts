@@ -16,8 +16,27 @@ function git(repo: string, ...args: string[]): string {
     }).trim();
 }
 
+/**
+ * The one form of a path everything here can be compared in. `fs.realpathSync`
+ * is not enough on Windows: it leaves an 8.3 short name (`C:\\Users\\RUNNER~1`)
+ * exactly as it found it, while git always answers with the long name, so the
+ * temp dir the test made and the repo root git reported never matched. The
+ * `.native` variant expands the short name and fixes the separators.
+ */
+function canon(p: string): string {
+    try {
+        return fs.realpathSync.native(p);
+    } catch {
+        return path.normalize(p);
+    }
+}
+
+function tmpDir(prefix: string): string {
+    return canon(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+}
+
 function initRepo(): string {
-    const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blamely-gitwatch-')));
+    const repo = tmpDir('blamely-gitwatch-');
     git(repo, 'init', '-q', '-b', 'main');
     git(repo, 'config', 'user.email', 't@t');
     git(repo, 'config', 'user.name', 't');
@@ -25,7 +44,7 @@ function initRepo(): string {
 }
 
 function gitDirOf(repo: string): string {
-    return git(repo, 'rev-parse', '--path-format=absolute', '--git-dir');
+    return canon(git(repo, 'rev-parse', '--path-format=absolute', '--git-dir'));
 }
 
 function commit(repo: string, file: string, body: string): string {
@@ -107,7 +126,7 @@ describe('readHeadState (process-free HEAD read)', () => {
 
     it('resolves refs from the common dir inside a linked worktree', () => {
         const repo = initRepo();
-        const wt = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blamely-wt-')));
+        const wt = tmpDir('blamely-wt-');
         const wtPath = path.join(wt, 'w');
         try {
             const sha = commit(repo, 'a.txt', 'one\n');
@@ -152,7 +171,7 @@ describe('locateRepo (cached repoRoot + gitDir)', () => {
     });
 
     it('returns null outside a repo and re-checks after the cache is cleared', async () => {
-        const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blamely-norepo-')));
+        const dir = tmpDir('blamely-norepo-');
         try {
             assert.equal(await locateRepo(dir), null);
 

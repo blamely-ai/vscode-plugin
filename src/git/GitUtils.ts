@@ -26,6 +26,17 @@ async function runSafe(cwd: string, ...args: string[]): Promise<string | null> {
     }
 }
 
+/**
+ * git prints absolute paths with forward slashes on every platform, including
+ * Windows (`C:/Users/me/repo`). Everything else here works in Node's native form
+ * (`C:\\Users\\me\\repo`), and the two never compare equal — a repo root that came
+ * from git would not match the same folder that came from vscode, so dedup,
+ * cache keys and `path.relative` all silently missed. Cross at the boundary.
+ */
+function nativePath(p: string): string {
+    return p ? path.normalize(p) : p;
+}
+
 export async function getRepoRoot(cwdOrFile: string): Promise<string | null> {
     try {
         let dir = path.normalize(cwdOrFile);
@@ -37,7 +48,7 @@ export async function getRepoRoot(cwdOrFile: string): Promise<string | null> {
         } catch {
             dir = path.dirname(dir);
         }
-        return await run('git rev-parse --show-toplevel', dir);
+        return nativePath(await run('git rev-parse --show-toplevel', dir));
     } catch {
         return null;
     }
@@ -84,7 +95,7 @@ export async function getBranchName(cwd: string): Promise<string | null> {
  * are replays of existing content, not fresh authorship, so detectors pause.
  */
 export async function inProgressGitOp(cwd: string): Promise<boolean> {
-    const gitDir = (await runSafe(cwd, 'rev-parse', '--absolute-git-dir'))?.trim();
+    const gitDir = nativePath((await runSafe(cwd, 'rev-parse', '--absolute-git-dir'))?.trim() ?? '');
     if (!gitDir) return false;
     for (const marker of ['CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply']) {
         if (fs.existsSync(path.join(gitDir, marker))) return true;
@@ -209,7 +220,7 @@ export async function locateRepo(fsPath: string): Promise<RepoLocation | null> {
     let loc: RepoLocation | null = null;
     const repoRoot = await getRepoRoot(dir);
     if (repoRoot) {
-        const gitDir = (await runSafe(repoRoot, 'rev-parse', '--path-format=absolute', '--git-dir'))?.trim();
+        const gitDir = nativePath((await runSafe(repoRoot, 'rev-parse', '--path-format=absolute', '--git-dir'))?.trim() ?? '');
         if (gitDir) loc = { repoRoot, gitDir };
     }
     repoLocations.set(dir, { loc, at: Date.now() });
