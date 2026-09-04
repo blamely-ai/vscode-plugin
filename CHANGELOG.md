@@ -4,6 +4,31 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Blamely now works when you open the folder ABOVE your repositories.** If your workspace folder is `~/Project` and `backend/` and `frontend/` inside it are separate clones, the gutter, the sidebar and the history panel all showed nothing. Git only ever searches *upward* for a repository and there is none above that folder, so the extension concluded there was no repo at all. It now also looks a short distance *downward* and treats each clone as its own repository — exactly as it already did for a multi-root workspace. Commits and branch switches are tracked in every one of them, and Blamely no longer offers to `git init` a folder whose repositories are simply one level down.
+- **Repository paths are now written one way on Windows.** git answers with forward slashes (`C:/Users/me/repo`) while the editor uses backslashes, so the same folder arrived here as two different-looking paths depending on which one asked. Blamely now converts git's answer to the editor's form as soon as it reads it, so the two always match.
+
+## [1.8.2] - 2026-09-04
+
+### Fixed
+
+Released alongside Blamely CLI 1.8.2, which does the attribution this extension displays. Two of its fixes change what you see here:
+
+- **Branching before you commit no longer credits the AI's work to you.** Working in your main branch and creating a branch when it is time to commit — `git checkout -b my-feature` — quietly lost the whole session's AI attribution, in the gutter and in the commit. It is now carried across the branch you made.
+- **Attribution reaches your remote again after the first clash.** Once a teammate's breakdown had arrived at the remote before yours, every send after that was refused in silence and your records stayed on your machine. Both sides are now brought together and sent.
+
+## [1.8.1] - 2026-08-07
+
+### Changed
+
+- **Blamely uses far less CPU while you type.** Three things were happening on every keystroke or every few seconds, all day: the extension re-read your whole repository's attribution, ran `git` three times every three seconds just to notice commits, and started a `git` process each time it saved your in-progress attribution. None of it was needed. Commits and branch switches are now noticed the moment git writes them — instantly instead of up to three seconds later — and the attribution re-read happens when the data actually changes rather than while you're still typing. The gutter and status bar show the same thing at the same moment; there is simply far less work behind them.
+- **Switching tabs is quick again.** Opening a file or splitting the editor used to re-read attribution for the entire repository. It now reads only the files you can see.
+
+### Fixed
+
+- **Leftover Blamely processes.** When Blamely recorded lines an AI tool had deleted, it started a helper it never waited for and never limited. If that helper got stuck — a busy database, a background service that wasn't answering — it stayed running until you closed your editor, and a burst of AI edits could start many at once. They now give up after ten seconds, and no more than a few run at a time.
+
 ## [1.7.0] - 2026-08-03
 
 ### Added
