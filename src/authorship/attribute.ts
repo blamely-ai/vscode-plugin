@@ -218,10 +218,22 @@ function normalizeLineForMatch(s: string): string {
     return s.replace(/\s/g, '');
 }
 
+/** maxAlignCells caps the LCS table alignLines allocates for the region between the
+ *  common prefix and suffix (Int32Array: 64 MB). Above it the middle is left
+ *  unmatched and detectMoves pairs identical lines back to their prior authors.
+ *  Identical to the Go and Kotlin ports. */
+const MAX_ALIGN_CELLS = 16_000_000;
+
 // alignLines compares lines WHITESPACE-NORMALIZED (Phase 4 reflow): a line that
 // changed only in indentation / trailing or collapsed whitespace counts as
 // unchanged and keeps its prior author. A genuine content change still mismatches.
-function alignLines(oldLines: string[], newLines: string[]): number[] {
+//
+// The DP only covers the lines between the common prefix and the common suffix, yet
+// the result is identical to running it over the whole file (see the Go port for the
+// proof): the prefix matches in place, and the suffix replay reproduces the
+// whole-file backtrack in linear time. A whole-file table was (n+1)×(m+1) cells —
+// gigabytes for a large file on every edit.
+export function alignLines(oldLines: string[], newLines: string[]): number[] {
     const n = oldLines.length;
     const m = newLines.length;
     const matched: number[] = new Array(m).fill(-1);
@@ -230,29 +242,76 @@ function alignLines(oldLines: string[], newLines: string[]): number[] {
     }
     const oldN = oldLines.map(normalizeLineForMatch);
     const newN = newLines.map(normalizeLineForMatch);
-    const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--) {
-        for (let j = m - 1; j >= 0; j--) {
-            if (oldN[i] === newN[j]) {
-                dp[i][j] = dp[i + 1][j + 1] + 1;
-            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-                dp[i][j] = dp[i + 1][j];
-            } else {
-                dp[i][j] = dp[i][j + 1];
+
+    let p = 0;
+    while (p < n && p < m && oldN[p] === newN[p]) {
+        matched[p] = p;
+        p++;
+    }
+    let s = 0;
+    while (s < n - p && s < m - p && oldN[n - 1 - s] === newN[m - 1 - s]) {
+        s++;
+    }
+    const oldEnd = n - s;
+    const newEnd = m - s;
+
+    let i = p;
+    let j = p;
+    const rows = oldEnd - p;
+    const cols = newEnd - p;
+    if (rows > 0 && cols > 0) {
+        if ((rows + 1) * (cols + 1) > MAX_ALIGN_CELLS) {
+            i = oldEnd; // too large: leave the middle unmatched
+            j = newEnd;
+        } else {
+            // dp[(a-p)*w + (b-p)] = LCS length of oldN[a:oldEnd] and newN[b:newEnd].
+            const w = cols + 1;
+            const dp = new Int32Array((rows + 1) * w);
+            for (let a = rows - 1; a >= 0; a--) {
+                for (let b = cols - 1; b >= 0; b--) {
+                    if (oldN[p + a] === newN[p + b]) {
+                        dp[a * w + b] = dp[(a + 1) * w + b + 1] + 1;
+                    } else if (dp[(a + 1) * w + b] >= dp[a * w + b + 1]) {
+                        dp[a * w + b] = dp[(a + 1) * w + b];
+                    } else {
+                        dp[a * w + b] = dp[a * w + b + 1];
+                    }
+                }
+            }
+            while (i < oldEnd && j < newEnd) {
+                const a = i - p;
+                const b = j - p;
+                if (oldN[i] === newN[j]) {
+                    matched[j] = i;
+                    i++;
+                    j++;
+                } else if (dp[(a + 1) * w + b] >= dp[a * w + b + 1]) {
+                    i++;
+                } else {
+                    j++;
+                }
             }
         }
     }
-    let i = 0;
-    let j = 0;
-    while (i < n && j < m) {
-        if (oldN[i] === newN[j]) {
-            matched[j] = i;
-            i++;
+    // Replay the common suffix: one side is exhausted here.
+    for (let k = 0; k < s; k++) {
+        const oi = oldEnd + k;
+        const nj = newEnd + k;
+        const x = oldN[oi];
+        if (i === oi) {
+            while (newN[j] !== x) {
+                j++;
+            }
+            matched[j] = oi;
+            i = oi + 1;
             j++;
-        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-            i++;
         } else {
-            j++;
+            while (oldN[i] !== x) {
+                i++;
+            }
+            matched[nj] = i;
+            i++;
+            j = nj + 1;
         }
     }
     return matched;
