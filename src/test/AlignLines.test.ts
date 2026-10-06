@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { alignLines } from '../authorship/attribute';
+import { alignLines, attribute, humanAuthor, setMaxAlignCellsForTest, WORKING_LOG_SCHEMA } from '../authorship/attribute';
 
 // The original whole-file LCS DP + backtrack — the reference alignLines must
 // reproduce exactly (mirrors the Go TestAlignLinesMatchesFullDP).
@@ -42,7 +42,7 @@ function alignLinesFullDP(oldLines: string[], newLines: string[]): number[] {
 }
 
 describe('alignLines', () => {
-    it('matches the whole-file DP on random inputs with many duplicates', () => {
+    function checkMatchesFullDP(iters: number): void {
         let seed = 1;
         const rnd = (k: number) => {
             seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -50,7 +50,7 @@ describe('alignLines', () => {
         };
         const alphabet = ['a', 'b', ' a', 'c', ''];
         const gen = (k: number) => Array.from({ length: k }, () => alphabet[rnd(alphabet.length)]);
-        for (let iter = 0; iter < 50000; iter++) {
+        for (let iter = 0; iter < iters; iter++) {
             const oldLines = gen(rnd(9));
             let newLines: string[];
             if (rnd(3) === 0) {
@@ -66,6 +66,61 @@ describe('alignLines', () => {
                 `old=${JSON.stringify(oldLines)} new=${JSON.stringify(newLines)}`,
             );
         }
+    }
+
+    it('matches the whole-file DP on random inputs with many duplicates', () => {
+        checkMatchesFullDP(50000);
+    });
+
+    it('gives the same matches through the checkpointed table above the cap', () => {
+        const prev = setMaxAlignCellsForTest(1);
+        try {
+            checkMatchesFullDP(50000);
+            let seed = 2;
+            const rnd = (k: number) => {
+                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+                return seed % k;
+            };
+            const alphabet = ['a', 'b', ' a', 'c', ''];
+            for (let iter = 0; iter < 200; iter++) {
+                const oldLines = Array.from({ length: 50 + rnd(150) }, () => alphabet[rnd(alphabet.length)]);
+                const newLines = [...oldLines];
+                for (let e = rnd(20); e > 0; e--) {
+                    const k = rnd(newLines.length);
+                    const op = rnd(3);
+                    if (op === 0) newLines.splice(k, 1);
+                    else if (op === 1) newLines.splice(k, 0, alphabet[rnd(alphabet.length)]);
+                    else newLines[k] = alphabet[rnd(alphabet.length)];
+                }
+                assert.deepEqual(alignLines(oldLines, newLines), alignLinesFullDP(oldLines, newLines));
+            }
+        } finally {
+            setMaxAlignCellsForTest(prev);
+        }
+    });
+
+    it('keeps duplicate lines\' owners above the cap', () => {
+        const n = 4500;
+        const old = Array.from({ length: n }, (_, k) => (k % 10 === 0 ? '}' : `stmt${k}`));
+        const copilot = { author: 'ai' as const, tool: 'copilot', gen_type: 'chat' };
+        const prior = {
+            schema: WORKING_LOG_SCHEMA,
+            lines: [
+                { start: 1, end: 2000, author: 'human' as const, gen_type: 'human' },
+                { start: 2001, end: 2001, ...copilot },
+                { start: 2002, end: n, author: 'human' as const, gen_type: 'human' },
+            ],
+        };
+        const cur = [...old];
+        cur[1] = 'edited';
+        cur[n - 2] = 'edited too';
+        cur.splice(500, 1); // old[500] is a "}" above the Copilot line
+        const wl = attribute(prior, old.join('\n') + '\n', cur.join('\n') + '\n', humanAuthor(), 1);
+        const ai: number[] = [];
+        for (const r of wl.lines) {
+            if (r.author === 'ai') for (let ln = r.start; ln <= r.end; ln++) ai.push(ln);
+        }
+        assert.deepEqual(ai, [2000], 'only the unchanged Copilot line (old 2001, now 2000) is AI');
     });
 
     it('handles a one-line edit in a 50k-line file without a whole-file table', () => {
