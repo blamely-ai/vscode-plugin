@@ -85,7 +85,7 @@ async function probeDaemon(): Promise<DaemonStatus> {
 
 async function readGlobalGitHooksPath(): Promise<string | null> {
     try {
-        const { stdout } = await execFileAsync('git', ['config', '--global', 'core.hooksPath'], { timeout: 3000 });
+        const { stdout } = await execFileAsync('git', ['config', '--global', 'core.hooksPath'], { timeout: 3000, windowsHide: true });
         const val = stdout.trim();
         return val ? path.normalize(val) : null;
     } catch {

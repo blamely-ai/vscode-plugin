@@ -36,6 +36,7 @@ async function runSqliteJson(db: string, sql: string): Promise<unknown[] | null>
         try {
             const { stdout } = await execFileAsync(bin, ['-json', db, sql], {
                 maxBuffer: 16 * 1024 * 1024,
+                windowsHide: true,
             });
             const trimmed = stdout.trim();
             if (!trimmed) {

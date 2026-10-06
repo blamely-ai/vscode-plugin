@@ -245,6 +245,7 @@ export class WorkingLogTracker implements vscode.Disposable {
                     // SIGTERM leaves a child that's ignoring signals or stopped in the
                     // process table; SIGKILL is what actually reaps it.
                     killSignal: 'SIGKILL',
+                    windowsHide: true,
                 },
                 () => {
                     this.inFlightDeletions--;
