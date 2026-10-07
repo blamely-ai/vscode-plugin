@@ -38,6 +38,7 @@ function tmpDir(prefix: string): string {
 function initRepo(): string {
     const repo = tmpDir('blamely-gitwatch-');
     git(repo, 'init', '-q', '-b', 'main');
+    git(repo, 'config', 'core.autocrlf', 'false');
     git(repo, 'config', 'user.email', 't@t');
     git(repo, 'config', 'user.name', 't');
     return repo;

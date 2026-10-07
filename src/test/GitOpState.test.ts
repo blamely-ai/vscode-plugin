@@ -20,6 +20,7 @@ function git(repo: string, ...args: string[]): string {
 function initRepo(): string {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'blamely-gitop-'));
     git(repo, 'init', '-q', '-b', 'main');
+    git(repo, 'config', 'core.autocrlf', 'false');
     git(repo, 'config', 'user.email', 't@t');
     git(repo, 'config', 'user.name', 't');
     return repo;

@@ -30,6 +30,7 @@ describe('linked-worktree attribution', () => {
         second = path.join(temp, 'second');
         fs.mkdirSync(main);
         git(main, 'init', '-q', '-b', 'main');
+        git(main, 'config', 'core.autocrlf', 'false');
         fs.writeFileSync(path.join(main, 'file.txt'), 'original\n');
         git(main, 'add', '.');
         git(main, 'commit', '-qm', 'initial');
@@ -44,7 +45,16 @@ describe('linked-worktree attribution', () => {
         for (const root of [first, second]) {
             const expected = path.normalize(git(root, 'rev-parse', '--absolute-git-dir'));
             assert.equal(checkoutGitDir(root), expected);
-            fs.writeFileSync(path.join(root, '.git'), `gitdir: ${path.relative(root, expected)}\n`);
+        }
+
+        // Git-created worktree .git files are hidden on Windows, so use fresh
+        // gitfiles to test each path form without overwriting Git's metadata.
+        const expected = path.normalize(git(first, 'rev-parse', '--absolute-git-dir'));
+        for (const name of ['absolute', 'relative']) {
+            const root = path.join(temp, `${name} gitfile fixture`);
+            fs.mkdirSync(root);
+            const gitdir = name === 'absolute' ? expected : path.relative(root, expected);
+            fs.writeFileSync(path.join(root, '.git'), `gitdir: ${gitdir}\n`);
             assert.equal(checkoutGitDir(root), expected);
         }
     });

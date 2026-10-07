@@ -14,6 +14,7 @@ function git(repo: string, ...args: string[]): string {
 function initRepo(): string {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'blamely-scope-'));
     git(repo, 'init', '-q', '-b', 'master');
+    git(repo, 'config', 'core.autocrlf', 'false');
     git(repo, 'config', 'user.email', 't@t.co');
     git(repo, 'config', 'user.name', 't');
     return repo;
