@@ -2,12 +2,25 @@
 
 Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This extension uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.5] - 2026-10-07
+
+### Changed
+
+- **A new look.** Blamely has a new logo.
 
 ### Fixed
 
-- **Blamely now works when you open the folder ABOVE your repositories.** If your workspace folder is `~/Project` and `backend/` and `frontend/` inside it are separate clones, the gutter, the sidebar and the history panel all showed nothing. Git only ever searches *upward* for a repository and there is none above that folder, so the extension concluded there was no repo at all. It now also looks a short distance *downward* and treats each clone as its own repository — exactly as it already did for a multi-root workspace. Commits and branch switches are tracked in every one of them, and Blamely no longer offers to `git init` a folder whose repositories are simply one level down.
-- **Repository paths are now written one way on Windows.** git answers with forward slashes (`C:/Users/me/repo`) while the editor uses backslashes, so the same folder arrived here as two different-looking paths depending on which one asked. Blamely now converts git's answer to the editor's form as soon as it reads it, so the two always match.
+- **Editing very large files no longer freezes VS Code.** A small change to a very large file could make the extension use a huge amount of memory and bring the editor to a halt. It now stays light however large the file is, and very large changes are attributed more accurately too.
+- **No more flickering cursor on Windows.** The extension kept refreshing itself every few seconds, which made the mouse cursor flicker and kept your computer busy for nothing. It now refreshes only when something has actually changed.
+- **Git worktrees are fully supported.** If you work on several branches side by side in separate worktrees, each one now shows its own correct record of who wrote what.
+
+The following come from Blamely CLI 1.8.5, which does the attribution this extension displays:
+
+- **GitHub Copilot's work in VS Code is recorded again.** Files Copilot created or changed in agent mode were being counted as your own work. They are now credited to Copilot.
+- **Copilot reading a file no longer turns your lines into Copilot's.** Only what Copilot actually writes counts now.
+- **Copilot's work is no longer counted twice.** Each change now counts once in your reports.
+- **Blamely now works with OpenCode.** Code written by OpenCode is now tracked and credited to it.
+- **`git push` no longer waits for Blamely.** Sharing attribution with your team now happens in the background.
 
 ## [1.8.2] - 2026-09-04
 
@@ -16,6 +29,9 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 - **Blamely no longer runs `git` every time you paste.** Two of the checks the extension makes on each edit it observes — which branch you are on, and whether a merge or rebase is in progress — each started a shell and a `git` process, every single time. So a paste, or any change bigger than a keystroke, paid for four process launches before Blamely had recorded anything at all. Both answers now come from files Blamely already knows how to read, with nothing launched. Most noticeable on Windows, where starting a process is slowest and antivirus inspects each one.
 
 ### Fixed
+
+- **Blamely now works when you open the folder ABOVE your repositories.** If your workspace folder is `~/Project` and `backend/` and `frontend/` inside it are separate clones, the gutter, the sidebar and the history panel all showed nothing. Git only ever searches *upward* for a repository and there is none above that folder, so the extension concluded there was no repo at all. It now also looks a short distance *downward* and treats each clone as its own repository — exactly as it already did for a multi-root workspace. Commits and branch switches are tracked in every one of them, and Blamely no longer offers to `git init` a folder whose repositories are simply one level down.
+- **Repository paths are now written one way on Windows.** git answers with forward slashes (`C:/Users/me/repo`) while the editor uses backslashes, so the same folder arrived here as two different-looking paths depending on which one asked. Blamely now converts git's answer to the editor's form as soon as it reads it, so the two always match.
 
 The following come from Blamely CLI 1.8.2, which does the attribution this extension displays:
 
