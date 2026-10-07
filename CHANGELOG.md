@@ -11,9 +11,13 @@ Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.
 
 ## [1.8.2] - 2026-09-04
 
+### Changed
+
+- **Blamely no longer runs `git` every time you paste.** Two of the checks the extension makes on each edit it observes — which branch you are on, and whether a merge or rebase is in progress — each started a shell and a `git` process, every single time. So a paste, or any change bigger than a keystroke, paid for four process launches before Blamely had recorded anything at all. Both answers now come from files Blamely already knows how to read, with nothing launched. Most noticeable on Windows, where starting a process is slowest and antivirus inspects each one.
+
 ### Fixed
 
-Released alongside Blamely CLI 1.8.2, which does the attribution this extension displays. Two of its fixes change what you see here:
+The following come from Blamely CLI 1.8.2, which does the attribution this extension displays:
 
 - **Branching before you commit no longer credits the AI's work to you.** Working in your main branch and creating a branch when it is time to commit — `git checkout -b my-feature` — quietly lost the whole session's AI attribution, in the gutter and in the commit. It is now carried across the branch you made.
 - **Attribution reaches your remote again after the first clash.** Once a teammate's breakdown had arrived at the remote before yours, every send after that was refused in silence and your records stayed on your machine. Both sides are now brought together and sent.
