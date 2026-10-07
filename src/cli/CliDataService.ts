@@ -53,6 +53,11 @@ const DEFAULT_AUTHORSHIP_TIMEOUT_MS = 60_000;
 /** Minimum idle gap between consecutive refresh passes (see refresh()). */
 const REFRESH_COOLDOWN_MS = 750;
 
+/** True for paths inside a repo's .git directory (git's own bookkeeping). */
+export function isInsideDotGit(fsPath: string): boolean {
+    return /(^|[\\/])\.git([\\/]|$)/.test(fsPath);
+}
+
 /** Whether a refresh must recompute the repo-wide half or only the visible editors. */
 export type RefreshKind = 'data' | 'navigation';
 
@@ -949,10 +954,19 @@ export class CliDataService implements vscode.Disposable {
         // agent writing a brand-new file directly). The '**/*' watcher respects
         // files.watcherExclude (node_modules/.git/build dirs), and scheduleRefresh
         // debounces bursts, so this stays cheap.
+        //
+        // files.watcherExclude does NOT cover .git/index, .git/logs, refs etc. by
+        // default, and every refresh runs git there — so reacting to .git events
+        // re-triggered refresh in a loop (a burst of processes every few seconds,
+        // the flickering cursor on Windows). The data watchers below cover the parts
+        // of .git that actually carry attribution.
         this.fsWatcher = vscode.workspace.createFileSystemWatcher('**/*');
-        this.fsWatcher.onDidCreate(() => this.scheduleRefresh());
-        this.fsWatcher.onDidChange(() => this.scheduleRefresh());
-        this.fsWatcher.onDidDelete(() => this.scheduleRefresh());
+        const onWorkspaceFile = (uri: vscode.Uri) => {
+            if (!isInsideDotGit(uri.fsPath)) this.scheduleRefresh();
+        };
+        this.fsWatcher.onDidCreate(onWorkspaceFile);
+        this.fsWatcher.onDidChange(onWorkspaceFile);
+        this.fsWatcher.onDidDelete(onWorkspaceFile);
         // The precise "attribution is ready" signal: watch each repo's working-log
         // dir (written by the daemon/hooks) and .git/HEAD. These let us drop the
         // per-edit retry ladder — the refresh fires when the data actually lands.
@@ -1183,9 +1197,12 @@ export class CliDataService implements vscode.Disposable {
     private async fetchAuthorship(bin: string, fsPath: string): Promise<WorkingLogJson | null> {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', fsPath], {
-                env: { ...process.env },
+                // No opportunistic .git/index refresh from the git calls the CLI makes:
+                // a background reader must not write the repo it is watching.
+                env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
                 timeout: authorshipTimeoutMs(),
                 maxBuffer: 8 * 1024 * 1024,
+                windowsHide: true,
             });
             const trimmed = stdout.trim();
             if (!trimmed) return null;
@@ -1199,9 +1216,12 @@ export class CliDataService implements vscode.Disposable {
     private async fetchAllWorkingLogs(bin: string, repoRoot: string): Promise<WorkingLogJson[]> {
         try {
             const { stdout } = await execFileAsyncCli(bin, ['authorship', repoRoot, '--all'], {
-                env: { ...process.env },
+                // No opportunistic .git/index refresh from the git calls the CLI makes:
+                // a background reader must not write the repo it is watching.
+                env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
                 timeout: authorshipTimeoutMs(),
                 maxBuffer: 32 * 1024 * 1024,
+                windowsHide: true,
             });
             const trimmed = stdout.trim();
             if (!trimmed) return [];

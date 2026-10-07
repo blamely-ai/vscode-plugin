@@ -218,10 +218,30 @@ function normalizeLineForMatch(s: string): string {
     return s.replace(/\s/g, '');
 }
 
+/** The largest middle region (between the common prefix and suffix) whose LCS
+ *  table alignLines keeps whole: Int32Array, 64 MB. Larger middles go through
+ *  alignMiddleCheckpointed — the same result in O(sqrt(rows)·cols) memory.
+ *  Identical to the Go and Kotlin ports. Mutable only so tests can force the
+ *  checkpointed path (setMaxAlignCellsForTest). */
+let maxAlignCells = 16_000_000;
+
+/** Test hook: returns the previous value. */
+export function setMaxAlignCellsForTest(cells: number): number {
+    const prev = maxAlignCells;
+    maxAlignCells = cells;
+    return prev;
+}
+
 // alignLines compares lines WHITESPACE-NORMALIZED (Phase 4 reflow): a line that
 // changed only in indentation / trailing or collapsed whitespace counts as
 // unchanged and keeps its prior author. A genuine content change still mismatches.
-function alignLines(oldLines: string[], newLines: string[]): number[] {
+//
+// The DP only covers the lines between the common prefix and the common suffix, yet
+// the result is identical to running it over the whole file (see the Go port for the
+// proof): the prefix matches in place, and the suffix replay reproduces the
+// whole-file backtrack in linear time. A whole-file table was (n+1)×(m+1) cells —
+// gigabytes for a large file on every edit.
+export function alignLines(oldLines: string[], newLines: string[]): number[] {
     const n = oldLines.length;
     const m = newLines.length;
     const matched: number[] = new Array(m).fill(-1);
@@ -230,32 +250,142 @@ function alignLines(oldLines: string[], newLines: string[]): number[] {
     }
     const oldN = oldLines.map(normalizeLineForMatch);
     const newN = newLines.map(normalizeLineForMatch);
-    const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-    for (let i = n - 1; i >= 0; i--) {
-        for (let j = m - 1; j >= 0; j--) {
-            if (oldN[i] === newN[j]) {
-                dp[i][j] = dp[i + 1][j + 1] + 1;
-            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-                dp[i][j] = dp[i + 1][j];
-            } else {
-                dp[i][j] = dp[i][j + 1];
+
+    let p = 0;
+    while (p < n && p < m && oldN[p] === newN[p]) {
+        matched[p] = p;
+        p++;
+    }
+    let s = 0;
+    while (s < n - p && s < m - p && oldN[n - 1 - s] === newN[m - 1 - s]) {
+        s++;
+    }
+    const oldEnd = n - s;
+    const newEnd = m - s;
+
+    let i = p;
+    let j = p;
+    const rows = oldEnd - p;
+    const cols = newEnd - p;
+    if (rows > 0 && cols > 0) {
+        if ((rows + 1) * (cols + 1) > maxAlignCells) {
+            [i, j] = alignMiddleCheckpointed(oldN, newN, p, oldEnd, newEnd, matched);
+        } else {
+            // dp[(a-p)*w + (b-p)] = LCS length of oldN[a:oldEnd] and newN[b:newEnd].
+            const w = cols + 1;
+            const dp = new Int32Array((rows + 1) * w);
+            const newMid = newN.slice(p, newEnd);
+            for (let a = rows - 1; a >= 0; a--) {
+                fillLcsRow(oldN[p + a], newMid, dp.subarray(a * w, (a + 1) * w), dp.subarray((a + 1) * w, (a + 2) * w), 0);
+            }
+            while (i < oldEnd && j < newEnd) {
+                const a = i - p;
+                const b = j - p;
+                if (oldN[i] === newN[j]) {
+                    matched[j] = i;
+                    i++;
+                    j++;
+                } else if (dp[(a + 1) * w + b] >= dp[a * w + b + 1]) {
+                    i++;
+                } else {
+                    j++;
+                }
             }
         }
     }
-    let i = 0;
-    let j = 0;
-    while (i < n && j < m) {
-        if (oldN[i] === newN[j]) {
-            matched[j] = i;
-            i++;
+    // Replay the common suffix: one side is exhausted here.
+    for (let k = 0; k < s; k++) {
+        const oi = oldEnd + k;
+        const nj = newEnd + k;
+        const x = oldN[oi];
+        if (i === oi) {
+            while (newN[j] !== x) {
+                j++;
+            }
+            matched[j] = oi;
+            i = oi + 1;
             j++;
-        } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-            i++;
         } else {
-            j++;
+            while (oldN[i] !== x) {
+                i++;
+            }
+            matched[nj] = i;
+            i++;
+            j = nj + 1;
         }
     }
     return matched;
+}
+
+/** One row of the suffix-LCS table: row[b] = LCS length of (oldLine + the old
+ *  lines below) and newMid[b:], for b >= from, given the row below (next). */
+function fillLcsRow(oldLine: string, newMid: string[], row: Int32Array, next: Int32Array, from: number): void {
+    const cols = newMid.length;
+    row[cols] = 0;
+    for (let b = cols - 1; b >= from; b--) {
+        if (oldLine === newMid[b]) {
+            row[b] = next[b + 1] + 1;
+        } else if (next[b] >= row[b + 1]) {
+            row[b] = next[b];
+        } else {
+            row[b] = row[b + 1];
+        }
+    }
+}
+
+/** alignLines' DP + backtrack over the middle without holding the whole table:
+ *  keeps every step-th row (step ≈ sqrt(rows)), then walks the backtrack block by
+ *  block, rebuilding each block from the checkpoint below it, only from the
+ *  current column rightward. Same values, so identical matches. Identical to the
+ *  Go and Kotlin ports. Returns where the backtrack stopped. */
+function alignMiddleCheckpointed(
+    oldN: string[], newN: string[], p: number, oldEnd: number, newEnd: number, matched: number[],
+): [number, number] {
+    const rows = oldEnd - p;
+    const cols = newEnd - p;
+    const newMid = newN.slice(p, newEnd);
+    const w = cols + 1;
+    const step = Math.ceil(Math.sqrt(rows));
+
+    const checkpoint: Int32Array[] = new Array(Math.floor(rows / step) + 1);
+    let cur = new Int32Array(w);
+    let below = new Int32Array(w);
+    for (let a = rows - 1; a >= 0; a--) {
+        fillLcsRow(oldN[p + a], newMid, cur, below, 0);
+        if (a % step === 0) {
+            checkpoint[a / step] = cur.slice();
+        }
+        [cur, below] = [below, cur];
+    }
+    const zero = new Int32Array(w);
+    const rowAt = (a: number) => (a === rows ? zero : checkpoint[a / step]);
+
+    const block: Int32Array[] = Array.from({ length: step + 1 }, () => new Int32Array(w));
+    let i = p;
+    let j = p;
+    while (i < oldEnd && j < newEnd) {
+        const top = Math.floor((i - p) / step) * step;
+        const bottom = Math.min(top + step, rows);
+        const from = j - p;
+        block[bottom - top].set(rowAt(bottom).subarray(from), from);
+        for (let a = bottom - 1; a >= top; a--) {
+            fillLcsRow(oldN[p + a], newMid, block[a - top], block[a - top + 1], from);
+        }
+        while (i - p < bottom && j < newEnd) {
+            const a = i - p;
+            const b = j - p;
+            if (oldN[i] === newN[j]) {
+                matched[j] = i;
+                i++;
+                j++;
+            } else if (block[a + 1 - top][b] >= block[a - top][b + 1]) {
+                i++;
+            } else {
+                j++;
+            }
+        }
+    }
+    return [i, j];
 }
 
 function coalesce(perLine: Author[], overrode: Array<Author | undefined>): LineAttribution[] {

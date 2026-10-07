@@ -1,15 +1,19 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Logger from '../utils/Logger';
-import { isWindows } from '../utils/Platform';
 
-function run(cmd: string, cwd: string): Promise<string> {
+// git is spawned directly (no cmd.exe / sh in between) with windowsHide: this runs
+// on every refresh, and on Windows each extra console process — and each visible
+// one — flashes the "app starting" cursor. GIT_OPTIONAL_LOCKS=0 keeps these
+// read-only queries from rewriting .git/index, which the workspace watcher sees.
+const GIT_ENV = { ...process.env, GIT_OPTIONAL_LOCKS: '0' };
+
+function run(cwd: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-        const shell = isWindows() ? 'cmd.exe' : '/bin/sh';
-        exec(cmd, { cwd, shell }, (err, stdout, stderr) => {
+        execFile('git', args, { cwd, env: GIT_ENV, windowsHide: true }, (err, stdout, stderr) => {
             if (err) {
-                reject(new Error(`${cmd} failed: ${stderr || err.message}`));
+                reject(new Error(`git ${args.join(' ')} failed: ${stderr || err.message}`));
             } else {
                 resolve(stdout.trim());
             }
@@ -19,8 +23,7 @@ function run(cmd: string, cwd: string): Promise<string> {
 
 async function runSafe(cwd: string, ...args: string[]): Promise<string | null> {
     try {
-        const cmd = `git ${args.map(a => (a.includes(' ') || a.includes('^') ? `"${a}"` : a)).join(' ')}`;
-        return await run(cmd, cwd);
+        return await run(cwd, args);
     } catch {
         return null;
     }
@@ -48,7 +51,7 @@ export async function getRepoRoot(cwdOrFile: string): Promise<string | null> {
         } catch {
             dir = path.dirname(dir);
         }
-        return nativePath(await run('git rev-parse --show-toplevel', dir));
+        return nativePath(await run(dir, ['rev-parse', '--show-toplevel']));
     } catch {
         return null;
     }
