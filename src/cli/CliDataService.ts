@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { BlameMap, LineBlame, DETECTING_TTL_MS } from '../blame/BlameMap';
 import { loadEditsForRepo } from './SqliteReader';
 import { getRepoId } from './repoId';
+import { checkoutGitDir } from '../git/GitPaths';
 import { checkCliHealth } from './CliHealth';
 import { CliEditRow, DaemonStatus } from './types';
 import * as GitUtils from '../git/GitUtils';
@@ -969,16 +970,17 @@ export class CliDataService implements vscode.Disposable {
      *  paths inside .git that the default '**\/*' watcher excludes. */
     private async setupDataWatchers(): Promise<void> {
         for (const root of await workspaceRepoRoots()) {
-            // Working logs land under <repo>/.git/blamely/working_logs/<branch>/<base>/…
+            // Linked worktrees have a .git file; watch their private Git directory.
+            const gitDir = checkoutGitDir(root);
             const logs = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(root, '.git/blamely/working_logs/**'),
+                new vscode.RelativePattern(gitDir, 'blamely/working_logs/**'),
             );
             logs.onDidCreate(() => this.scheduleRefresh());
             logs.onDidChange(() => this.scheduleRefresh());
             logs.onDidDelete(() => this.scheduleRefresh());
             // HEAD moves on commit / checkout / branch switch.
             const head = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(root, '.git/HEAD'),
+                new vscode.RelativePattern(gitDir, 'HEAD'),
             );
             head.onDidChange(() => this.scheduleRefresh());
             head.onDidCreate(() => this.scheduleRefresh());

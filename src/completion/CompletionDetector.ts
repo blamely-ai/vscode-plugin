@@ -366,6 +366,7 @@ export class CompletionDetector implements vscode.Disposable {
                 confidence,
                 gen_type: genType,
                 repo_path: repoId,
+                worktree_path: repoRoot,
                 file_path: relPath,
                 suggested_lines: band.end - band.start + 1,
                 lines: bandLines.length > 0
@@ -404,7 +405,7 @@ export class CompletionDetector implements vscode.Disposable {
             // before the watcher polls, causing the watcher to claim unchanged
             // (human-typed) lines as AI-authored.
             if (chatApply && prevText !== undefined) {
-                await this.daemon.putSnapshot(repoId, relPath, prevText);
+                await this.daemon.putSnapshot(repoRoot, relPath, prevText);
             }
             await this.saveDocumentThenRefresh(doc);
         }
@@ -493,8 +494,7 @@ export class CompletionDetector implements vscode.Disposable {
         if (!repoRoot || (await inProgressGitOp(repoRoot))) return;
         const rel = path.relative(repoRoot, fp).replace(/\\/g, '/');
         if (!rel || rel.startsWith('..')) return;
-        const repoId = (await getRepoId(repoRoot)) ?? repoRoot;
-        await this.daemon.putSnapshot(repoId, rel, prevText);
+        await this.daemon.putSnapshot(repoRoot, rel, prevText);
         // Show the neutral "detecting" gutter icon on the changed lines while the
         // daemon's chat watcher resolves them — instead of defaulting to Human and
         // flipping to AI. Resolves to AI when recorded, or to Human on timeout.
@@ -540,6 +540,7 @@ export class CompletionDetector implements vscode.Disposable {
             confidence: 'high',
             gen_type: 'human',
             repo_path: repoId,
+            worktree_path: repoRoot,
             file_path: rel,
             lines: lineRanges,
             raw_meta: JSON.stringify({
@@ -601,6 +602,7 @@ export class CompletionDetector implements vscode.Disposable {
                 confidence: 'high',
                 gen_type: 'chat',
                 repo_path: repoId,
+                worktree_path: repoRoot,
                 file_path: relPath,
                 suggested_lines: lines.length,
                 lines: lineRanges,
@@ -687,6 +689,7 @@ export class CompletionDetector implements vscode.Disposable {
             confidence: 'high',
             gen_type: 'chat',
             repo_path: repoId,
+            worktree_path: repoRoot,
             file_path: relPath,
             suggested_lines: removed.length,
             lines: [],
