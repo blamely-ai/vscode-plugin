@@ -24,6 +24,8 @@ export interface EditPayload {
     confidence?: string;
     gen_type?: string;
     repo_path: string;
+    // Canonical repo_path is shared; filesystem/session state belongs to this checkout.
+    worktree_path?: string;
     file_path: string;
     model?: string;
     suggested_lines?: number;
@@ -69,13 +71,14 @@ export class DaemonClient {
      * true for a chat-apply edit, passing prevText (the document content before
      * the AI applied its changes). Fire-and-forget: failures are silently ignored
      * since this is a best-effort optimisation, not a required step.
+     * checkoutPath must be the active worktree, not its canonical repository ID.
      */
-    async putSnapshot(repoPath: string, filePath: string, content: string): Promise<void> {
+    async putSnapshot(checkoutPath: string, filePath: string, content: string): Promise<void> {
         const sock = readDaemonSocket();
         const port = sock == null ? readDaemonPort() : null;
         if (sock == null && port == null) { return; }
         try {
-            await this.request(sock, port, 'PUT', '/snapshot', { repo: repoPath, file: filePath, content });
+            await this.request(sock, port, 'PUT', '/snapshot', { repo: checkoutPath, file: filePath, content });
         } catch {
             // best-effort — watcher falls back to recording all lines
         }

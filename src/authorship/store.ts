@@ -1,5 +1,5 @@
 // Working-log + baseline storage — TypeScript port of internal/authorship/store.go.
-// Plain files under the repo's .git so the editor and the CLI share one working
+// Plain files under the checkout-local Git directory so the editor and CLI share one working
 // log with no daemon/DB. Same layout, sanitization, atomic temp+rename, and
 // portable lockfile as the Go implementation; async so the extension host never
 // blocks. Behaves identically on Windows, Linux, and macOS.
@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { Author, WorkingLog, WORKING_LOG_SCHEMA, attribute } from './attribute';
+import { checkoutGitDir } from '../git/GitPaths';
 
 export function sanitizeComponent(s: string): string {
     if (!s) {
@@ -22,7 +23,7 @@ export function cleanRel(rel: string): string {
 }
 
 function workingLogDir(repoRoot: string, branch: string, baseSha: string): string {
-    return path.join(repoRoot, '.git', 'blamely', 'working_logs', sanitizeComponent(branch), sanitizeComponent(baseSha));
+    return path.join(checkoutGitDir(repoRoot), 'blamely', 'working_logs', sanitizeComponent(branch), sanitizeComponent(baseSha));
 }
 
 export function workingLogPath(repoRoot: string, branch: string, baseSha: string, relPath: string): string {
