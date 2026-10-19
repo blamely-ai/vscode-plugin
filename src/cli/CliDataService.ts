@@ -1131,8 +1131,13 @@ export class CliDataService implements vscode.Disposable {
             return wl ? this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates) : null;
         }));
         visible.forEach((ed, i) => {
-            const blame = scoped[i];
-            if (blame) merged.set(blameFileKey(ed.document.uri), blame);
+            const s = scoped[i];
+            if (!s) return;
+            // The repo-wide entry is keyed by git's path for the file. Through an
+            // alias that is not the editor's path, so the file sat in the map twice
+            // and the status bar counted every line of it twice.
+            if (s.repoKey) merged.delete(s.repoKey);
+            merged.set(blameFileKey(ed.document.uri), s.blame);
         });
         this.blameMap.replaceAll(merged);
         this.notify();
@@ -1177,14 +1182,17 @@ export class CliDataService implements vscode.Disposable {
      *  Windows git's top level is `C:\…` while VS Code's fsPath is `c:\…`, so a
      *  case-sensitive startsWith never matched and the gutter went unscoped; and a
      *  work tree opened through an alias (junction, mounted profile) never shares a
-     *  prefix with git's real path at all. */
+     *  prefix with git's real path at all.
+     *
+     *  repoKey is the key collectRepoWide stored the same file under, if it found
+     *  the repo, so the caller can drop that duplicate. */
     private async scopeVisibleEditor(
         fsPath: string,
         wl: WorkingLogJson,
         repoRoots: string[],
         repoStates: Map<string, WorkingTreeState>,
-    ): Promise<LineBlame[]> {
-        const entries = toLineBlame(wl);
+    ): Promise<{ blame: LineBlame[]; repoKey?: string }> {
+        const entries = { blame: toLineBlame(wl) };
         // Deepest root containing fsPath; git is asked only when no root matches
         // cheaply, so a multi-root workspace doesn't spawn a process per root.
         let bestRoot: string | null = null;
@@ -1202,9 +1210,12 @@ export class CliDataService implements vscode.Disposable {
         if (!bestRoot || !rel) return entries;
         const state = repoStates.get(path.normalize(bestRoot));
         if (!state) return entries;
-        const byFile = new Map<string, LineBlame[]>([[rel, entries]]);
+        const byFile = new Map<string, LineBlame[]>([[rel, entries.blame]]);
         scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
-        return byFile.get(rel) ?? [];
+        return {
+            blame: byFile.get(rel) ?? [],
+            repoKey: blameFileKey(vscode.Uri.file(path.join(bestRoot, rel))),
+        };
     }
 
     /** Single-file v2 authorship (committed + uncommitted), which SEEDS from the
