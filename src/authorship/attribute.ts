@@ -66,6 +66,9 @@ export function attribute(
     // content), or -1.
     const movedFrom = detectMoves(oldLines, newLines, matched);
 
+    // Runs of lines a formatter split or joined (see detectReflows).
+    const reflows = detectReflows(oldLines, newLines, matched, movedFrom);
+
     const perLine: Author[] = new Array(newLines.length);
     for (let i = 0; i < newLines.length; i++) {
         const j = matched[i];
@@ -77,10 +80,29 @@ export function attribute(
             perLine[i] = author;
         }
     }
+    const reflowed: boolean[] = new Array(newLines.length).fill(false);
+    for (const r of reflows) {
+        // A reflowed run keeps its author only when the old lines had ONE author;
+        // a split/join across authors can't say whose each new line is, so it stays
+        // with the editor, as before. Identical to the Go and Kotlin ports.
+        const shared = priorAuthorOr(prior, r.old[0] + 1);
+        if (!r.old.every((oi) => sameAuthor(priorAuthorOr(prior, oi + 1), shared))) {
+            continue;
+        }
+        for (const ni of r.new) {
+            perLine[ni] = shared;
+            reflowed[ni] = true;
+        }
+    }
 
     // overrode[i] = the author a CHANGED line replaced, when its type differs from
     // the new author (audit marker; does not change who owns the line now).
     const overrode = detectOverrode(prior, matched, movedFrom, oldLines.length, author);
+    for (let i = 0; i < overrode.length; i++) {
+        if (reflowed[i]) {
+            overrode[i] = undefined; // a reflow replaced nothing
+        }
+    }
 
     return {
         schema: WORKING_LOG_SCHEMA,
@@ -126,6 +148,75 @@ function detectMoves(oldLines: string[], newLines: string[], matched: number[]):
         }
     }
     return moved;
+}
+
+interface ReflowRun {
+    old: number[];
+    new: number[];
+}
+
+/** detectReflows finds the gaps of the LCS alignment that a formatter only
+ *  reshaped: the old lines left in a gap (not matched, not moved away) and the new
+ *  lines in it (not matched, not moved in) read the same once joined and compared
+ *  with reflowKey. Prettier and `eslint --fix` split a long call or object literal
+ *  over several lines, join short ones, and add or drop separators doing it — no one
+ *  authored anything, so the new lines keep the old lines' author. Walks the gaps
+ *  exactly like detectOverrode; identical to the Go and Kotlin ports. */
+function detectReflows(oldLines: string[], newLines: string[], matched: number[], movedFrom: number[]): ReflowRun[] {
+    const consumedOld: boolean[] = new Array(oldLines.length).fill(false);
+    for (const mf of movedFrom) {
+        if (mf >= 0) {
+            consumedOld[mf] = true;
+        }
+    }
+    const runs: ReflowRun[] = [];
+    const m = matched.length;
+    let oldCursor = 0;
+    let i = 0;
+    while (i < m) {
+        if (matched[i] >= 0) {
+            oldCursor = matched[i] + 1;
+            i++;
+            continue;
+        }
+        let gapNewEnd = i;
+        while (gapNewEnd < m && matched[gapNewEnd] < 0) {
+            gapNewEnd++;
+        }
+        const gapOldEnd = gapNewEnd < m ? matched[gapNewEnd] : oldLines.length;
+        const r: ReflowRun = { old: [], new: [] };
+        for (let ni = i; ni < gapNewEnd; ni++) {
+            if (movedFrom[ni] < 0) {
+                r.new.push(ni);
+            }
+        }
+        for (let oi = oldCursor; oi < gapOldEnd; oi++) {
+            if (!consumedOld[oi]) {
+                r.old.push(oi);
+            }
+        }
+        if (r.new.length > 0 && r.old.length > 0) {
+            const k = reflowKey(oldLines, r.old);
+            if (k !== '' && k === reflowKey(newLines, r.new)) {
+                runs.push(r);
+            }
+        }
+        oldCursor = gapOldEnd;
+        i = gapNewEnd;
+    }
+    return runs;
+}
+
+/** reflowKey: lines[idx…] joined as a formatter sees them — each line normalized
+ *  (normalizeLineForMatch), then every `,` and `;` dropped, since splitting or
+ *  joining lines adds and removes separators between items. Identical to Go/Kotlin. */
+function reflowKey(lines: string[], idx: number[]): string {
+    return idx.map((i) => normalizeLineForMatch(lines[i])).join('').replace(/[,;]/g, '');
+}
+
+function sameAuthor(a: Author, b: Author): boolean {
+    return a.author === b.author && a.tool === b.tool && a.model === b.model &&
+        a.gen_type === b.gen_type && a.session === b.session;
 }
 
 /** detectOverrode finds replace pairs and records the replaced author when its type
@@ -210,12 +301,18 @@ function splitLines(s: string): string[] {
 
 /** alignLines: for each NEW line, the OLD line index it is unchanged from (LCS
  *  match) or -1. Standard LCS DP + backtrack; identical to the Go implementation. */
-// normalizeLineForMatch reduces a line to its whitespace-insensitive form by
-// REMOVING all whitespace (git diff -w semantics) — indentation, trailing, and
-// operator spacing (`x=1` ↔ `x = 1`) all read as reflow and keep the prior author.
-// MUST match the Go and Kotlin ports exactly (the golden vectors enforce it).
+// normalizeLineForMatch reduces a line to the form a code formatter can't change,
+// so a line that changed only in formatting keeps its prior author: REMOVE all
+// whitespace (git diff -w semantics); treat `"` and the backtick as `'` (quote
+// style); `(x)=>` as `x=>` (arrowParens); drop trailing `;` and `,` (semicolons,
+// trailing commas). MUST match the Go and Kotlin ports exactly (the golden vectors
+// enforce it).
 function normalizeLineForMatch(s: string): string {
-    return s.replace(/\s/g, '');
+    return s
+        .replace(/\s/g, '')
+        .replace(/["`]/g, "'")
+        .replace(/\(([A-Za-z_$][A-Za-z0-9_$]*)\)=>/g, '$1=>')
+        .replace(/[;,]+$/, '');
 }
 
 /** The largest middle region (between the common prefix and suffix) whose LCS
