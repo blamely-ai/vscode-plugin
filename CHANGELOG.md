@@ -2,6 +2,13 @@
 
 Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This extension uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The gutter shows only your current changes on Windows.** The check that limits the gutter to the lines you have changed never matched on Windows, so lines you had not touched could be marked, sometimes as AI. It now works on every system.
+- **Projects opened through a linked or mounted folder are tracked correctly.** When a project was opened through a folder link or, on some corporate Windows machines, from a profile on a mounted drive, the lines you typed were recorded in the wrong place and did not show as yours. They are now recorded and shown correctly.
+
 ## [1.8.5] - 2026-10-07
 
 ### Changed

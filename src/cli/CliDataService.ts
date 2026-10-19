@@ -1126,10 +1126,13 @@ export class CliDataService implements vscode.Disposable {
         // split view or a few peeks open that dominated the whole refresh.
         const visible = vscode.window.visibleTextEditors.filter((ed) => ed.document.uri.scheme === 'file');
         const fetched = await Promise.all(visible.map((ed) => this.fetchAuthorship(bin, ed.document.uri.fsPath)));
-        visible.forEach((ed, i) => {
+        const scoped = await Promise.all(visible.map((ed, i) => {
             const wl = fetched[i];
-            if (!wl) return;
-            merged.set(blameFileKey(ed.document.uri), this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates));
+            return wl ? this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates) : null;
+        }));
+        visible.forEach((ed, i) => {
+            const blame = scoped[i];
+            if (blame) merged.set(blameFileKey(ed.document.uri), blame);
         });
         this.blameMap.replaceAll(merged);
         this.notify();
@@ -1168,26 +1171,37 @@ export class CliDataService implements vscode.Disposable {
     /** Scope one visible editor's authorship to its repo's uncommitted-vs-HEAD state,
      *  so a file that's clean vs HEAD paints nothing even if the CLI returned a log.
      *  Falls back to the unscoped conversion when the file's repo wasn't discovered
-     *  (nested repo outside the workspace folders) — never worse than before. */
-    private scopeVisibleEditor(
+     *  (nested repo outside the workspace folders) — never worse than before.
+     *
+     *  The repo is matched through repoRelativePath, not a string prefix: on
+     *  Windows git's top level is `C:\…` while VS Code's fsPath is `c:\…`, so a
+     *  case-sensitive startsWith never matched and the gutter went unscoped; and a
+     *  work tree opened through an alias (junction, mounted profile) never shares a
+     *  prefix with git's real path at all. */
+    private async scopeVisibleEditor(
         fsPath: string,
         wl: WorkingLogJson,
         repoRoots: string[],
         repoStates: Map<string, WorkingTreeState>,
-    ): LineBlame[] {
+    ): Promise<LineBlame[]> {
         const entries = toLineBlame(wl);
-        // Longest-prefix match: the repo whose root is the deepest ancestor of fsPath.
+        // Deepest root containing fsPath; git is asked only when no root matches
+        // cheaply, so a multi-root workspace doesn't spawn a process per root.
         let bestRoot: string | null = null;
-        for (const root of repoRoots) {
-            if ((fsPath === root || fsPath.startsWith(root + path.sep)) &&
-                (bestRoot === null || root.length > bestRoot.length)) {
-                bestRoot = root;
+        let rel: string | null = null;
+        for (const askGit of [false, true]) {
+            for (const root of repoRoots) {
+                const r = await GitUtils.repoRelativePath(root, fsPath, askGit);
+                if (r !== null && (bestRoot === null || root.length > bestRoot.length)) {
+                    bestRoot = root;
+                    rel = r;
+                }
             }
+            if (bestRoot) break;
         }
-        if (!bestRoot) return entries;
+        if (!bestRoot || !rel) return entries;
         const state = repoStates.get(path.normalize(bestRoot));
         if (!state) return entries;
-        const rel = path.relative(bestRoot, fsPath).replace(/\\/g, '/');
         const byFile = new Map<string, LineBlame[]>([[rel, entries]]);
         scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
         return byFile.get(rel) ?? [];
@@ -1495,8 +1509,8 @@ export class CliDataService implements vscode.Disposable {
         }
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.uri.scheme !== 'file' || doc.isClosed) continue;
-            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
-            if (rel && !rel.startsWith('..')) paths.add(rel);
+            const rel = await GitUtils.repoRelativePath(repoRoot, doc.uri.fsPath);
+            if (rel) paths.add(rel);
         }
         return paths;
     }
@@ -1505,8 +1519,8 @@ export class CliDataService implements vscode.Disposable {
         if (filePaths.size === 0) return;
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.uri.scheme !== 'file' || doc.isClosed || !doc.isDirty) continue;
-            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
-            if (!rel || rel.startsWith('..') || !filePaths.has(rel)) continue;
+            const rel = await GitUtils.repoRelativePath(repoRoot, doc.uri.fsPath);
+            if (!rel || !filePaths.has(rel)) continue;
             try {
                 await doc.save();
             } catch {

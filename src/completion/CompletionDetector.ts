@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { CliDataService } from '../cli/CliDataService';
 import { getRepoId } from '../cli/repoId';
-import { getRepoRoot, getBranchName, inProgressGitOp } from '../git/GitUtils';
+import { getRepoRoot, getBranchName, inProgressGitOp, repoRelativePath } from '../git/GitUtils';
 import * as Logger from '../utils/Logger';
 import { DaemonClient, EditPayload, EditRange, RemovedLineHash } from './DaemonClient';
 import { Author } from '../authorship/attribute';
@@ -492,8 +492,8 @@ export class CompletionDetector implements vscode.Disposable {
         const fp = doc.uri.fsPath;
         const repoRoot = await this.resolveRepoRoot(fp);
         if (!repoRoot || (await inProgressGitOp(repoRoot))) return;
-        const rel = path.relative(repoRoot, fp).replace(/\\/g, '/');
-        if (!rel || rel.startsWith('..')) return;
+        const rel = await repoRelativePath(repoRoot, fp);
+        if (!rel) return;
         await this.daemon.putSnapshot(repoRoot, rel, prevText);
         // Show the neutral "detecting" gutter icon on the changed lines while the
         // daemon's chat watcher resolves them — instead of defaulting to Human and
@@ -530,8 +530,8 @@ export class CompletionDetector implements vscode.Disposable {
         const fp = doc.uri.fsPath;
         const repoRoot = await this.resolveRepoRoot(fp);
         if (!repoRoot || (await inProgressGitOp(repoRoot))) return false;
-        const rel = path.relative(repoRoot, fp).replace(/\\/g, '/');
-        if (!rel || rel.startsWith('..')) return false;
+        const rel = await repoRelativePath(repoRoot, fp);
+        if (!rel) return false;
         const branch = await getBranchName(repoRoot);
         const repoId = (await getRepoId(repoRoot)) ?? repoRoot;
 
@@ -572,8 +572,8 @@ export class CompletionDetector implements vscode.Disposable {
             const repoRoot = await this.resolveRepoRoot(uri.fsPath);
             if (!repoRoot) { continue; }
             if (await inProgressGitOp(repoRoot)) { continue; }
-            const relPath = path.relative(repoRoot, uri.fsPath).replace(/\\/g, '/');
-            if (!relPath || relPath.startsWith('..')) { continue; }
+            const relPath = await repoRelativePath(repoRoot, uri.fsPath);
+            if (!relPath) { continue; }
 
             let content: string;
             try {
@@ -668,8 +668,8 @@ export class CompletionDetector implements vscode.Disposable {
         const repoRoot = await this.resolveRepoRoot(filePath);
         if (!repoRoot) { return false; }
         if (await inProgressGitOp(repoRoot)) { return false; }
-        const relPath = path.relative(repoRoot, filePath).replace(/\\/g, '/');
-        if (!relPath || relPath.startsWith('..')) { return false; }
+        const relPath = await repoRelativePath(repoRoot, filePath);
+        if (!relPath) { return false; }
 
         // Hash each non-blank line exactly as the daemon hashes a diff "-" line
         // (sha256 of the line sans trailing \r; blank lines never hashed).
