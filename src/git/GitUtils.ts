@@ -57,6 +57,87 @@ export async function getRepoRoot(cwdOrFile: string): Promise<string | null> {
     }
 }
 
+/**
+ * fsPath relative to the work tree rooted at repoRoot, slash-separated — the path
+ * git itself uses for the file (what working logs and the daemon key on) — or null
+ * when fsPath is not inside that work tree. Mirrors the CLI's gitutil.Rel.
+ *
+ * path.relative alone is enough when both paths spell the same prefix. They don't
+ * when the work tree is reached through an alias: git reports the top level by its
+ * real path while VS Code names files by the path the user opened (a junction, or a
+ * Windows profile on a mounted volume). path.relative then walks out with `..`,
+ * and the file was tracked under a path outside the repo. So after the lexical
+ * attempt this resolves both sides with realpath (junctions and mounts), and as a
+ * last resort asks git: `--show-prefix` from the nearest existing ancestor names
+ * the directory as git does, and the top level reported with it confirms it is the
+ * same work tree. No process is spawned unless both cheap attempts fail, and none
+ * at all with askGit=false (for callers probing several candidate roots).
+ */
+export async function repoRelativePath(repoRoot: string, fsPath: string, askGit = true): Promise<string | null> {
+    if (!repoRoot || !fsPath) return null;
+    const lexical = relInside(repoRoot, fsPath);
+    if (lexical !== null) return lexical;
+    const resolved = relInside(await realpathExisting(repoRoot), await realpathExisting(fsPath));
+    if (resolved !== null || !askGit) return resolved;
+    const { dir, rest } = await existingAncestor(fsPath);
+    if (!dir) return null;
+    const out = await runSafe(dir, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--show-prefix');
+    if (!out) return null;
+    // run() trims, so at the top level the empty prefix line is gone: absent = "".
+    const [top, prefix = ''] = out.split(/\r?\n/);
+    if (!top || !(await sameDir(nativePath(top), repoRoot))) return null;
+    return path.posix.join(prefix, ...rest.split(path.sep)).replace(/\/$/, '') || null;
+}
+
+/** path.relative restricted to paths strictly inside base, slash-separated. */
+function relInside(base: string, p: string): string | null {
+    const r = path.relative(base, p);
+    if (!r || path.isAbsolute(r) || r === '..' || r.startsWith('..' + path.sep)) return null;
+    return r.split(path.sep).join('/');
+}
+
+/** The nearest existing directory at or above p, and p's path below it. A file not
+ *  yet written (or a whole new subtree) still resolves through its first ancestor. */
+async function existingAncestor(p: string): Promise<{ dir: string | null; rest: string }> {
+    let cur = path.normalize(p);
+    let rest = '';
+    for (;;) {
+        try {
+            if ((await fs.promises.stat(cur)).isDirectory()) return { dir: cur, rest };
+        } catch {
+            // not there yet — climb
+        }
+        const parent = path.dirname(cur);
+        if (parent === cur) return { dir: null, rest: '' };
+        rest = rest ? path.join(path.basename(cur), rest) : path.basename(cur);
+        cur = parent;
+    }
+}
+
+/** realpath (junctions, mounts and symlinks resolved) that also works for a path
+ *  whose leaf does not exist yet: the nearest existing ancestor is resolved and
+ *  the remainder re-attached. Falls back to the input. */
+async function realpathExisting(p: string): Promise<string> {
+    try {
+        return await fs.promises.realpath(p);
+    } catch {
+        const { dir, rest } = await existingAncestor(p);
+        if (!dir) return p;
+        try {
+            return path.join(await fs.promises.realpath(dir), rest);
+        } catch {
+            return p;
+        }
+    }
+}
+
+/** Whether a and b name the same directory once resolved; case-insensitive on
+ *  Windows, as the file system is. */
+async function sameDir(a: string, b: string): Promise<boolean> {
+    const [ra, rb] = [path.normalize(await realpathExisting(a)), path.normalize(await realpathExisting(b))];
+    return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+}
+
 export async function getWorkingTreeChangedFiles(cwd: string): Promise<Set<string>> {
     const result = new Set<string>();
     for (const args of [['diff', '--name-only'], ['diff', '--cached', '--name-only']] as const) {

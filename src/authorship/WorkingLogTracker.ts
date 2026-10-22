@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import * as fs from 'fs';
-import { getBranchName, runGitCommand, locateRepo, readHeadState } from '../git/GitUtils';
+import { getBranchName, runGitCommand, locateRepo, readHeadState, repoRelativePath } from '../git/GitUtils';
 import { gitOpState } from '../git/GitOpState';
 import { Author } from './attribute';
 import { FileTracker } from './tracker';
@@ -273,7 +273,12 @@ export class WorkingLogTracker implements vscode.Disposable {
         if (!loc) {
             return null; // not in a work tree → nothing to key the working log on
         }
-        const rel = path.relative(loc.repoRoot, fsPath).split(path.sep).join('/');
+        // Named as git names it: through an alias (junction, mounted profile)
+        // path.relative walks out of the repo and the log landed outside it.
+        const rel = await repoRelativePath(loc.repoRoot, fsPath);
+        if (!rel) {
+            return null;
+        }
         const head = readHeadState(loc.gitDir);
         if (head) {
             // Same defaults as the git path: detached HEAD → DETACHED, unborn → INITIAL.

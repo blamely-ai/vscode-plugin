@@ -1126,10 +1126,18 @@ export class CliDataService implements vscode.Disposable {
         // split view or a few peeks open that dominated the whole refresh.
         const visible = vscode.window.visibleTextEditors.filter((ed) => ed.document.uri.scheme === 'file');
         const fetched = await Promise.all(visible.map((ed) => this.fetchAuthorship(bin, ed.document.uri.fsPath)));
-        visible.forEach((ed, i) => {
+        const scoped = await Promise.all(visible.map((ed, i) => {
             const wl = fetched[i];
-            if (!wl) return;
-            merged.set(blameFileKey(ed.document.uri), this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates));
+            return wl ? this.scopeVisibleEditor(ed.document.uri.fsPath, wl, repoRoots, repoStates) : null;
+        }));
+        visible.forEach((ed, i) => {
+            const s = scoped[i];
+            if (!s) return;
+            // The repo-wide entry is keyed by git's path for the file. Through an
+            // alias that is not the editor's path, so the file sat in the map twice
+            // and the status bar counted every line of it twice.
+            if (s.repoKey) merged.delete(s.repoKey);
+            merged.set(blameFileKey(ed.document.uri), s.blame);
         });
         this.blameMap.replaceAll(merged);
         this.notify();
@@ -1168,29 +1176,46 @@ export class CliDataService implements vscode.Disposable {
     /** Scope one visible editor's authorship to its repo's uncommitted-vs-HEAD state,
      *  so a file that's clean vs HEAD paints nothing even if the CLI returned a log.
      *  Falls back to the unscoped conversion when the file's repo wasn't discovered
-     *  (nested repo outside the workspace folders) — never worse than before. */
-    private scopeVisibleEditor(
+     *  (nested repo outside the workspace folders) — never worse than before.
+     *
+     *  The repo is matched through repoRelativePath, not a string prefix: on
+     *  Windows git's top level is `C:\…` while VS Code's fsPath is `c:\…`, so a
+     *  case-sensitive startsWith never matched and the gutter went unscoped; and a
+     *  work tree opened through an alias (junction, mounted profile) never shares a
+     *  prefix with git's real path at all.
+     *
+     *  repoKey is the key collectRepoWide stored the same file under, if it found
+     *  the repo, so the caller can drop that duplicate. */
+    private async scopeVisibleEditor(
         fsPath: string,
         wl: WorkingLogJson,
         repoRoots: string[],
         repoStates: Map<string, WorkingTreeState>,
-    ): LineBlame[] {
-        const entries = toLineBlame(wl);
-        // Longest-prefix match: the repo whose root is the deepest ancestor of fsPath.
+    ): Promise<{ blame: LineBlame[]; repoKey?: string }> {
+        const entries = { blame: toLineBlame(wl) };
+        // Deepest root containing fsPath; git is asked only when no root matches
+        // cheaply, so a multi-root workspace doesn't spawn a process per root.
         let bestRoot: string | null = null;
-        for (const root of repoRoots) {
-            if ((fsPath === root || fsPath.startsWith(root + path.sep)) &&
-                (bestRoot === null || root.length > bestRoot.length)) {
-                bestRoot = root;
+        let rel: string | null = null;
+        for (const askGit of [false, true]) {
+            for (const root of repoRoots) {
+                const r = await GitUtils.repoRelativePath(root, fsPath, askGit);
+                if (r !== null && (bestRoot === null || root.length > bestRoot.length)) {
+                    bestRoot = root;
+                    rel = r;
+                }
             }
+            if (bestRoot) break;
         }
-        if (!bestRoot) return entries;
+        if (!bestRoot || !rel) return entries;
         const state = repoStates.get(path.normalize(bestRoot));
         if (!state) return entries;
-        const rel = path.relative(bestRoot, fsPath).replace(/\\/g, '/');
-        const byFile = new Map<string, LineBlame[]>([[rel, entries]]);
+        const byFile = new Map<string, LineBlame[]>([[rel, entries.blame]]);
         scopeToUncommittedWorkingTree(byFile, state.changedSets, state.untrackedFiles);
-        return byFile.get(rel) ?? [];
+        return {
+            blame: byFile.get(rel) ?? [],
+            repoKey: blameFileKey(vscode.Uri.file(path.join(bestRoot, rel))),
+        };
     }
 
     /** Single-file v2 authorship (committed + uncommitted), which SEEDS from the
@@ -1495,8 +1520,8 @@ export class CliDataService implements vscode.Disposable {
         }
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.uri.scheme !== 'file' || doc.isClosed) continue;
-            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
-            if (rel && !rel.startsWith('..')) paths.add(rel);
+            const rel = await GitUtils.repoRelativePath(repoRoot, doc.uri.fsPath);
+            if (rel) paths.add(rel);
         }
         return paths;
     }
@@ -1505,8 +1530,8 @@ export class CliDataService implements vscode.Disposable {
         if (filePaths.size === 0) return;
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.uri.scheme !== 'file' || doc.isClosed || !doc.isDirty) continue;
-            const rel = path.relative(repoRoot, doc.uri.fsPath).replace(/\\/g, '/');
-            if (!rel || rel.startsWith('..') || !filePaths.has(rel)) continue;
+            const rel = await GitUtils.repoRelativePath(repoRoot, doc.uri.fsPath);
+            if (!rel || !filePaths.has(rel)) continue;
             try {
                 await doc.save();
             } catch {
