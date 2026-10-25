@@ -2,13 +2,21 @@
 
 Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This extension uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.6] - 2026-10-25
 
 ### Fixed
 
 - **Format on save no longer turns AI code into yours.** When Prettier, ESLint or another formatter reformatted AI-written code as you saved, the reformatted lines were shown and counted as your own work. Changing quotes, semicolons, trailing commas or parentheses, or splitting a long line over several lines or joining short ones, no longer changes who wrote the code. A real change in one place no longer turns the code reformatted around it into yours either.
 - **The gutter shows only your current changes on Windows.** The check that limits the gutter to the lines you have changed never matched on Windows, so lines you had not touched could be marked, sometimes as AI. It now works on every system.
-- **Projects opened through a linked or mounted folder are tracked correctly.** When a project was opened through a folder link or, on some corporate Windows machines, from a profile on a mounted drive, the lines you typed were recorded in the wrong place and did not show as yours. They are now recorded and shown correctly.
+- **Projects opened through a linked or mounted folder are tracked correctly.** When a project was opened through a folder link or, on some corporate Windows machines, from a profile on a mounted drive, the lines you typed were recorded in the wrong place and did not show as yours. They are now recorded and shown correctly, and the status bar no longer counts such a file twice.
+
+The following come from Blamely CLI 1.8.6, which does the attribution this extension displays:
+
+- **Copilot Agent mode is credited again.** Since VS Code 1.142, Copilot's agent edits were counted as your own work. They are now credited to Copilot.
+- **AI work is credited again on a mounted Windows profile.** On machines where the user profile sits on a mounted drive, all AI work in a project was counted as yours. It is now credited correctly.
+- **Lines you wrote just before an AI edit stay yours.** Your own changes are no longer credited to an assistant that edits the file right after you, or that runs a command such as `git diff` to check its work.
+- **Formatting outside the editor no longer changes who wrote the code.** Running `prettier --write` in a terminal, or lint-staged as you commit, keeps AI code credited to the AI.
+- **The gutter no longer marks a line you didn't touch.** Adding a line at the end of a file without a final newline no longer marks the line before it.
 
 ## [1.8.5] - 2026-10-07
 
