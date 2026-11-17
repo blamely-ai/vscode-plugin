@@ -2,6 +2,19 @@
 
 Notable changes to **Blamely** follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This extension uses [semantic versioning](https://semver.org/).
 
+## [1.8.7] - 2026-11-17
+
+### Fixed
+
+This release brings the fixes from Blamely CLI 1.8.7, which does the attribution this extension displays:
+
+- **Codex is credited again.** Code written by recent versions of Codex was counted as your own work. It is now credited to Codex.
+- **Copilot's newer sessions are credited.** Code written in "Copilot CLI" sessions in the Chat view was counted as your own work. It is now credited to Copilot.
+- **Claude Code no longer takes lines you hadn't committed yet.** When Claude edited a file that already had changes of yours, some of those lines could be credited to Claude. Now only what Claude actually writes counts.
+- **An AI assistant running a command no longer takes your lines.** When Claude Code, Copilot, Codex or Gemini changed a file by running a terminal command, your own lines in that file could be credited to the assistant. Now only what the command actually changed counts.
+- **New and updated AI tools are credited even before Blamely knows them.** When an AI tool changes the way it reports its work after an update, that work is still credited to the tool instead of to you.
+- **Uninstalling Blamely no longer switches off your other git hooks.** Your project's own hooks, and Husky's, keep working after you remove Blamely.
+
 ## [1.8.6] - 2026-10-25
 
 ### Fixed
